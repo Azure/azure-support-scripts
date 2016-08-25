@@ -1,7 +1,7 @@
 ﻿function RunRepairDataDiskFromRecoveryVm  (
     [string] $ServiceName,
     [string] $RecoVmName,
-    [string] $GuestRecoveryScriptUri = 'https://raw.githubusercontent.com/sebdau/azpstools/master/FixDisk/TS_RecoveryWorker2.ps1',
+    [string] $GuestRecoveryScriptUri = 'https://raw.githubusercontent.com/Azure/azure-support-scripts/master/FixDisk/TS_RecoveryWorker2.ps1',
     [string] $GuestRecoveryScript= "TS_RecoveryWorker2.ps1"
     )
 {
