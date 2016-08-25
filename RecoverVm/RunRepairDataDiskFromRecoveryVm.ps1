@@ -56,5 +56,3 @@
         Read-Host -Prompt "press any key once done to continue with recreation"
     }
 }
-
-RunRepairDataDiskFromRecoveryVm sebdau-sdp3 RC1605031631
