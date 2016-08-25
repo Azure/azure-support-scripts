@@ -20,8 +20,8 @@ In such cases it is a common practice to recover the problem VM by performing th
 If a Windows VM in Azure does not boot. Typically in this scenario VM screenshot from [boot diagnostics] (https://azure.microsoft.com/en-us/blog/boot-diagnostics-for-virtual-machines-v2/) does not show login screen but a boot issue.
 
 # Execution guidance
-- download and extract the entire project folder https://github.com/sebdau/azpstools/archive/master.zip to c:\azscripts\ (or custom)
-- Or pull it using git client github-windows://openRepo/https://github.com/sebdau/azpstools
+- download and extract the entire project folder https://github.com/Azure/azure-support-scripts/archive/master.zip to c:\azscripts\ (or custom)
+- Or pull it using git client github-windows://openRepo/https://github.com/Azure/azure-support-scripts
 - Open Azure Powershell and and execute 
 
 ```PowerShell
