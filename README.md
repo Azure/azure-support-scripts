@@ -7,17 +7,17 @@ These scripts are generally intended address a particular scenario and are not p
 - For documentation on how to build and deploy applications to Microsoft Azure please see the [Microsoft Azure Documentation Center](https://azure.microsoft.com/en-us/documentation/).
 -	For more information about support in Microsoft Azure see http://azure.microsoft.com/support 
 
-#Requirements
+# Requirements
 Each script will describe its own dependencies for execution.  Generally, you will need an [Azure subscription] (https://azure.microsoft.com/en-us/pricing/) as well as the script environments and any tools used by the script you wish to execute.  This may include:
 
 - Azure PowerShell: 	[How to install and configure Azure PowerShell](https://azure.microsoft.com/en-us/documentation/articles/powershell-install-configure/)
 - Azure Cli:	[How to install and configure Azure Command-Line Interface (Cli)](https://azure.microsoft.com/en-us/documentation/articles/xplat-cli-install/)
 - Python:	[Azure Python Developer Center](https://azure.microsoft.com/en-us/develop/python/)
 
-#Find Your Way
+# Find Your Way
 The repo is organized by support scenario and each contains a simple description of the script(s) in a readme.md.  Depending on the scenario, you will find one or more scripts written in common languages (e.g. PowerShell, Bash, Python) targeting various aspects of the Azure platform (e.g. Windows VM Guests, Linux VM Guests, Azure subscription settings).
 
-#Provide Feedback
+# Provide Feedback
 We value your input.  If you encounter problems with the scripts or ideas on how they can be improved please file an issue in the [Issues](https://github.com/Azure/azure-support-scripts/issues) section of the project.
 
-#Known Issues
+# Known Issues
