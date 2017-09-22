@@ -28,7 +28,7 @@ function Get-JsonFromSerialLog ($serialLogFilePath)
         }
     }
     
-    if ($json){$json | ConvertTo-Json | out-file $jsonFilePath}
+    if ($json){$json | ConvertTo-Json -Depth 99 | out-file $jsonFilePath}
     if (test-path $jsonFilePath)
     {
         get-content $jsonFilePath
