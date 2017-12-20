@@ -27,6 +27,44 @@
     #get storage account name from current os disk url
     $SAName = $vm.VM.OSVirtualHardDisk.MediaLink.Authority.Split(".")[0]
 
+    #As per PR taking a snapshot of the OS disk first.
+    $storageAccountName = $vm.VM.OSVirtualHardDisk.MediaLink.Authority.Split(".")[0]
+    $StorageAccountKey = (Get-AzureStorageKey -StorageAccountName $storageAccountName).Secondary
+    $ContainerName = $vm.VM.OSVirtualHardDisk.MediaLink.AbsoluteUri.Split('/')[3]
+    $osDiskvhd = $vm.VM.OSVirtualHardDisk.MediaLink.AbsolutePath.split('/')[-1]
+
+    $Ctx = New-AzureStorageContext -StorageAccountName $storageAccountName -StorageAccountKey $StorageAccountKey 
+    $VMblob = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | Where {$_.Name -eq $osDiskvhd -and $_.ICloudBlob.IsSnapshot -ne $true}
+
+    #Create a snapshot of the OS Disk
+    Write-host "Running CreateSnapshot operation" -Color Yellow
+    $snap = $VMblob.ICloudBlob.CreateSnapshot()
+    if ($snap)
+    {
+        Write-host "Successfully completed CreateSnapshot operation" -Color Green
+    }
+
+    Write-host "Initiating Copy proccess of Snapshot" -Color Yellow
+    #Save array of all snapshots
+    $VMsnaps = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | Where-Object {$_.ICloudBlob.IsSnapshot -and $_.SnapshotTime -ne $null } 
+
+    #Copies the LatestSnapshot of the OS Disk as a backup prior to making any changes to the OS Disk to the same storage account and prefixing with Backup
+    if ($VMsnaps.Count -gt 0)
+    {   
+        $backupOSDiskVhd = "backup$osDiskvhd" 
+        $status = Start-AzureStorageBlobCopy -CloudBlob $VMsnaps[$VMsnaps.Count - 1].ICloudBlob -Context $Ctx -DestContext $Ctx -DestContainer $ContainerName -DestBlob $backupOSDiskVhd -ConcurrentTaskCount 10 -Force
+        #$status | Get-AzureStorageBlobCopyState            
+        $osFixDiskblob = Get-AzureStorageAccount -StorageAccountName $storageAccountName | 
+        Get-AzureStorageContainer | where {$_.Name -eq $ContainerName} | Get-AzureStorageBlob | where {$_.Name -eq $backupOSDiskVhd -and $_.ICloudBlob.IsSnapshot -ne $true}
+        $copiedOSDiskUri =$osFixDiskblob.ICloudBlob.Uri.AbsoluteUri
+        Write-host "Took a snapshot of the OS Disk and copied it to  to $copiedOSDiskUri" -Color Green
+    }
+    else
+    {
+        Write-host "Snapshot copy was unsuccessfull" -Color Red       
+    }
+
+
     #set current sa to be os disk sa -> will create reco vhd on same sa
     $Sub = Get-AzureSubscription -Current 
     Set-AzureSubscription -CurrentStorageAccountName $SAName -SubscriptionId $sub.SubscriptionId

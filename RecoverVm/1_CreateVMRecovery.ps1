@@ -18,9 +18,17 @@ if ( ! $Sub )
 $results = AttachOsDiskAsDataDiskToRecoveryVm $ServiceName $VMName
 $recoVM = $results[$results.count -1]
 
-RunRepairDataDiskFromRecoveryVm $ServiceName ($recoVM.RoleName)
+write-host ('='*47)
+write-host "Next Steps"
+write-host ('='*47)
+write-host "RDP into the $($recoVM.RoleName) and take all the necessary steps to fix the OS Disk that is attached as the datadisk"
+Write-Host "After the OS Disk has been fixed run the following script to Recreate the VM with the fixed OS Disk"
+write-host ".\2_RecreateOriginalVM.ps1 -ServiceName $ServiceName -RecoVMName $($recoVM.RoleName)"
 
-RecreateVmFromVhd $ServiceName $recoVM.RoleName $true
+
+#As per discussion with Ram, this step will be manually run
+#RunRepairDataDiskFromRecoveryVm $ServiceName ($recoVM.RoleName)
+
 
 
 
