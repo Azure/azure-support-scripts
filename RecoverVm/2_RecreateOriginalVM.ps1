@@ -2,7 +2,10 @@
 #cd E:\git\github\RecoverVm
 Param(
     [Parameter(Mandatory=$true)][string]$ServiceName ,
-    [Parameter(Mandatory=$true)][string]$RecoVMName 
+    [Parameter(Mandatory=$true)][string]$RecoVMName,
+    [Parameter(Mandatory=$false)][string]$storageAccountName,
+    [Parameter(Mandatory=$false)][string]$osDiskvhd,
+    [Parameter(Mandatory=$false)][string] $ContainerName
 )
 
 $Sub = Get-AzureSubscription -Current
@@ -14,16 +17,12 @@ if ( ! $Sub )
 
 #. $PSScriptRoot\AttachOsDiskAsDataDiskToRecoveryVm.ps1 
 . $PSScriptRoot\RecreateVmFromVhd.ps1 
-#. $PSScriptRoot\RunRepairDataDiskFromRecoveryVm.ps1 
+. $PSScriptRoot\SnapShotFunctions.ps1 
 
 
-#$results = AttachOsDiskAsDataDiskToRecoveryVm $ServiceName $VMName
-#$recoVM = $results[$results.count -1]
+RecreateVmFromVhd $ServiceName $RecoVMName $true 
 
-
-
-#As per discussion with Ram, this step will be manually run
-#RunRepairDataDiskFromRecoveryVm $ServiceName ($recoVM.RoleName)
-
-
-RecreateVmFromVhd $ServiceName $RecoVMName $true
+if ($storageAccountName -and $osDiskvhd -and$ContainerName)
+{
+    DeleteSnapShotAndVhd -storageAccountName $storageAccountName -osDiskvhd $osDiskvhd -ContainerName $ContainerName
+}
