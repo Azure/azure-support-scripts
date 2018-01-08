@@ -24,7 +24,7 @@
     This is a mandatory Parameter, This would be the uri of the fixedOSDisk, this information will be provided after the successful execution of CreateCRPRescueVM.
 
 .PARAMETER prefix
-    Optional Parameter. By default the new Rescue VM and its resources are all created under a ResourceGroup named same as the orginal resourceGroup name with a prefix of 'rescue', however the prefix can be changed to a different value to overide the default 'resuce'
+    Optional Parameter. By default the new Rescue VM and its resources are all created under a ResourceGroup named same as the orginal resourceGroup name with a prefix of 'rescue', however the prefix can be changed to a different value to overide the default 'rescue'
 
 
 
@@ -114,7 +114,9 @@ if (-not $rescuevm)
 Write-Log "Successfully got the VM Object info for the Rescue VM ==>  $rescueVMNname" -Color Green
 
 #Step 3 -Removing the DataDisk from Rescue VM
+$FixedOsDiskUri  = $FixedOsDiskUri.Replace("`r`n","")
 $VHDNameShort = ($FixedOsDiskUri.Split('/')[-1]).split('.')[0]
+write-log "VHDNameShort ==> $($VHDNameShort)" -logonly
 Write-Log "Removing the Data disk from the Rescue VM ==>  $rescueVMNname" -Color Yellow
 Remove-AzureRmVMDataDisk -VM $rescuevm -Name $VHDNameShort
 Update-AzureRmVM -ResourceGroupName $RescueResourceGroup -VM $rescuevm
@@ -122,10 +124,14 @@ Write-Log "Successfully removed the Data disk from the Rescue VM ==>  $rescueVMN
 
 #Stop the VM before performing the disk swap.
 Write-Log "Stopping the VM ==> $VmName"  -Color Yellow
-$stopped= Stop-AzureRmVM -ResourceGroupName $ResourceGroup -Name $VmName
-if ($Stopped)
+
+$stopped = StopTargetVM -ResourceGroup $ResourceGroup -VmName $VmName
+write-log "`"$stopped`" ==> $($stopped)" -logOnly
+if (-not $stopped) 
 {
-   Write-Log "Successfully stopped the  VM ==> $VmName" -Color Green
+   write-log   "$($Stopped)" -logonly
+   Write-Log "Unable to stop the  VM ==> $VmName successfully, try manully stopping the VM from portal" -Color Red
+   Return
 }
 
 
@@ -133,7 +139,7 @@ if ($Stopped)
 
 Write-Log "Disk Swapping the OS Disk, to point to the fixed OS Disk for VM ==>  $VmName" -Color Yellow
 #before setting the uri, ensure to remove any new line characters
-$FixedOsDiskUri  = $FixedOsDiskUri.Replace("`r`n","")
+#$FixedOsDiskUri  = $FixedOsDiskUri.Replace("`r`n","")
 $vm.StorageProfile.OsDisk.Vhd.Uri = $FixedOsDiskUri 
 Update-AzureRmVM -ResourceGroupName $ResourceGroup -VM $vm 
 Write-Log "Successfully Disk Swapped the OS Disk,  for VM ==>  $VmName" -Color Yellow
@@ -145,6 +151,11 @@ if ($Started)
 {
    Write-Log "Successfully started the  VM ==> $VmName" -Color Green
 }
+else
+{
+   Write-Log "Unable to  start the  VM ==> $VmName, Please try it manually and RDP into it" -Color red
+   return
+}
 
 #Step 5 Open a RDP Connection to the VM
 if ($windowsVM)
@@ -153,8 +164,8 @@ if ($windowsVM)
     Get-AzureRmRemoteDesktopFile -ResourceGroupName $ResourceGroup -Name $VmName -Launch
 }
 
-Write-Host "`nWere you able to successfully recover the VM ==> VmName and are you ready to delete all the rescue reources that were created under the Resource Group $RescueResourceGroup (Y/N)?" -ForegroundColor Yellow
-if ((read-host) -eq 'Y')
+Write-Host "`nWere you able to successfully recover the VM ==> $VmName and are you ready to delete all the rescue reources that were created under the Resource Group $RescueResourceGroup (Y/N)?" -ForegroundColor Yellow
+if ((read-host) -eq 'Y' -or (read-host) -eq 'y')
 {
     Write-Log "Acknowledged deleting the rescource group ==> $RescueResourceGroup" -color Cyan
     Remove-AzureRmResourceGroup -Name $RescueResourceGroup -Force
@@ -163,6 +174,7 @@ else
 {
     Write-Log "Did not acknowledge deleting the rescource group ==> $RescueResourceGroup" -color Cyan
 }
+
 
 #Step 5
 #Clean up script

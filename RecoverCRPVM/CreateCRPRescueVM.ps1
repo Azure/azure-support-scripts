@@ -20,6 +20,8 @@
 
 .PARAMETER SubID
     This is a mandatory Parameter, SubscriptionID - the VM belongs to.
+.PARAMETER showErrors
+    Optional Parameter. By default it is set to true, so it displays all errors thrown by Powershell in the console, if set to False it runs in silentMode. 
 
 .PARAMETER prefix
     Optional Parameter. By default the new Rescue VM and its resources are all created under a ResourceGroup named same as the orginal resourceGroup name with a prefix of 'rescue', however the prefix can be changed to a different value to overide the default 'resuce'
@@ -39,7 +41,7 @@
 .EXAMPLE
     .\CreateCRPRescueVM.ps1 -ResourceGroup sujtemp -VmName sujnortheurope -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c ## <==Is an example is with all the mandatory fields
 .EXAMPLE
-    .\CreateCRPRescueVM.ps1 -VmName ubuntu -ResourceGroup rescueportalLin -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -Publisher RedHat -Offer RHEL -Sku 7.3 -Version 7.3.2017090723 -prefix rescuered <==Examples with optional parametersm in this example it will create the rescue VM with RedHat installed
+    .\CreateCRPRescueVM.ps1 -VmName ubuntu -ResourceGroup portalLin -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -Publisher RedHat -Offer RHEL -Sku 7.3 -Version 7.3.2017090723 -prefix rescuered <==Examples with optional parametersm in this example it will create the rescue VM with RedHat installed
 
 .NOTES
     Name: CreateCRPRescueVM.ps1
@@ -126,7 +128,11 @@ Write-Log "Running Get-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -Name `"$
 $vm = Get-AzureRmVM -ResourceGroupName $ResourceGroup -Name $VmName 
 write-log "`"$vm`" => $($vm)" -logOnly
 
-if (-not (SupportedVM -vm $vm)) { return }
+if (-not (SupportedVM -vm $vm)) 
+{  
+    write-log "This VM ==> $($vm.name) is not supported, exiting" -Color red
+    return 
+}
 Write-Log "Successfully got the VM Object info for $($vm.Name)" -Color Green
 if ($vm.StorageProfile.OsDisk.OsType -eq "Windows") 
 {
@@ -144,13 +150,13 @@ $stopped = StopTargetVM -ResourceGroup $ResourceGroup -VmName $VmName
 write-log "`"$stopped`" ==> $($stopped)" -logOnly
 if (-not $stopped) 
 {
-    Write-Log "Unable to stop the VM" -Color Red
+    Write-Log "Unable to stop the VM ==> $($VmName)" -Color Red
     Return
 }
 
 
 #Step 3 SnapshotAndCopyOSDisk  
-$osDiskVHDToBeRepaired = SnapshotAndCopyOSDisk -vm $vm -prefix $prefix
+$osDiskVHDToBeRepaired = SnapshotAndCopyOSDisk -vm $vm -prefix $prefix -ResourceGroup $ResourceGroup
 write-log "`"$osDiskVHDToBeRepaired`" => $($osDiskVHDToBeRepaired)" -logOnly
 if (-not $osDiskVHDToBeRepaired)
 {
@@ -159,11 +165,10 @@ if (-not $osDiskVHDToBeRepaired)
 }
 
 #Step 4 Create Rescue VM
-$Vmname = $vm.Name
 $rescueVMNname = "$prefix$Vmname"
 $RescueResourceGroup = "$prefix$ResourceGroup"
 $rescueVm = CreateRescueVM -vm $vm -ResourceGroup $ResourceGroup  -rescueVMNname $rescueVMNname -RescueResourceGroup $RescueResourceGroup -prefix $prefix -Sku $sku -Offer $offer -Publisher $Publisher -Version $Version 
-Write-Log "$reccueVM ==> $($reccueVM)" -logOnly
+Write-Log "$reccueVM ==> $($rescueVm)" -logOnly
 if (-not $rescuevm)
 {
     Write-Log "Unable to create the Rescue VM, cannot proceed" -Color Red

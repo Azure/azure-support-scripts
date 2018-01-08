@@ -5,12 +5,12 @@
 
 function SnapshotAndCopyOSDisk  (
     [Object[]]$vm,
+    [string] $ResourceGroup,
     [string] $prefix
     )
 {
 
     Write-Log "Initiating the snapshot process"  -Color Yellow    
-    $ResourceGroup = $vm.ResourceGroupName 
     if ($vm.StorageProfile.OsDisk.ManagedDisk)
     {
       Try
@@ -37,6 +37,11 @@ function SnapshotAndCopyOSDisk  (
 
     }
     $osDiskVhdUri = $vm.StorageProfile.OsDisk.Vhd.Uri
+    if (-not $osDiskVhdUri)
+    {
+        write-log "Unable to determine the VHD Uri for the vm ==> $($vm.Name)" -color red
+        return null
+    } 
     $osDiskvhd = $osDiskVhdUri.split('/')[-1]
     $storageAccountName = $vm.StorageProfile.OsDisk.Vhd.Uri.Split('//')[2].Split('.')[0]
     #$fixedosdiskvhd = "fixedos$osDiskvhd" 
@@ -44,12 +49,22 @@ function SnapshotAndCopyOSDisk  (
     Try
     {
         $StorageAccountRg = Get-AzureRmStorageAccount | where {$_.StorageAccountName -eq $storageAccountName} | Select-Object -ExpandProperty ResourceGroupName
+        if (-not $StorageAccountRg)
+        {
+            write-log "Unable to determine the Storage Account resource Group for Storage Account Name ==> $($storageAccountName)" -color red
+            return null
+        } 
         $StorageAccountKey = (Get-AzureRmStorageAccountKey -Name $storageAccountName -ResourceGroupName $StorageAccountRg).Value[1] 
         $ContainerName = $osDiskVhdUri.Split('/')[3]
 
         #Connect to the storage account
         $Ctx = New-AzureStorageContext -StorageAccountName $storageAccountName -StorageAccountKey $StorageAccountKey 
         $VMblob = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | Where {$_.Name -eq $osDiskvhd -and $_.ICloudBlob.IsSnapshot -ne $true}
+        if (-not $VMblob)
+        {
+            write-log "Unable to pull the osDiskvhd info for  ==> $($osDiskvhd)" -color red
+            return null
+        }
 
 
         #Create a snapshot of the OS Disk
@@ -59,6 +74,11 @@ function SnapshotAndCopyOSDisk  (
         {
             Write-Log "Successfully completed CreateSnapshot operation" -Color Green
         }
+        else
+        {
+            write-log "It was not able to create a snapshot but will proceed to find a snapshot, and so the snapshot may be stale" -color cyan
+        }
+
 
         Write-Log "Initiating Copy proccess of Snapshot" -Color Yellow
         #Save array of all snapshots
@@ -167,8 +187,32 @@ function CreateRescueVM(
         $osType = $vm.StorageProfile.OsDisk.OsType
         $location = $vm.Location
         $networkInterfaceName = $vm.NetworkProfile.NetworkInterfaces[0].Id.split('/')[-1]
-        $MaxStaorageAccountNameLength=24
-
+        $MaxStorageAccountNameLength=24
+        if ([string]::IsNullOrWhitespace($osDiskName))
+        {
+            Write-log "Unable to determine the OS DiskName of the $($vm.name)" -color red
+            return null
+        }
+        if ([string]::IsNullOrWhitespace($vmSize))
+        {
+            Write-log "Unable to determine the VM Size of the $($vm.name)" -color red
+            return null
+        }
+        if ([string]::IsNullOrWhitespace($osType))
+        {
+            Write-log "Unable to determine the osType of the $($vm.name)" -color red
+            return null
+        }
+        if ([string]::IsNullOrWhitespace($location))
+        {
+            Write-log "Unable to determine the location of the $($vm.name)" -color red
+            return null
+        }
+        if ([string]::IsNullOrWhitespace($networkInterfaceName))
+        {
+            Write-log "Unable to determine the networkInterfaceName of the $($vm.name)" -color red
+            return null
+        }
         $rescueOSDiskName = "$prefix$osDiskName"
         if (-not $managedVM)
         {
@@ -188,9 +232,9 @@ function CreateRescueVM(
         $rescueStorageType = "Standard_GRS"
         $rescueStorageName = "$prefix$storageAccountName"
         $rescueStorageName = $rescueStorageName.ToLower()
-        if ($rescueStorageName.Length -gt $MaxStaorageAccountNameLength) #ensures that the storage account name is less than 24 characters
+        if ($rescueStorageName.Length -gt $MaxStorageAccountNameLength) #ensures that the storage account name is less than 24 characters
         {
-          $rescueStorageName = $rescueStorageName.Substring(0,$MaxStaorageAccountNameLength)
+          $rescueStorageName = $rescueStorageName.Substring(0,$MaxStorageAccountNameLength)
         }
         ## Network
         $rescueInterfaceName = $prefix+"interface"
@@ -330,7 +374,7 @@ function AttachOsDisktoRescueVM(
     if (-not $rescuevm)
     {
         Write-Log "RescueVM ==>  $rescueVMNname cannot be found, Cannot proceed" -Color Red
-        $returnVal = $false
+        Return $false
     }
     Write-Log "Attaching the OS Disk to the rescueVM" -Color Yellow
     Try
@@ -352,7 +396,6 @@ function AttachOsDisktoRescueVM(
          Write-Log "Unable to Attach the OSDisk -  Exception Type: $($_.Exception.GetType().FullName)" -logOnly
          Write-Log "Exception Message: $($_.Exception.Message)" -logOnly
          throw
-         return $returnVal
     }
     return $returnVal
 }
@@ -370,6 +413,17 @@ function StopTargetVM(
     {
         Write-Log "Successfully stopped  Azure VM $VmName" -Color Green
         return $true
+    }
+    else
+    {
+        if ( $error )
+        {    
+            Write-Log ('='*47) -logOnly
+            Write-Log "errors logged during script execution`n" -noTimestamp -logOnly
+            Write-Log ('='*47) -logOnly
+            Write-Log "`n" -logOnly
+            $error | sort -Descending | % { Write-Log ( 'Line:' + $_.InvocationInfo.ScriptLineNumber + ' Char:' + $_.InvocationInfo.OffsetInLine + ' ' + $_.Exception.ErrorRecord ) -logOnly }    
+        }
     }
     return $false
 }
