@@ -26,7 +26,7 @@ does not show login screen but a boot issue.
 - Phase 1 - From Powershell Execute => Get-Help CreateCRPRescueVM.ps1 #For details
             CreateCRPRescueVM   - CreateCRPRescueVM  -ResourceGroup <ResourceGroup> -VmName <-VmName> -SubID <SUBID>
             Creates the Rescue VM, with the OS Disk Attached as a data disk to the Rescue VM
-            After the OS Disk has been fixed by running  the script https://github.com/azure/azpstools/blob/master/FixDisk/TS_RecoveryWorker2.ps1 as an elevated administrator from the recovery VM 
+            After the OS Disk has been fixed by running  the script [TS_RecoveryWorker2.ps1](./TS_RecoveryWorker2.ps1) as an elevated administrator from the recovery VM 
             in addition to any other additional manual steps (To be provided by support)
 - Phase 2 - From Powershell Execute =>  Get-Help RecoverCRPVM.PS1 #For details
             RecoverCRPVM.PS1 - CreateCRPRescueVM  -ResourceGroup <ResourceGroup> -VmName <-VmName> -SubID <SUBID> -FixedOsDiskUri <FixedOsDiskUri-This will be provided in the console output plus Log after executing first step>
