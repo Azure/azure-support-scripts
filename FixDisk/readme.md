@@ -4,7 +4,7 @@ In such cases it is a common practice to recover the problem VM by performing th
 
 - Delete the VM (but keep the disks)
 - Attach the disk(s) to another bootable VM as a Data Disk
-- Run the script https://github.com/sebdau/azpstools/blob/master/FixDisk/TS_RecoveryWorker2.ps1 as an elevated administrator from the recovery VM
+- Run the script https://github.com/azure/azpstools/blob/master/FixDisk/TS_RecoveryWorker2.ps1 as an elevated administrator from the recovery VM
 - Detach the disk and recreate the original VM using the recovered operating system disk
 
 > the full details on this recovery process are explained in this blog post:

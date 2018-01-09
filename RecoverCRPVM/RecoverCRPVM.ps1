@@ -176,9 +176,7 @@ else
 }
 
 
-#Step 5
-#Clean up script
-#Remove-AzureRmResourceGroup -Name $RescueResourceGroup -Force
+
 
 
 

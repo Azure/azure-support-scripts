@@ -16,7 +16,7 @@ In such cases it is a common practice to recover the problem VM by performing th
 
 # Scenarios
 
-##  When would you use the script?
+# When would you use the script?
 If a Windows VM in Azure does not boot. Typically in this scenario VM screenshot from [boot diagnostics] (https://azure.microsoft.com/en-us/blog/boot-diagnostics-for-virtual-machines-v2/) does not show login screen but a boot issue.
 
 # Execution guidance (Option 1 Fully Automated but limited OS Disk fixes)
@@ -48,7 +48,7 @@ Step 3 c:\azscripts\RecoverVM\2_RecreateOriginalVM MYCLOUDSERVICENAME <NameofRec
 - VM name
 
 # Supported Platforms / Dependencies
- - current version of Azure PowerShell (Tested with 1.3.2)
+ - current version of Azure PowerShell (Tested with 5.1.14393)
  
 
 

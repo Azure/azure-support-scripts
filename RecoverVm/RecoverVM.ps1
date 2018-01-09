@@ -20,6 +20,8 @@ $TakeSnapshot=read-host
 if ($TakeSnapshot -eq 'Y')
 {
     Write-host "Acknowledging request for taking a snapshot" -ForegroundColor yellow
+    Write-host "Stopping the VM first" -ForegroundColor yellow
+    Stop-AzureVM -ServiceName $ServiceName -Name $VMName -StayProvisioned
     $vm = Get-AzureVM -ServiceName $ServiceName -Name $VMName
     $storageAccountName = $vm.VM.OSVirtualHardDisk.MediaLink.Authority.Split(".")[0]
     $StorageAccountKey = (Get-AzureStorageKey -StorageAccountName $storageAccountName).Secondary
