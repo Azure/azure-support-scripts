@@ -1,11 +1,10 @@
 <#
 .SYNOPSIS
-    Recovers the VM by performing a disk swap of the OS disk to the fixed os disk
+    This Script is executed after the OS Disk is fixed in the rescue VM, this script recovers the VM by performing an OS disk swap.
 
 .DESCRIPTION
-    Occasionally Azure IaaS VMs (Microsoft.Compute/virtualMachines) may not start because there is something wrong with the operating system (OS) disk preventing it from booting up correctly.
-    In such cases it is a common practice to recover the problem VM by first creating a resue VM, attaching the OS Disk of the problem VM to the rescue VM and then fixing the os Disk. Once the OsDisk is fixed 
-    the script is then executed to perform the following steps 
+    This script automates the recovery process after the OS Disk Issue has been fixed.
+    This script automates the following steps 
 	-Detach the OS disk that was attached as a data disk to the rescue VM
 	-Disk Swap  OS Disk of the Problem VM with the fixed OS Disk Uri
     -Start the VM

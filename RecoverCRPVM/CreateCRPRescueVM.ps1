@@ -1,9 +1,9 @@
 ﻿<#
 .SYNOPSIS
-    Creates a Rescue VM and attaches the OS Disk of the problem VM to this intermediate working rescue VM to fix the OS Disk issue of the problem VM.
+    Creates a Rescue VM and attaches the OS Disk of the problem VM to this intermediate rescue VM.
 
 .DESCRIPTION
-    Occasionally Azure IaaS VMs (Microsoft.Compute/virtualMachines) may not start because there is something wrong with the operating system (OS) disk preventing it from booting up correctly.
+    This script automates the creation of Rescue VM to enable fixing of OS disk issues related to a problem VM.
     In such cases it is a common practice to recover the problem VM by performing the following steps. These are the steps that are performed by the script.
 	-Stops the problem VM
 	-Take a snapshot of the OS Disk
