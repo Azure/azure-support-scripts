@@ -9,7 +9,7 @@
     $location = (Get-AzureService -ServiceName $ServiceName).Location
     if ( $attachedVm.VM.DataVirtualHardDisks.Count -eq 0 )
     {
-        Write-Error "No data disk attached to recover vm $RecoVmName unable to procede!"
+        Write-Error "No data disk attached to recover vm $RecoVmName unable to proceed!"
         return
     }
 

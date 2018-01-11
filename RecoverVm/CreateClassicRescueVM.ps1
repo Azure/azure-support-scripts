@@ -1,4 +1,32 @@
-﻿Param(
+﻿<#
+.SYNOPSIS
+    Creates a Rescue VM and attaches the OS Disk of the problem VM to this intermediate rescue VM.
+
+.DESCRIPTION
+    This script automates the creation of Rescue VM to enable fixing of OS disk issues related to a problem VM.
+    In such cases it is a common practice to recover the problem VM by performing the following steps. These are the steps that are performed by the script.
+	-Stops the problem VM
+	-Take a snapshot of the OS Disk
+	-Create a Temporary Rescue VM
+	-Attach the OS Disk to the Rescue VM
+    -Starts the Rescue VM
+	-RDPs to RescueVM (For Windows)
+
+.PARAMETER ServiceName
+    This is a mandatory Parameter, Name of the cloud service of the problem  VM belong
+
+.PARAMETER VMName
+    This is a mandatory Parameter, Name of the problem VM
+
+.EXAMPLE
+    .\CreateClassicRescueVM.ps1 -VMName hackathonvm -ServiceName hackathonvm6614
+
+.NOTES
+    Name: CreateClassicRescueVM.ps1
+
+    Author: Sujasd
+#>
+Param(
     [Parameter(Mandatory=$true)][string]$ServiceName ,
     [Parameter(Mandatory=$true)][string]$VMName 
 )
@@ -15,12 +43,12 @@ if ( ! $Sub )
 . $PSScriptRoot\RunRepairDataDiskFromRecoveryVm.ps1 
 . $PSScriptRoot\SnapShotFunctions.ps1 
 
-Write-Host "`nWould you like to take a snapshot of the OSDisk first?" -ForegroundColor Yellow
+Write-Host "`nWould you like to take a snapshot of the OSDisk first?" 
 $TakeSnapshot=read-host
 #if ((read-host) -eq 'Y')
 if ($TakeSnapshot -eq 'Y')
 {
-    Write-host "Acknowledging request for taking a snapshot" -ForegroundColor yellow
+    Write-host "Acknowledging request for taking a snapshot" 
     $vm = Get-AzureVM -ServiceName $ServiceName -Name $VMName
     $storageAccountName = $vm.VM.OSVirtualHardDisk.MediaLink.Authority.Split(".")[0]
     $StorageAccountKey = (Get-AzureStorageKey -StorageAccountName $storageAccountName).Secondary
@@ -41,16 +69,14 @@ write-host "RDP into the $($recoVM.RoleName) and take all the necessary steps to
 Write-Host "After the OS Disk has been fixed run the following script to Recreate the VM with the fixed OS Disk"
 if ($TakeSnapshot -eq 'Y')
 {
-    write-host ".\2_RecreateOriginalVM.ps1 -ServiceName $ServiceName -RecoVMName $($recoVM.RoleName) -storageAccountName $storageAccountName -osDiskvhd $osDiskvhd -ContainerName $ContainerName"
+    write-host ".\RecoverClassicOriginalVM.ps1 -ServiceName $ServiceName -RecoVMName $($recoVM.RoleName) -storageAccountName $storageAccountName -osDiskvhd $osDiskvhd -ContainerName $ContainerName"
 }
 else
 {
-    write-host ".\2_RecreateOriginalVM.ps1 -ServiceName $ServiceName -RecoVMName $($recoVM.RoleName)"
+    write-host ".\RecoverClassicOriginalVM.ps1 -ServiceName $ServiceName -RecoVMName $($recoVM.RoleName)"
 }
 
 
-#As per discussion with Ram, this step will be manually run
-#RunRepairDataDiskFromRecoveryVm $ServiceName ($recoVM.RoleName)
 
 
 

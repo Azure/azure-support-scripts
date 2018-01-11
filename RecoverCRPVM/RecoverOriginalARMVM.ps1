@@ -20,7 +20,7 @@
     This is a mandatory Parameter, SubscriptionID - the VM belongs to.
 
 .PARAMETER FixedOsDiskUri
-    This is a mandatory Parameter, This would be the uri of the fixedOSDisk, this information will be provided after the successful execution of CreateCRPRescueVM.
+    This is a mandatory Parameter, This would be the uri of the fixedOSDisk, this information will be provided after the successful execution of CreateARMRescueVM.
 
 .PARAMETER prefix
     Optional Parameter. By default the new Rescue VM and its resources are all created under a ResourceGroup named same as the orginal resourceGroup name with a prefix of 'rescue', however the prefix can be changed to a different value to overide the default 'rescue'
@@ -28,10 +28,10 @@
 
 
 .EXAMPLE
-    .\RecoverCRPVM.ps1 -ResourceGroup "rescueportalLin" -VmName "ubuntu2" -SubID "xxxxxxxx-abdf-4aaf-8868-2002dfeea60c" -FixedOsDiskUri "https://vmrecoverytestdisks645.blob.core.windows.net/vhds/fixedosfixedosubuntu220171220164151.vhd" -prefix "rescuered"
+    .\RecoverOriginalARMVM.ps1 -ResourceGroup "rescueportalLin" -VmName "ubuntu2" -SubID "xxxxxxxx-abdf-4aaf-8868-2002dfeea60c" -FixedOsDiskUri "https://vmrecoverytestdisks645.blob.core.windows.net/vhds/fixedosfixedosubuntu220171220164151.vhd" -prefix "rescuered"
 
 .NOTES
-    Name: CreateCRPRescueVM.ps1
+    Name: RecoverOriginalARMVM.ps1
 
     Author: Sujasd
 #>
@@ -55,7 +55,7 @@ Param(
 
 
 $Error.Clear()
-cls
+
 if (-not $showErrors) {
     $ErrorActionPreference = 'SilentlyContinue'
 }
@@ -77,8 +77,9 @@ if (-not (Get-AzureRmContext).Account)
     Login-AzureRmAccount
 }
 write-log "Info: Log is being written to ==> $LogFile" 
+Write-Log  $MyInvocation.Line -logOnly
 #Set the context to the correct subid
-Write-Log "Setting the context to SubID $SubID" -color Yellow
+Write-Log "Setting the context to SubID $SubID" 
 $subContext= Set-AzureRmContext -Subscription $SubID
 if ($subContext -eq $null) 
 {
@@ -87,7 +88,7 @@ if ($subContext -eq $null)
 }
 
 #Step 1 Get the VM Object
-Write-Log "Running Get-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -Name `"$VmName`"" -Color Yellow
+Write-Log "Running Get-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -Name `"$VmName`"" 
 $vm = Get-AzureRmVM -ResourceGroupName $ResourceGroup -Name $VmName 
 if (-not $vm)
 {
@@ -103,7 +104,7 @@ $rescueVMNname = "$prefix$Vmname"
 $RescueResourceGroup = "$prefix$ResourceGroup"
 
 #Step 2 Get the Rescue VM Object
-Write-Log "Running Get-AzureRmVM -ResourceGroupName `"$RescueResourceGroup `" -Name `"$rescueVMNname`"" -Color Yellow
+Write-Log "Running Get-AzureRmVM -ResourceGroupName `"$RescueResourceGroup `" -Name `"$rescueVMNname`"" 
 $rescuevm = Get-AzureRmVM -ResourceGroupName $RescueResourceGroup -Name $rescueVMNname
 if (-not $rescuevm)
 {
@@ -116,13 +117,13 @@ Write-Log "Successfully got the VM Object info for the Rescue VM ==>  $rescueVMN
 $FixedOsDiskUri  = $FixedOsDiskUri.Replace("`r`n","")
 $VHDNameShort = ($FixedOsDiskUri.Split('/')[-1]).split('.')[0]
 write-log "VHDNameShort ==> $($VHDNameShort)" -logonly
-Write-Log "Removing the Data disk from the Rescue VM ==>  $rescueVMNname" -Color Yellow
+Write-Log "Removing the Data disk from the Rescue VM ==>  $rescueVMNname" 
 Remove-AzureRmVMDataDisk -VM $rescuevm -Name $VHDNameShort
 Update-AzureRmVM -ResourceGroupName $RescueResourceGroup -VM $rescuevm
 Write-Log "Successfully removed the Data disk from the Rescue VM ==>  $rescueVMNname" -Color Green
 
 #Stop the VM before performing the disk swap.
-Write-Log "Stopping the VM ==> $VmName"  -Color Yellow
+Write-Log "Stopping the VM ==> $VmName"  
 
 $stopped = StopTargetVM -ResourceGroup $ResourceGroup -VmName $VmName
 write-log "`"$stopped`" ==> $($stopped)" -logOnly
@@ -136,15 +137,15 @@ if (-not $stopped)
 
 #Step 4 -Disk Swapping the OS Disk to point to the fixed OSDisk Uri
 
-Write-Log "Disk Swapping the OS Disk, to point to the fixed OS Disk for VM ==>  $VmName" -Color Yellow
+Write-Log "Disk Swapping the OS Disk, to point to the fixed OS Disk for VM ==>  $VmName" 
 #before setting the uri, ensure to remove any new line characters
 #$FixedOsDiskUri  = $FixedOsDiskUri.Replace("`r`n","")
 $vm.StorageProfile.OsDisk.Vhd.Uri = $FixedOsDiskUri 
 Update-AzureRmVM -ResourceGroupName $ResourceGroup -VM $vm 
-Write-Log "Successfully Disk Swapped the OS Disk,  for VM ==>  $VmName" -Color Yellow
+Write-Log "Successfully Disk Swapped the OS Disk,  for VM ==>  $VmName" 
 
 #Step 5 -Start the VM
-Write-Log "Starting the VM ==> $VmName"  -Color Yellow
+Write-Log "Starting the VM ==> $VmName"  
 $started= Start-AzureRmVM -ResourceGroupName $ResourceGroup -Name $VmName
 if ($Started)
 {

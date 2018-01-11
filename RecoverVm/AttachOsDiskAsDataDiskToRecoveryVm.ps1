@@ -20,7 +20,7 @@
     $VMExportPath = $env:TEMP + '\' + $vm.VM.OSVirtualHardDisk.DiskName + '.xml'
 
     $vm | Export-AzureVM -Path $VMExportPath
-    Write-Host 'Original VM Configuration written to ' $VMExportPath -ForegroundColor Yellow
+    Write-Host 'Original VM Configuration written to ' $VMExportPath 
 
     Write-host 'Creating VM (may take a few minutes)'
     

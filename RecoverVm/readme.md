@@ -35,9 +35,9 @@ c:\azscripts\RecoverVM\RecoverVM.ps1 MYCLOUDSERVICENAME MYVMNAME
 - Open Azure Powershell and and execute
 
 ```PowerShell
-Step 1 c:\azscripts\RecoverVM\1_CreateVMRecovery.ps1 MYCLOUDSERVICENAME MYVMNAME
+Step 1 c:\azscripts\RecoverVM\CreateClassicRescueVM.ps1 MYCLOUDSERVICENAME MYVMNAME
 Step 2 Log to the Recovery VM created in step 1 fix OSDisk issues and follow instruction to run
-Step 3 c:\azscripts\RecoverVM\2_RecreateOriginalVM MYCLOUDSERVICENAME <NameofRecoveryVM that was created in step 1>
+Step 3 c:\azscripts\RecoverVM\RecoverClassicOriginalVM MYCLOUDSERVICENAME <NameofRecoveryVM that was created in step 1>
 ```
 
 

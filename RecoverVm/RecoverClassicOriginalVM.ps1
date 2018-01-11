@@ -1,4 +1,30 @@
-﻿#.\RecoverVM.ps1 -ServiceName testvip-d7zzhcnb -VMName testvip
+﻿<#
+.SYNOPSIS
+    This script is recreateds the original VM with the Fixed OS Dishk VHD
+
+.DESCRIPTION
+    This script automates the creation of the orinal VM, by recreating it using the fixed OS Disk VHD.
+	-Detaches the disk from the rescue VM
+	-Creates the Original VM using the fixed OS Disk
+    -Parameter list for this is provided after the successfull completion of .\CreateClassicRescueVM.ps1
+
+.PARAMETER ServiceName
+    This is a mandatory Parameter, Name of the cloud service of the problem  VM belong
+
+.PARAMETER VMName
+    This is a mandatory Parameter, Name of the problem VM
+
+.EXAMPLE
+    .\RecoverClassicOriginalVM.ps1 -ServiceName hackathonvm6614 -RecoVMName RC1801110602 -storageAccountName sujnoavsetwe4433 -osDiskvhd hackathonvm-os-5685.vhd -ContainerName vhds
+
+.NOTES
+    Name: RecoverClassicOriginalVM.ps1
+
+    Author: Sujasd
+#>
+
+
+#.\RecoverVM.ps1 -ServiceName testvip-d7zzhcnb -VMName testvip
 #cd E:\git\github\RecoverVm
 Param(
     [Parameter(Mandatory=$true)][string]$ServiceName ,

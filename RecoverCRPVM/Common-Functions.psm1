@@ -10,7 +10,7 @@ function SnapshotAndCopyOSDisk  (
     )
 {
 
-    Write-Log "Initiating the snapshot process"  -Color Yellow    
+    Write-Log "Initiating the snapshot process"  
     if ($vm.StorageProfile.OsDisk.ManagedDisk)
     {
       Try
@@ -68,7 +68,7 @@ function SnapshotAndCopyOSDisk  (
 
 
         #Create a snapshot of the OS Disk
-        Write-Log "Running CreateSnapshot operation" -Color Yellow
+        Write-Log "Running CreateSnapshot operation" 
         $snap = $VMblob.ICloudBlob.CreateSnapshot()
         if ($snap)
         {
@@ -80,7 +80,7 @@ function SnapshotAndCopyOSDisk  (
         }
 
 
-        Write-Log "Initiating Copy proccess of Snapshot" -Color Yellow
+        Write-Log "Initiating Copy proccess of Snapshot" 
         #Save array of all snapshots
         $VMsnaps = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | Where-Object {$_.ICloudBlob.IsSnapshot -and $_.SnapshotTime -ne $null } 
 
@@ -172,13 +172,15 @@ function CreateRescueVM(
     [Parameter(mandatory=$false)]
     [String]$Publisher,
     [Parameter(mandatory=$false)]
-    [String]$Version
+    [String]$Version,
+    [Parameter(mandatory=$false)]
+    [System.Management.Automation.PSCredential]$Credential
     )
 {
 
     Try
     {
-        write-log "Initiating the process to create the new Rescue VM" -color Yellow
+        write-log "Initiating the process to create the new Rescue VM" 
         
         if ($vm.StorageProfile.OsDisk.ManagedDisk) {$managedVM = $true} else  {$managedVM = $false}
 
@@ -249,38 +251,51 @@ function CreateRescueVM(
         $rescueOSDiskName = $rescueVMNname + "OSDisk"
 
         # Resource Group
-        Write-log "Creating a new ResourceGroup ==> $RescueResourceGroup to hold all the temporary Resources" -color Yellow
-        New-AzureRmResourceGroup -Name $RescueResourceGroup -Location $Location
-        Write-Log "Successfully created ResourceGroup ==> $RescueResourceGroup" -color Green 
+        #checks to see if ResourceGroup Already exist
+        $rg = Get-AzureRmResourceGroup -Name $RescueResourceGroup -Location $Location -ErrorAction SilentlyContinue
+        if ($rg)
+        {
+            Write-log "`nResourceGroup ==> $($RescueResourceGroup) already exists!!! `nIt looks like you may be rerunning the script without actully deleting the resourcegroup that was created from the previous execution or you may already have a resourcegroup by that same name. `nPlease either delete the ResourceGroup ==> $($RescueResourceGroup) if you no longer need it or rerun the script again by adding the parameter '-prefix' and specify a new prefix  to make a new resourcegroup"  -color red
+            return $null
+        }
+        else
+        {
+            Write-log "Creating a new ResourceGroup ==> $RescueResourceGroup to hold all the temporary Resources" 
+            New-AzureRmResourceGroup -Name $RescueResourceGroup -Location $Location
+            Write-Log "Successfully created ResourceGroup ==> $RescueResourceGroup" -color Green 
+        }
 
         if (-not $managedVM)  #Creates the storage account only for Managed VM's.
         {
             # Storage
-            Write-log "Creating a new StorageAccount ==> $rescueStorageName" -color Yellow
+            Write-log "Creating a new StorageAccount ==> $rescueStorageName" 
             $rescueStorageAccount = New-AzureRmStorageAccount -ResourceGroupName $RescueResourceGroup -Name $rescueStorageName -Type $rescueStorageType -Location $Location
             Write-Log "Successfully created StorageAccount ==> $rescueStorageName" -color Green 
         }
 
         # Network
-        #Write-log "Allocating a new PublicIP ==> $rescueInterfaceName" -color Yellow
-        $rescuePIp = New-AzureRmPublicIpAddress -Name $rescueInterfaceName -ResourceGroupName $RescueResourceGroup -Location $Location -AllocationMethod Dynamic
+        #Write-log "Allocating a new PublicIP ==> $rescueInterfaceName" 
+        $rescuePIp = New-AzureRmPublicIpAddress -Name $rescueInterfaceName -ResourceGroupName $RescueResourceGroup -Location $Location -AllocationMethod Dynamic -WarningAction SilentlyContinue
         #Write-log "Allocated  PublicIP ==> $rescueInterfaceName" -color Green
 
-        Write-log "Creating a new VirtualNetworkSubnetConfig ==> $rescueSubnet1Name" -color Yellow
+        Write-log "Creating a new VirtualNetworkSubnetConfig ==> $rescueSubnet1Name" 
         $rescueSubnetConfig = New-AzureRmVirtualNetworkSubnetConfig -Name $rescueSubnet1Name -AddressPrefix $rescueVNetSubnetAddressPrefix
         Write-log "Successfully created VirtualNetworkSubnetConfig ==> $rescueSubnet1Name" -color Green
 
-        Write-log "Creating a new VirtualNetwork ==> $rescueVNetName" -color Yellow
-        $rescueVNet = New-AzureRmVirtualNetwork -Name $rescueVNetName -ResourceGroupName $RescueResourceGroup -Location $Location -AddressPrefix $rescueVNetAddressPrefix -Subnet $rescueSubnetConfig
+        Write-log "Creating a new VirtualNetwork ==> $rescueVNetName" 
+        $rescueVNet = New-AzureRmVirtualNetwork -Name $rescueVNetName -ResourceGroupName $RescueResourceGroup -Location $Location -AddressPrefix $rescueVNetAddressPrefix -Subnet $rescueSubnetConfig -WarningAction SilentlyContinue
         Write-log "Successfully created VirtualNetwork ==> $rescueVNetName" -color Green
 
-        Write-log "Creating a new NetworkInterface ==> $rescueInterfaceName" -color Yellow
-        $rescueInterface = New-AzureRmNetworkInterface -Name $rescueInterfaceName -ResourceGroupName $RescueResourceGroup -Location $Location -SubnetId $rescueVNet.Subnets[0].Id -PublicIpAddressId $rescuePIp.Id
+        Write-log "Creating a new NetworkInterface ==> $rescueInterfaceName" 
+        $rescueInterface = New-AzureRmNetworkInterface -Name $rescueInterfaceName -ResourceGroupName $RescueResourceGroup -Location $Location -SubnetId $rescueVNet.Subnets[0].Id -PublicIpAddressId $rescuePIp.Id -WarningAction SilentlyContinue
         Write-log "Successfully created NetworkInterface ==> $rescueInterfaceName" -color Green
     
         ## Setup local VM object
-        Write-Log "Please enter the UserName and Password for the new rescue VM that is being created " -Color DarkCyan
-        $Credential = Get-Credential -Message "Enter a username and password for the Rescue virtual machine."
+        if (-not $Credential)
+        {
+            Write-Log "Please enter the UserName and Password for the new rescue VM that is being created " -Color DarkCyan
+            $Credential = Get-Credential -Message "Enter a username and password for the Rescue virtual machine."
+        }
    
         $rescuevm = New-AzureRmVMConfig -VMName $rescueVMNname -VMSize $rescueVMSize
         if ($osType -eq 'Windows')
@@ -342,8 +357,8 @@ function CreateRescueVM(
 
 
         ## Create the VM in Azure
-        Write-Log "Creating new Resuce VM name ==> $($rescuevm.Name) under ResourceGroup ==> $RescueResourceGroup" -Color Yellow
-        $created = New-AzureRmVM -ResourceGroupName $RescueResourceGroup -Location $Location -VM $rescuevm 
+        Write-Log "Creating Resuce VM name ==> $($rescuevm.Name) under ResourceGroup ==> $RescueResourceGroup" 
+        $created = New-AzureRmVM -ResourceGroupName $RescueResourceGroup -Location $Location -VM $rescuevm -ErrorAction Stop
         Write-Log "Successfully created Rescue VM ==> $rescueVMNname was created under ResourceGroup==> $RescueResourceGroup" -Color Green 
        
         Return $created
@@ -352,7 +367,7 @@ function CreateRescueVM(
     {
         Write-Log "Unable to create the rescue VM successfully" -Color Red
         Write-Log "Unable to create the rescue VM successfully - -  Exception Type: $($_.Exception.GetType().FullName)" -logOnly
-        Write-Log "Exception Message: $($_.Exception.Message)" -logOnly
+        Write-Log "Exception Message: $($_.Exception.Message)" 
         throw
         return null
     }  
@@ -369,14 +384,14 @@ function AttachOsDisktoRescueVM(
 )
 {
     $returnVal = $true
-    Write-Log "Running Get-AzureRmVM -ResourceGroupName `"$RescueResourceGroup`" -Name `"rescueVMNname`"" -Color Yellow
+    Write-Log "Running Get-AzureRmVM -ResourceGroupName `"$RescueResourceGroup`" -Name `"rescueVMNname`"" 
     $rescuevm = Get-AzureRmVM -ResourceGroupName $RescueResourceGroup -Name $rescueVMNname
     if (-not $rescuevm)
     {
         Write-Log "RescueVM ==>  $rescueVMNname cannot be found, Cannot proceed" -Color Red
         Return $false
     }
-    Write-Log "Attaching the OS Disk to the rescueVM" -Color Yellow
+    Write-Log "Attaching the OS Disk to the rescueVM" 
     Try
     {
         if ($managedDiskID) 
@@ -407,7 +422,7 @@ function StopTargetVM(
 )
 {
 
-    Write-Log "Stopping Azure VM $VmName" -Color Yellow
+    Write-Log "Stopping Azure VM $VmName" 
     $stopped = Stop-AzureRmVM -ResourceGroupName $ResourceGroup -Name $VmName -Force
     if ($stopped)
     {

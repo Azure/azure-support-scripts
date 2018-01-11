@@ -6,7 +6,7 @@ In such cases it is a common practice to recover the problem VM by performing th
 	-Create a Temporary Rescue VM
 	-Attach the OS Disk to the Rescue VM
 	-RDP to RescueVM
-	-Run the script https://github.com/sebdau/azpstools/blob/master/FixDisk/TS_RecoveryWorker2.ps1 as an elevated administrator from the recovery VM and perform other manual steps
+	-Run the script [TS_RecoveryWorker2.ps1](./TS_RecoveryWorker2.ps1) as an elevated administrator from the recovery VM and perform other manual steps
 	-Detach the Data disk from Rescue VM
 	-Perform Disk Swap to point the OsDisk.Vhd.Uri to the recovered OS Disk Uri
         -Finally Remove all the resources that were created for the Rescue VM
@@ -23,14 +23,14 @@ does not show login screen but a boot issue.
 
 # Execution guidance
 - The script must be executed in two phases
-- Phase 1 - From Powershell Execute => Get-Help CreateCRPRescueVM.ps1 #For details
-            CreateCRPRescueVM   - CreateCRPRescueVM  -ResourceGroup <ResourceGroup> -VmName <-VmName> -SubID <SUBID>
+- Phase 1 - From Powershell Execute => Get-Help CreateARMRescueVM #For details
+            CreateARMRescueVM -ResourceGroup <ResourceGroup> -VmName <-VmName> -SubID <SUBID>
             Creates the Rescue VM, with the OS Disk Attached as a data disk to the Rescue VM
             After the OS Disk has been fixed by running  the script [TS_RecoveryWorker2.ps1](./TS_RecoveryWorker2.ps1) as an elevated administrator from the recovery VM 
             in addition to any other additional manual steps (To be provided by support)
-- Phase 2 - From Powershell Execute =>  Get-Help RecoverCRPVM.PS1 #For details
-            RecoverCRPVM.PS1 - CreateCRPRescueVM  -ResourceGroup <ResourceGroup> -VmName <-VmName> -SubID <SUBID> -FixedOsDiskUri <FixedOsDiskUri-This will be provided in the console output plus Log after executing first step>
-            After the OS Disk has been recoveerd, execute the RecoverCRPVM.PS1
+- Phase 2 - From Powershell Execute =>  Get-Help RecoverOriginalARMVM.PS1 #For details
+            RecoverOriginalARMVM.PS1  -ResourceGroup <ResourceGroup> -VmName <-VmName> -SubID <SUBID> -FixedOsDiskUri <FixedOsDiskUri-This will be provided in the console output plus Log after executing first step>
+            After the OS Disk has been recovered, execute the RecoverOriginalARMVM.PS1
 
 # For Windows Rescue VM is created with the latest version of 2016 image(GUI)
 # For Linux   Rescue VM is created with the latest version of Canonical.UbuntuServer.16.04-LTS.latest
@@ -38,11 +38,11 @@ does not show login screen but a boot issue.
 - follow the instructions and be patient (it may take between 15mins to an hour)
 
 ## Parameters or input
-- ResourceGroup Name
-- VM name
+- ResourceGroup Name of the Problem VM
+- VM name of the problem VM
 - Subscription ID
 
 # To get help on the scripts and its parameters run the following
-- get-help .\CreateCRPRescueVM.ps1
-- get-help .\RecoverCRPVM.ps1
+- get-help .\CreateARMRescueVM.ps1
+- get-help .\RecoverOriginalARMVM.ps1
 

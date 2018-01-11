@@ -13,10 +13,10 @@
 	-RDPs to RescueVM (For Windows)
 
 .PARAMETER VmName
-    This is a mandatory Parameter, Name of the VM that needs to be recovered.
+    This is a mandatory Parameter, Name of the problem VM that needs to be recovered.
 
 .PARAMETER ResourceGroup
-    This is a mandatory Parameter, Name of the ResourceGroup the VM belongs to.
+    This is a mandatory Parameter, Name of the ResourceGroup the problem VM belongs to.
 
 .PARAMETER SubID
     This is a mandatory Parameter, SubscriptionID - the VM belongs to.
@@ -25,6 +25,12 @@
 
 .PARAMETER prefix
     Optional Parameter. By default the new Rescue VM and its resources are all created under a ResourceGroup named same as the orginal resourceGroup name with a prefix of 'rescue', however the prefix can be changed to a different value to overide the default 'resuce'
+
+.PARAMETER UserName
+    Optional Parameter. Allows to pass in the UserName  of the Rescue VM during its creation, by default during case creation it will prompt
+
+.PARAMETER Password
+    Optional Parameter. Allows to pass in the Password of the Rescue VM during its creation, by default t will prompt for password during its creation
 
 .PARAMETER Sku
     Optional Parameter. Allows to pass in the SKU of the preferred image of the OS for the Rescue VM
@@ -39,9 +45,11 @@
     Optional Parameter. Allows to pass in the Version of the preferred image of the OS for the Rescue VM
 
 .EXAMPLE
-    .\CreateCRPRescueVM.ps1 -ResourceGroup sujtemp -VmName sujnortheurope -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c ## <==Is an example is with all the mandatory fields
+    .\CreateARMRescueVM.ps1 -ResourceGroup sujtemp -VmName sujnortheurope -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c ## <==Is an example is with all the mandatory fields
 .EXAMPLE
-    .\CreateCRPRescueVM.ps1 -VmName ubuntu -ResourceGroup portalLin -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -Publisher RedHat -Offer RHEL -Sku 7.3 -Version 7.3.2017090723 -prefix rescuered <==Examples with optional parametersm in this example it will create the rescue VM with RedHat installed
+    .\CreateARMRescueVM.ps1 -VmName ubuntu -ResourceGroup portalLin -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -Publisher RedHat -Offer RHEL -Sku 7.3 -Version 7.3.2017090723 -prefix rescuered <==Examples with optional parametersm in this example it will create the rescue VM with RedHat installed
+.EXAMPLE
+.\CreateARMRescueVM.ps1 -ResourceGroup sujtemp -VmName sujnortheurope -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex2"
 
 .NOTES
     Name: CreateCRPRescueVM.ps1
@@ -58,6 +66,12 @@ Param(
 
         [Parameter(mandatory=$true)]
         [String]$SubID,
+
+        [Parameter(mandatory=$false)]
+        [String]$Password,
+
+        [Parameter(mandatory=$false)]
+        [String]$UserName,
 
         [Parameter(mandatory=$false)]
         [Bool]$showErrors=$true,
@@ -88,7 +102,6 @@ Param(
 #                                     ==> .\CreateCRPRescueVM.ps1 -ResourceGroup rescueportalLin -VmName ubuntu -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c
 #/subscriptions/d7eaa135-abdf-4aaf-8868-2002dfeea60c/resourceGroups/rescueportalLin/providers/Microsoft.Compute/virtualMachines/ubuntu
 $Error.Clear()
-cls
 if (-not $showErrors) {
     $ErrorActionPreference = 'SilentlyContinue'
 }
@@ -104,6 +117,7 @@ $CommonFunctions = $runPath+"\Common-Functions.psm1"
 if (Get-Module Common-Functions) {remove-module -name Common-Functions}   
 Import-Module -Name $CommonFunctions  -ArgumentList $LogFile -ErrorAction Stop 
 write-log "Info: Log is being written to ==> $LogFile" 
+Write-Log  $MyInvocation.Line -logOnly
 
 
 
@@ -113,7 +127,7 @@ if (-not (Get-AzureRmContext).Account)
 }
 
 #Set the context to the correct subid
-Write-Log "Setting the context to SubID $SubID" -color Yellow
+Write-Log "Setting the context to SubID $SubID" 
 $subContext= Set-AzureRmContext -Subscription $SubID
 write-log $subContext -logOnly
 if ($subContext -eq $null) 
@@ -124,8 +138,18 @@ if ($subContext -eq $null)
 
 
 #Step 1 Get the VM Object
-Write-Log "Running Get-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -Name `"$VmName`"" -Color Yellow
-$vm = Get-AzureRmVM -ResourceGroupName $ResourceGroup -Name $VmName 
+Write-Log "Running Get-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -Name `"$VmName`"" 
+try
+{
+    $vm = Get-AzureRmVM -ResourceGroupName $ResourceGroup -Name $VmName -ErrorAction Stop
+}
+catch 
+{
+    write-Log "Specified VM ==> $VmName was not found in the Resource Group ==> $ResourceGroup, please make sure you are the subId/RG/vmName of the problem VM" -color red
+    Write-Log "The operation to create and copy snapshot failed -  Exception Type: $($_.Exception.GetType().FullName)" -logOnly
+    Write-Log "Exception Message: $($_.Exception.Message)" -logOnly
+    return   
+}
 write-log "`"$vm`" => $($vm)" -logOnly
 
 if (-not (SupportedVM -vm $vm)) 
@@ -167,17 +191,23 @@ if (-not $osDiskVHDToBeRepaired)
 #Step 4 Create Rescue VM
 $rescueVMNname = "$prefix$Vmname"
 $RescueResourceGroup = "$prefix$ResourceGroup"
-$rescueVm = CreateRescueVM -vm $vm -ResourceGroup $ResourceGroup  -rescueVMNname $rescueVMNname -RescueResourceGroup $RescueResourceGroup -prefix $prefix -Sku $sku -Offer $offer -Publisher $Publisher -Version $Version 
+if ($Password -and $UserName) 
+{
+    $secPassword = ConvertTo-SecureString -String $Password -AsPlainText -Force
+    $Cred = New-Object System.Management.Automation.PSCredential -ArgumentList $UserName, $secPassword
+ }
+
+$rescueVm = CreateRescueVM -vm $vm -ResourceGroup $ResourceGroup  -rescueVMNname $rescueVMNname -RescueResourceGroup $RescueResourceGroup -prefix $prefix -Sku $sku -Offer $offer -Publisher $Publisher -Version $Version -Credential $cred 
 Write-Log "$reccueVM ==> $($rescueVm)" -logOnly
 if (-not $rescuevm)
 {
-    Write-Log "Unable to create the Rescue VM, cannot proceed" -Color Red
+    Write-Log "Unable to create the Rescue VM, cannot proceed." -Color Red
     Return
 }
 
 
 #Step 5 #Get a reference to the rescue VM Object
-Write-Log "Running Get-AzureRmVM -ResourceGroupName `"$RescueResourceGroup`" -Name `"rescueVMNname`"" -Color Yellow
+Write-Log "Running Get-AzureRmVM -ResourceGroupName `"$RescueResourceGroup`" -Name `"rescueVMNname`"" 
 $rescuevm = Get-AzureRmVM -ResourceGroupName $RescueResourceGroup -Name $rescueVMNname
 if (-not $rescuevm)
 {
@@ -204,7 +234,7 @@ else
     if (-not $osDiskSize)
     {
        $osDiskSize= 127    
-       Write-Log "Unable to retrieve the OSDiskSze for VM $VMname, so instead using 127 when attaching it to the datadisk" -color Yellow
+       Write-Log "Unable to retrieve the OSDiskSze for VM $VMname, so instead using 127 when attaching it to the datadisk" 
     }
 }
 $attached = AttachOsDisktoRescueVM -rescueVMNname $rescueVMNname -RescueResourceGroup $RescueResourceGroup -osDiskVHDToBeRepaired $osDiskVHDToBeRepaired -VHDNameShort $VHDNameShort -osDiskSize $osDiskSize -managedDiskID $managedDiskID
@@ -217,7 +247,7 @@ if (-not $attached)
 }
 
 #Step 7 Start the VM
-Write-Log "Starting the Rescue VM ==> $rescueVm.Name" -Color Yellow
+Write-Log "Starting the Rescue VM ==> $rescueVm.Name" 
 $started= Start-AzureRmVM -ResourceGroupName $RescueResourceGroup -Name $rescuevm.Name 
 write-log "`"$started`" ==> $($started)" -logOnly
 if ($Started)
@@ -253,7 +283,7 @@ Write-Log "================================================================"
 write-log "RDP into the rescue VM ==> $($rescueVm.Name) "
 write-log "Fix the OS Disk -Consider running the script https://github.com/sebdau/azpstools/blob/master/FixDisk/TS_RecoveryWorker2.ps1 as an elevated administrator from the rescue VM ==> $($rescueVm.Name) and in addition to that it may need additional manual steps to be performed (More instructions to come from Microsoft Support) "
 write-log "After fixing the OS Disk run the RecoverVM script to Recover the VM as follows:"
-write-log ".\RecoverCRPVM.ps1 -ResourceGroup `"$ResourceGroup`" -VmName `"$VmName`" -SubID `"$SubID`" -FixedOsDiskUri `"$osDiskVHDToBeRepaired`" -prefix `"$prefix`""
+write-log ".\RecoverOriginalARMVM.ps1 -ResourceGroup `"$ResourceGroup`" -VmName `"$VmName`" -SubID `"$SubID`" -FixedOsDiskUri `"$osDiskVHDToBeRepaired`" -prefix `"$prefix`""
 
 <###### End of script tasks ######>
 $script:scriptEndTime = (Get-Date).ToUniversalTime()
