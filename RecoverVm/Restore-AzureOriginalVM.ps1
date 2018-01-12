@@ -15,17 +15,14 @@
     This is a mandatory Parameter, Name of the problem VM
 
 .EXAMPLE
-    .\RecoverClassicOriginalVM.ps1 -ServiceName hackathonvm6614 -RecoVMName RC1801110602 -storageAccountName sujnoavsetwe4433 -osDiskvhd hackathonvm-os-5685.vhd -ContainerName vhds
+    .\Restore-AzureOriginalVM.ps1 -ServiceName hackathonvm6614 -RecoVMName RC1801110602 -storageAccountName sujnoavsetwe4433 -osDiskvhd hackathonvm-os-5685.vhd -ContainerName vhds
 
 .NOTES
-    Name: RecoverClassicOriginalVM.ps1
+    Name: Restore-AzureOriginalVM.ps1
 
     Author: Sujasd
 #>
 
-
-#.\RecoverVM.ps1 -ServiceName testvip-d7zzhcnb -VMName testvip
-#cd E:\git\github\RecoverVm
 Param(
     [Parameter(Mandatory=$true)][string]$ServiceName ,
     [Parameter(Mandatory=$true)][string]$RecoVMName,

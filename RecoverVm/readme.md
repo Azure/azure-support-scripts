@@ -11,15 +11,15 @@ In such cases it is a common practice to recover the problem VM by performing th
 > https://blogs.msdn.microsoft.com/mast/2014/11/20/recover-azure-vm-by-attaching-os-disk-to-another-azure-vm/
 
 # Current version supports
-- Azure Service Management (ASM) Cloud Service hosted VM recovery
+- Classic VM Microsoft.ClassicCompute/virtualMachines
 - Windows 2008 R2 - 2012 R2
 
 # Scenarios
 
-# When would you use the script?
+## When would you use the script?
 If a Windows VM in Azure does not boot. Typically in this scenario VM screenshot from [boot diagnostics] (https://azure.microsoft.com/en-us/blog/boot-diagnostics-for-virtual-machines-v2/) does not show login screen but a boot issue.
 
-# Execution guidance (Option 1 Fully Automated but limited OS Disk fixes)
+### Execution guidance (Option 1 Fully Automated but limited OS Disk fixes)
 - download and extract the entire project folder https://github.com/Azure/azure-support-scripts/archive/master.zip to c:\azscripts\ (or custom)
 - Or pull it using git client github-windows://openRepo/https://github.com/Azure/azure-support-scripts
 - Open Azure Powershell and and execute
@@ -29,25 +29,25 @@ If a Windows VM in Azure does not boot. Typically in this scenario VM screenshot
 c:\azscripts\RecoverVM\RecoverVM.ps1 MYCLOUDSERVICENAME MYVMNAME
 ```
 
-# Execution guidance (OPTION 2 Phased Approach more flexible needs manual intervention to fix OS Disk)
+### Execution guidance (OPTION 2 Phased Approach more flexible needs manual intervention to fix OS Disk)
 - download and extract the entire project folder https://github.com/Azure/azure-support-scripts/archive/master.zip to c:\azscripts\ (or custom)
 - Or pull it using git client github-windows://openRepo/https://github.com/Azure/azure-support-scripts
 - Open Azure Powershell and and execute
 
 ```PowerShell
-Step 1 c:\azscripts\RecoverVM\CreateClassicRescueVM.ps1 MYCLOUDSERVICENAME MYVMNAME
+Step 1 c:\azscripts\RecoverVM\New-AzureRescueVM.ps1 MYCLOUDSERVICENAME MYVMNAME
 Step 2 Log to the Recovery VM created in step 1 fix OSDisk issues and follow instruction to run
-Step 3 c:\azscripts\RecoverVM\RecoverClassicOriginalVM MYCLOUDSERVICENAME <NameofRecoveryVM that was created in step 1>
+Step 3 c:\azscripts\RecoverVM\Restore-AzureOriginalVM MYCLOUDSERVICENAME <NameofRecoveryVM that was created in step 1>
 ```
 
 
-- follow the instructions and be patient (it may take between 15mins and multiple hours [if disk repair takes long])
+- Follow the instructions and be patient (it may take between 15mins and multiple hours [if disk repair takes long])
 
 ## Parameters or input
 - hosting service name (cloud service name)
 - VM name
 
-# Supported Platforms / Dependencies
+## Supported Platforms / Dependencies
  - current version of Azure PowerShell (Tested with 5.1.14393)
  
 

@@ -45,11 +45,11 @@
     Optional Parameter. Allows to pass in the Version of the preferred image of the OS for the Rescue VM
 
 .EXAMPLE
-    .\CreateARMRescueVM.ps1 -ResourceGroup sujtemp -VmName sujnortheurope -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c ## <==Is an example is with all the mandatory fields
+    .\New-AzureRMRescueVM.ps1 -ResourceGroup sujtemp -VmName sujnortheurope -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c ## <==Is an example is with all the mandatory fields
 .EXAMPLE
-    .\CreateARMRescueVM.ps1 -VmName ubuntu -ResourceGroup portalLin -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -Publisher RedHat -Offer RHEL -Sku 7.3 -Version 7.3.2017090723 -prefix rescuered <==Examples with optional parametersm in this example it will create the rescue VM with RedHat installed
+    .\New-AzureRMRescueVM.ps1 -VmName ubuntu -ResourceGroup portalLin -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -Publisher RedHat -Offer RHEL -Sku 7.3 -Version 7.3.2017090723 -prefix rescuered <==Examples with optional parametersm in this example it will create the rescue VM with RedHat installed
 .EXAMPLE
-.\CreateARMRescueVM.ps1 -ResourceGroup sujtemp -VmName sujnortheurope -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex2"
+.\New-AzureRMRescueVM.ps1 -ResourceGroup sujtemp -VmName sujnortheurope -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex2"
 
 .NOTES
     Name: CreateCRPRescueVM.ps1
@@ -169,6 +169,18 @@ else
     $windowsVM= $false
 }
 
+#collecting user name and Password if not passed
+if ($Password -and $UserName) 
+{
+    $secPassword = ConvertTo-SecureString -String $Password -AsPlainText -Force
+    $Cred = New-Object System.Management.Automation.PSCredential -ArgumentList $UserName, $secPassword
+ }
+ else
+ {
+    Write-Log "Please enter the UserName and Password for the new rescue VM that is being created " 
+    $Cred = Get-Credential -Message "Enter a username and password for the Rescue virtual machine."
+ }
+
 #Step 2 Stop VM
 $stopped = StopTargetVM -ResourceGroup $ResourceGroup -VmName $VmName
 write-log "`"$stopped`" ==> $($stopped)" -logOnly
@@ -191,12 +203,6 @@ if (-not $osDiskVHDToBeRepaired)
 #Step 4 Create Rescue VM
 $rescueVMNname = "$prefix$Vmname"
 $RescueResourceGroup = "$prefix$ResourceGroup"
-if ($Password -and $UserName) 
-{
-    $secPassword = ConvertTo-SecureString -String $Password -AsPlainText -Force
-    $Cred = New-Object System.Management.Automation.PSCredential -ArgumentList $UserName, $secPassword
- }
-
 $rescueVm = CreateRescueVM -vm $vm -ResourceGroup $ResourceGroup  -rescueVMNname $rescueVMNname -RescueResourceGroup $RescueResourceGroup -prefix $prefix -Sku $sku -Offer $offer -Publisher $Publisher -Version $Version -Credential $cred 
 Write-Log "$reccueVM ==> $($rescueVm)" -logOnly
 if (-not $rescuevm)
@@ -282,7 +288,7 @@ Write-Log "================================================================"
 Write-Log "================================================================"
 write-log "RDP into the rescue VM ==> $($rescueVm.Name) "
 write-log "After fixing the OS Disk run the RecoverVM script to Recover the VM as follows:"
-write-log ".\RecoverOriginalARMVM.ps1 -ResourceGroup `"$ResourceGroup`" -VmName `"$VmName`" -SubID `"$SubID`" -FixedOsDiskUri `"$osDiskVHDToBeRepaired`" -prefix `"$prefix`""
+write-log ".\Restore-AzureRMOriginalVM.ps1 -ResourceGroup `"$ResourceGroup`" -VmName `"$VmName`" -SubID `"$SubID`" -FixedOsDiskUri `"$osDiskVHDToBeRepaired`" -prefix `"$prefix`""
 
 <###### End of script tasks ######>
 $script:scriptEndTime = (Get-Date).ToUniversalTime()

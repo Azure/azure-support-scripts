@@ -28,10 +28,10 @@
 
 
 .EXAMPLE
-    .\RecoverOriginalARMVM.ps1 -ResourceGroup "rescueportalLin" -VmName "ubuntu2" -SubID "xxxxxxxx-abdf-4aaf-8868-2002dfeea60c" -FixedOsDiskUri "https://vmrecoverytestdisks645.blob.core.windows.net/vhds/fixedosfixedosubuntu220171220164151.vhd" -prefix "rescuered"
+    .\Restore-AzureRMOriginalVM.ps1 -ResourceGroup "rescueportalLin" -VmName "ubuntu2" -SubID "xxxxxxxx-abdf-4aaf-8868-2002dfeea60c" -FixedOsDiskUri "https://vmrecoverytestdisks645.blob.core.windows.net/vhds/fixedosfixedosubuntu220171220164151.vhd" -prefix "rescuered"
 
 .NOTES
-    Name: RecoverOriginalARMVM.ps1
+    Name: Restore-AzureRMOriginalVM.ps1
 
     Author: Sujasd
 #>
