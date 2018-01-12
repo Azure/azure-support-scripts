@@ -82,14 +82,14 @@ function SnapshotAndCopyOSDisk  (
 
         Write-Log "Initiating Copy proccess of Snapshot" 
         #Save array of all snapshots
-        $VMsnaps = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | Where-Object {$_.ICloudBlob.IsSnapshot -and $_.SnapshotTime -ne $null } 
+        $VMsnaps = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | sort @{expression="SnapshotTime";Descending=$true} | Where-Object {$_.Name -eq $osDiskvhd -and $_.ICloudBlob.IsSnapshot -and $_.SnapshotTime -ne $null } 
 
         #Copies the LatestSnapshot of the OS Disk to the same storage account prefixing with 
         if ($VMsnaps.Count -gt 0)
         {   
             #$ToBefixedosdiskvhd = "fixedos$osDiskvhd" 
             $ToBefixedosdiskvhd = $prefix + "fixedos" +  $osDiskvhd
-            $status = Start-AzureStorageBlobCopy -CloudBlob $VMsnaps[$VMsnaps.Count - 1].ICloudBlob -Context $Ctx -DestContext $Ctx -DestContainer $ContainerName -DestBlob $ToBefixedosdiskvhd -ConcurrentTaskCount 10 -Force
+            $status = Start-AzureStorageBlobCopy -CloudBlob $VMsnaps[0].ICloudBlob -Context $Ctx -DestContext $Ctx -DestContainer $ContainerName -DestBlob $ToBefixedosdiskvhd -ConcurrentTaskCount 10 -Force
             #$status | Get-AzureStorageBlobCopyState            
             $osFixDiskblob = Get-AzureRMStorageAccount -Name $storageAccountName -ResourceGroupName $StorageAccountRg | 
             Get-AzureStorageContainer | where {$_.Name -eq $ContainerName} | Get-AzureStorageBlob | where {$_.Name -eq $ToBefixedosdiskvhd -and $_.ICloudBlob.IsSnapshot -ne $true}

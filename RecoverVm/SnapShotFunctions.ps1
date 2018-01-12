@@ -28,13 +28,13 @@
 
         Write-host "Initiating Copy proccess of Snapshot" 
         #Save array of all snapshots
-        $VMsnaps = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | Where-Object {$_.ICloudBlob.IsSnapshot -and $_.SnapshotTime -ne $null } -ErrorAction Stop
+        $VMsnaps = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | sort @{expression="SnapshotTime";Descending=$true} | Where-Object {$_.Name -eq $osDiskvhd -and $_.ICloudBlob.IsSnapshot -and $_.SnapshotTime -ne $null } 
 
         #Copies the LatestSnapshot of the OS Disk as a backup prior to making any changes to the OS Disk to the same storage account and prefixing with Backup
         if ($VMsnaps.Count -gt 0)
         {   
             $backupOSDiskVhd = "backup$osDiskvhd" 
-            $status = Start-AzureStorageBlobCopy -CloudBlob $VMsnaps[$VMsnaps.Count - 1].ICloudBlob -Context $Ctx -DestContext $Ctx -DestContainer $ContainerName -DestBlob $backupOSDiskVhd -ConcurrentTaskCount 10 -Force -ErrorAction Stop
+            $status = Start-AzureStorageBlobCopy -CloudBlob $VMsnaps[0].ICloudBlob -Context $Ctx -DestContext $Ctx -DestContainer $ContainerName -DestBlob $backupOSDiskVhd -ConcurrentTaskCount 10 -Force -ErrorAction Stop
             #$status | Get-AzureStorageBlobCopyState            
             $osFixDiskblob = Get-AzureStorageAccount -StorageAccountName $storageAccountName | 
             Get-AzureStorageContainer | where {$_.Name -eq $ContainerName} | Get-AzureStorageBlob | where {$_.Name -eq $backupOSDiskVhd -and $_.ICloudBlob.IsSnapshot -ne $true} -ErrorAction Stop

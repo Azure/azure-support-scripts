@@ -92,15 +92,6 @@ Param(
         [String]$Version
      )
 
-#windows
-#Sample Execution (Unmanaged)          ==> .\CreateCRPRescueVM.ps1 -ResourceGroup sujtemp -VmName sujnortheurope -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c
-#Sample execution (managed) Windows VM ==> .\CreateCRPRescueVM.ps1 -VmName SujasManagedVM -ResourceGroup rescueMgSujasRG -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c --Current Version NOT SUPPORTED
-#                                      ==> .\CreateCRPRescueVM.ps1 -ResourceGroup rescueMgScriptSujas -VmName SujasWinManagedVM -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c
-
-#Linux
-#Linux VM                             ==> .\CreateCRPRescueVM.ps1 -VmName myLinuxVM -ResourceGroup sujwithavsetwe -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c  --Current Version NOT SUPPORTED
-#                                     ==> .\CreateCRPRescueVM.ps1 -ResourceGroup rescueportalLin -VmName ubuntu -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c
-#/subscriptions/d7eaa135-abdf-4aaf-8868-2002dfeea60c/resourceGroups/rescueportalLin/providers/Microsoft.Compute/virtualMachines/ubuntu
 $Error.Clear()
 if (-not $showErrors) {
     $ErrorActionPreference = 'SilentlyContinue'
