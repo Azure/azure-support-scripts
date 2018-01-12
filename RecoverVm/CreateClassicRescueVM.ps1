@@ -20,6 +20,7 @@
 
 .EXAMPLE
     .\CreateClassicRescueVM.ps1 -VMName hackathonvm -ServiceName hackathonvm6614
+    .\CreateClassicRescueVM.ps1 -ServiceName testredhat1 -VMName classiclinuxvm
 
 .NOTES
     Name: CreateClassicRescueVM.ps1
@@ -43,24 +44,66 @@ if ( ! $Sub )
 . $PSScriptRoot\RunRepairDataDiskFromRecoveryVm.ps1 
 . $PSScriptRoot\SnapShotFunctions.ps1 
 
-Write-Host "`nWould you like to take a snapshot of the OSDisk first?" 
+
+try
+{
+    $vm = Get-AzureVM -ServiceName $ServiceName -Name $VMName -ErrorAction Stop
+}
+catch
+{
+    write-host "Specified VM ==> $vm was not found in the cloud service ==> $ServiceName, please make sure you are providing the correct Service/vm Name of the problem VM" -ForegroundColor Red
+    write-host  "Exception Message: $($_.Exception.Message)"
+    return
+}
+
+
+Write-Host "`nWould you like to take a snapshot of the OSDisk first? (Y/N)" 
 $TakeSnapshot=read-host
 #if ((read-host) -eq 'Y')
 if ($TakeSnapshot -eq 'Y')
 {
-    Write-host "Acknowledging request for taking a snapshot" 
-    $vm = Get-AzureVM -ServiceName $ServiceName -Name $VMName
-    $storageAccountName = $vm.VM.OSVirtualHardDisk.MediaLink.Authority.Split(".")[0]
-    $StorageAccountKey = (Get-AzureStorageKey -StorageAccountName $storageAccountName).Secondary
-    $ContainerName = $vm.VM.OSVirtualHardDisk.MediaLink.AbsoluteUri.Split('/')[3]
-    $osDiskvhd = $vm.VM.OSVirtualHardDisk.MediaLink.AbsolutePath.split('/')[-1]
-    $Copiedvhduri = TakeSnapshotofOSDisk $storageAccountName $StorageAccountKey $ContainerName $osDiskvhd
+    try
+    {
+        Write-host "Acknowledging request for taking a snapshot" 
+        Write-host "Stopping the VM first"
+        Stop-AzureVM -ServiceName $ServiceName -Name $VMName -StayProvisioned -ErrorAction stop
+        if (-not $vm.VM.OSVirtualHardDisk.MediaLink.Authority) 
+        {
+            write-host "Unable to determine the Medialink of the $vm" -ForegroundColor red 
+        }
+        else
+        {    
+            $storageAccountName = $vm.VM.OSVirtualHardDisk.MediaLink.Authority.Split(".")[0]
+            $StorageAccountKey = (Get-AzureStorageKey -StorageAccountName $storageAccountName).Secondary
+            $ContainerName = $vm.VM.OSVirtualHardDisk.MediaLink.AbsoluteUri.Split('/')[3]
+            $osDiskvhd = $vm.VM.OSVirtualHardDisk.MediaLink.AbsolutePath.split('/')[-1]
+            $Copiedvhduri = TakeSnapshotofOSDisk $storageAccountName $StorageAccountKey $ContainerName $osDiskvhd
+        }
+    }
+    catch
+    {
+        Write-Host "Unable to take snapshot, plese see the error below" -ForegroundColor Red
+        write-host "Exception Message: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Log "Error in Line# : $($_.Exception.Line) =>  $($MyInvocation.MyCommand.Name)" -ForegroundColor Red
+        return $null
+    }
 }
 
 
 
 $results = AttachOsDiskAsDataDiskToRecoveryVm $ServiceName $VMName
+if (-not $results)
+{
+    write-host "Unable to proceed further" -ForegroundColor Red
+    return
+}
 $recoVM = $results[$results.count -1]
+if (-not $recoVM)
+{
+    write-host "Unable to proceed further" -ForegroundColor Red
+    return
+}
+
 
 write-host ('='*47)
 write-host "Next Steps"
