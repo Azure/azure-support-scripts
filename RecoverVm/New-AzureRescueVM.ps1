@@ -55,6 +55,11 @@ catch
     write-host  "Exception Message: $($_.Exception.Message)"
     return
 }
+if (-not $vm)
+{
+    write-host "Specified VM ==> $vm was not found in the cloud service ==> $ServiceName, please make sure you are providing the correct Service/vm Name of the problem VM" -ForegroundColor Red
+    return
+}
 
 
 Write-Host "`nWould you like to take a snapshot of the OSDisk first? (Y/N)" 
@@ -66,7 +71,7 @@ if ($TakeSnapshot -eq 'Y')
     {
         Write-host "Acknowledging request for taking a snapshot" 
         Write-host "Stopping the VM first"
-        Stop-AzureVM -ServiceName $ServiceName -Name $VMName -StayProvisioned -ErrorAction stop
+        Stop-AzureVM -ServiceName $ServiceName -VM $vm -StayProvisioned -ErrorAction stop
         if (-not $vm.VM.OSVirtualHardDisk.MediaLink.Authority) 
         {
             write-host "Unable to determine the Medialink of the $vm" -ForegroundColor red 
