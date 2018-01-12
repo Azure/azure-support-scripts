@@ -136,13 +136,25 @@ if (-not $stopped)
 
 
 #Step 4 -Disk Swapping the OS Disk to point to the fixed OSDisk Uri
-
+$problemvmOsDiskUri=$vm.StorageProfile.OsDisk.Vhd.Uri 
 Write-Log "Disk Swapping the OS Disk, to point to the fixed OS Disk for VM ==>  $VmName" 
+Write-Log "================================================================" 
+write-log "Commands to restore the VM back to its original state" -logonly
+Write-Log "================================================================" 
+Write-Log "Note: If for any reason you decide to restore the VM back to its orginal problem state, you may run the following commands`n"
+Write-Log "`$problemvm = Get-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -Name `"$VmName`"" 
+Write-Log "Stop-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -Name `"$VmName`""
+Write-Log "`$problemvm.StorageProfile.OsDisk.Vhd.Uri = `"$($problemvmOsDiskUri)`""
+Write-Log "Update-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -VM `$problemvm"
+Write-Log "Start-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -Name `"$VmName`""
+Write-Log "`n================================================================" 
 #before setting the uri, ensure to remove any new line characters
 #$FixedOsDiskUri  = $FixedOsDiskUri.Replace("`r`n","")
 $vm.StorageProfile.OsDisk.Vhd.Uri = $FixedOsDiskUri 
 Update-AzureRmVM -ResourceGroupName $ResourceGroup -VM $vm 
 Write-Log "Successfully Disk Swapped the OS Disk,  for VM ==>  $VmName" 
+
+
 
 #Step 5 -Start the VM
 Write-Log "Starting the VM ==> $VmName"  
@@ -175,7 +187,7 @@ else
     Write-Log "Did not acknowledge deleting the rescource group ==> $RescueResourceGroup" -color Cyan
 }
 
-
+Invoke-Item $LogFile
 
 
 

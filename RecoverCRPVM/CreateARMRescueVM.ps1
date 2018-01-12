@@ -281,7 +281,6 @@ write-log "Next Steps"
 Write-Log "================================================================"
 Write-Log "================================================================"
 write-log "RDP into the rescue VM ==> $($rescueVm.Name) "
-write-log "Fix the OS Disk -Consider running the script https://github.com/sebdau/azpstools/blob/master/FixDisk/TS_RecoveryWorker2.ps1 as an elevated administrator from the rescue VM ==> $($rescueVm.Name) and in addition to that it may need additional manual steps to be performed (More instructions to come from Microsoft Support) "
 write-log "After fixing the OS Disk run the RecoverVM script to Recover the VM as follows:"
 write-log ".\RecoverOriginalARMVM.ps1 -ResourceGroup `"$ResourceGroup`" -VmName `"$VmName`" -SubID `"$SubID`" -FixedOsDiskUri `"$osDiskVHDToBeRepaired`" -prefix `"$prefix`""
 
