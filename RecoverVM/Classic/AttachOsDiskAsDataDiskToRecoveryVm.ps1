@@ -64,7 +64,7 @@
     {
         Write-Host "Unable to create the Rescue VM $($RecoveryVMName), plese see the error below" -ForegroundColor Red
         write-host "Exception Message: $($_.Exception.Message)" -ForegroundColor Red
-        Write-Log "Error in Line# : $($_.Exception.Line) =>  $($MyInvocation.MyCommand.Name)" -ForegroundColor Red
+        Write-host "Error in Line# : $($_.Exception.Line) =>  $($MyInvocation.MyCommand.Name)" -ForegroundColor Red
         return $null
     }
 

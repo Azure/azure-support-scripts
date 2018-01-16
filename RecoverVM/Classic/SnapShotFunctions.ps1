@@ -50,7 +50,7 @@
     catch
     {
         write-host "Exception Message: $($_.Exception.Message)" -ForegroundColor Red
-        Write-Log "Error in Line# : $($_.Exception.Line) =>  $($MyInvocation.MyCommand.Name)" -ForegroundColor Red
+        Write-host "Error in Line# : $($_.Exception.Line) =>  $($MyInvocation.MyCommand.Name)" -ForegroundColor Red
         return $false
     }
 }
@@ -95,7 +95,7 @@ function DeleteSnapShotAndVhd
     catch
     {
         write-host "Exception Message: $($_.Exception.Message)" -ForegroundColor Red
-        Write-Log "Error in Line# : $($_.Exception.Line) =>  $($MyInvocation.MyCommand.Name)" -ForegroundColor Red
+        Write-host "Error in Line# : $($_.Exception.Line) =>  $($MyInvocation.MyCommand.Name)" -ForegroundColor Red
         return $false
     }
 }

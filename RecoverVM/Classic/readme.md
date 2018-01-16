@@ -19,20 +19,11 @@ In such cases it is a common practice to recover the problem VM by performing th
 ## When would you use the script?
 If a Windows VM in Azure does not boot. Typically in this scenario VM screenshot from [boot diagnostics] (https://azure.microsoft.com/en-us/blog/boot-diagnostics-for-virtual-machines-v2/) does not show login screen but a boot issue.
 
-### Execution guidance (Option 1 Fully Automated but limited OS Disk fixes)
+### Execution guidance 
 - download and extract the entire project folder https://github.com/Azure/azure-support-scripts/archive/master.zip to c:\azscripts\ (or custom)
 - Or pull it using git client github-windows://openRepo/https://github.com/Azure/azure-support-scripts
 - Open Azure Powershell and and execute
  
-
-```PowerShell
-c:\azscripts\RecoverVM\RecoverVM.ps1 MYCLOUDSERVICENAME MYVMNAME
-```
-
-### Execution guidance (OPTION 2 Phased Approach more flexible needs manual intervention to fix OS Disk)
-- download and extract the entire project folder https://github.com/Azure/azure-support-scripts/archive/master.zip to c:\azscripts\ (or custom)
-- Or pull it using git client github-windows://openRepo/https://github.com/Azure/azure-support-scripts
-- Open Azure Powershell and and execute
 
 ```PowerShell
 Step 1 c:\azscripts\RecoverVM\Classic\New-AzureRescueVM.ps1 MYCLOUDSERVICENAME MYVMNAME
