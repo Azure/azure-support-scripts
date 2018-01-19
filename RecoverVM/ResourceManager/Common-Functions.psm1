@@ -3,6 +3,74 @@
         [string] $LogFile
 )
 
+function Get-ValidLength (
+ [string] $InputString,
+ [int] $Maxlength
+)
+{
+    if (-not $InputString)
+    {
+        return $null
+    }
+    if ($InputString.Length -gt $Maxlength)
+    {
+        return $InputString.Substring(0,$Maxlength)
+    } 
+    else
+    {
+        return $InputString
+    }
+}
+
+
+function DeleteSnapShotAndVhd
+(
+    [string] $osDiskVhdUri,
+    [string] $ResourceGroup
+ )
+{
+    try
+    {
+        $osDiskvhd = $osDiskVhdUri.split('/')[-1]
+        $storageAccountName = $osDiskVhdUri.Split('//')[2].Split('.')[0]
+        $ContainerName = $osDiskVhdUri.Split('/')[3]
+
+        $StorageAccountKey = (AzureRmStorageAccountKey -StorageAccountName $storageAccountName -ResourceGroupName $ResourceGroup)[1].Value
+        $Ctx = New-AzureStorageContext -StorageAccountName $storageAccountName -StorageAccountKey $StorageAccountKey -ErrorAction Stop
+        $VMsnaps = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | Where-Object {$_.ICloudBlob.IsSnapshot -and $_.SnapshotTime -ne $null -and $_.Name -eq $osDiskvhd }  -ErrorAction Stop
+        #Deleting the snapshot
+        if ($VMsnaps.Count -gt 0)
+        {
+            Write-log "`nWould you like to delete the snapshot ==> $($VMsnaps[$VMsnaps.Count - 1].Name) that was taken at $($VMsnaps[$VMsnaps.Count - 1].SnapshotTime) (Y/N) ?" 
+            if ((read-host) -eq 'Y')
+            {
+                $VMsnaps[$VMsnaps.Count - 1].ICloudBlob.Delete()
+                Write-Host "Snapshot has been deleted"
+            }
+        }
+
+        <##Deleting the backedupovhd
+        $backupOSDiskVhd = "backup$osDiskvhd" 
+        $osFixDiskblob = Get-AzureStorageAccount -StorageAccountName $storageAccountName | 
+        Get-AzureStorageContainer | where {$_.Name -eq $ContainerName} | Get-AzureStorageBlob | where {$_.Name -eq $backupOSDiskVhd -and $_.ICloudBlob.IsSnapshot -ne $true} -ErrorAction Stop
+        if ($osFixDiskblob)
+        {
+            Write-log "`nWould you like to delete the backed up VHD ==> $($backupOSDiskVhd) (Y/N) ?" 
+            if ((read-host) -eq 'Y')
+            {
+                $osFixDiskblob.ICloudBlob.Delete()
+                Write-Host "backupOSDiskVhd has been deleted"
+            }
+        }#>
+    }
+    catch
+    {
+        write-log "Exception Message: $($_.Exception.Message)" -Color Red
+        Write-log "Error in Line# : $($_.Exception.Line) =>  $($MyInvocation.MyCommand.Name)" -Color Red
+        return $false
+    }
+}
+
 function SnapshotAndCopyOSDisk  (
     [Object[]]$vm,
     [string] $ResourceGroup,
@@ -16,14 +84,16 @@ function SnapshotAndCopyOSDisk  (
       Try
       #Special Case for taking snapshot for ManagedDisk
       {
-          $osDiskName = $vm.StorageProfile.OsDisk.Name
-          $location = $vm.Location
+          $osDiskName = $vm.StorageProfile.OsDisk.Name          
           $storageAccountType = $vm.StorageProfile.OsDisk.ManagedDisk.StorageAccountType
           $ResourceGroup = $vm.ResourceGroupName 
           $snapshotName = $prefix+ "fixedosSnap" + $osDiskName
+          $snapshotName = Get-ValidLength -InputString $snapshotName -Maxlength 80
+          write-log "`$snapshotName = $snapshotName"
           $disk = Get-AzureRmDisk -ResourceGroupName $ResourceGroup -DiskName $osDiskName 
-          $snapshot =  New-AzureRmSnapshotConfig -SourceUri $disk.Id -CreateOption Copy -Location $location 
-          $esult = New-AzureRmSnapshot -Snapshot $snapshot -SnapshotName $snapshotName -ResourceGroupName $ResourceGroup 
+          $location = $disk.Location
+          $snapshotconfig =  New-AzureRmSnapshotConfig -SourceUri $disk.Id -CreateOption Copy -Location $location -ErrorAction Stop
+          $result = New-AzureRmSnapshot -Snapshot $snapshotconfig -SnapshotName $snapshotName -ResourceGroupName $ResourceGroup  -ErrorAction Stop
           return $snapshotName
       }
       Catch
@@ -31,7 +101,6 @@ function SnapshotAndCopyOSDisk  (
         Write-Log "The operation to create and copy snapshot failed" -Color Red
         Write-Log "The operation to create and copy snapshot failed -  Exception Type: $($_.Exception.GetType().FullName)" -logOnly
         Write-Log "Exception Message: $($_.Exception.Message)" -logOnly
-        throw  
         return $null
       }
 
@@ -115,7 +184,39 @@ function SnapshotAndCopyOSDisk  (
     
 }
 
-function SupportedVM([Object[]]$vm)
+function WriteRestoreCommands (
+    [string] $ResourceGroup,
+    [string] $VmName,
+    [string] $problemvmOsDiskUri,
+    [string] $problemvmOsDiskManagedDiskID,
+    [bool] $managedVM
+    )
+{
+    Write-Log "Disk Swapping the OS Disk, to point to the fixed OS Disk for VM ==>  $VmName" 
+    Write-Log "================================================================" 
+    write-log "Commands to restore the VM back to its original state" -logonly
+    Write-Log "================================================================" 
+    Write-Log "Note: If for any reason you decide to restore the VM back to its orginal problem state, you may run the following commands`n"
+    Write-Log "`$problemvm = Get-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -Name `"$VmName`"" 
+    Write-Log "Stop-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -Name `"$VmName`""
+    if (-not $managedVM)
+    {
+        Write-Log "`$problemvm.StorageProfile.OsDisk.Vhd.Uri = `"$($problemvmOsDiskUri)`""
+        Write-Log "Update-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -VM `$problemvm"
+        Write-Log "Start-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -Name `"$VmName`""
+        Write-Log "`n================================================================" 
+    }
+    else
+    {
+        Write-Log "Set-AzureRmVMOSDisk -vm `$problemvm -ManagedDiskId `"$problemvmOsDiskManagedDiskID`" -CreateOption FromImage"
+        Write-Log "Update-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -VM `$problemvm"
+        Write-Log "Start-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -Name `"$VmName`""
+        Write-Log "`n================================================================" 
+    }
+}
+
+function SupportedVM([Object[]]$vm,
+                     [bool] $AllowManagedVM)
 {
     if (-not $vm)
     {
@@ -123,7 +224,7 @@ function SupportedVM([Object[]]$vm)
         return $false
     }
      
-    if ($vm.StorageProfile.OsDisk.ManagedDisk)
+    if (($vm.StorageProfile.OsDisk.ManagedDisk) -and (-not $AllowManagedVM)) 
     {
         Write-log "VM ==> $($vm.Name) is a Managed VM, and is currently not supported by this script, cannot continue exiting." -color Red
         Return $false
@@ -234,10 +335,7 @@ function CreateRescueVM(
         $rescueStorageType = "Standard_GRS"
         $rescueStorageName = "$prefix$storageAccountName"
         $rescueStorageName = $rescueStorageName.ToLower()
-        if ($rescueStorageName.Length -gt $MaxStorageAccountNameLength) #ensures that the storage account name is less than 24 characters
-        {
-          $rescueStorageName = $rescueStorageName.Substring(0,$MaxStorageAccountNameLength)
-        }
+        $rescueStorageName = Get-ValidLength -InputString $rescueStorageName  -Maxlength $MaxStorageAccountNameLength
         ## Network
         $rescueInterfaceName = $prefix+"interface"
         $rescueSubnet1Name = $prefix + "Subnet"
@@ -378,7 +476,7 @@ function AttachOsDisktoRescueVM(
 [String]$RescueResourceGroup,
 [String]$rescueVMNname,
 [String]$osDiskVHDToBeRepaired,
-[String]$VHDNameShort,
+[String]$diskName,
 [String]$osDiskSize,
 [String]$managedDiskID
 )
@@ -396,11 +494,11 @@ function AttachOsDisktoRescueVM(
     {
         if ($managedDiskID) 
         {
-           Add-AzureRmVMDataDisk -VM $rescueVm -Name $VHDNameShort -CreateOption Attach -ManagedDiskId $managedDiskID -Lun 0
+           Add-AzureRmVMDataDisk -VM $rescueVm -Name $diskName -CreateOption Attach -ManagedDiskId $managedDiskID -Lun 0
         }
         else
         {
-          Add-AzureRmVMDataDisk -VM $rescueVm -Name $VHDNameShort -Caching None -CreateOption Attach -DiskSizeInGB $osDiskSize -Lun 0 -VhdUri $osDiskVHDToBeRepaired
+          Add-AzureRmVMDataDisk -VM $rescueVm -Name $diskName -Caching None -CreateOption Attach -DiskSizeInGB $osDiskSize -Lun 0 -VhdUri $osDiskVHDToBeRepaired
         }
         Update-AzureRmVM -ResourceGroupName $RescueResourceGroup -VM $rescuevm 
         Write-Log "Successfully attached the OS Disk as a Data Disk" -Color Green
@@ -475,3 +573,6 @@ Export-ModuleMember -Function CreateRescueVM
 Export-ModuleMember -Function StopTargetVM
 Export-ModuleMember -Function AttachOsDisktoRescueVM
 Export-ModuleMember -Function SupportedVM
+Export-ModuleMember -Function WriteRestoreCommands
+Export-ModuleMember -Function Get-ValidLength
+Export-ModuleMember -Function DeleteSnapShotAndVhd

@@ -32,6 +32,9 @@
 .PARAMETER Password
     Optional Parameter. Allows to pass in the Password of the Rescue VM during its creation, by default t will prompt for password during its creation
 
+.PARAMETER AllowManagedVM
+    Optional Parameter. This allows the script to support Managed VM's also, however prior to that the SubscriptionID needs to be whitelisted to be able to use the OS Disk Swap feature for managed VM's.
+
 .PARAMETER Sku
     Optional Parameter. Allows to pass in the SKU of the preferred image of the OS for the Rescue VM
 
@@ -47,9 +50,11 @@
 .EXAMPLE
     .\New-AzureRMRescueVM.ps1 -ResourceGroup sujtemp -VmName sujnortheurope -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c ## <==Is an example is with all the mandatory fields
 .EXAMPLE
-    .\New-AzureRMRescueVM.ps1 -VmName ubuntu -ResourceGroup portalLin -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -Publisher RedHat -Offer RHEL -Sku 7.3 -Version 7.3.2017090723 -prefix rescuered <==Examples with optional parametersm in this example it will create the rescue VM with RedHat installed
+    .\New-AzureRMRescueVM.ps1 -VmName ubuntu -ResourceGroup portalLin -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -Publisher RedHat -Offer RHEL -Sku 7.3 -Version 7.3.2017090723 -prefix rescuered #--Examples with optional parametersm in this example it will create the rescue VM with RedHat installed
 .EXAMPLE
 .\New-AzureRMRescueVM.ps1 -ResourceGroup sujtemp -VmName sujnortheurope -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex2"
+.EXAMPLE
+.\New-AzureRMRescueVM.ps1 -ResourceGroup testsujmg -VmName sujmanagedvm -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex17" -AllowManagedVM   #--Example for Managed VM
 
 .NOTES
     Name: CreateCRPRescueVM.ps1
@@ -89,7 +94,9 @@ Param(
         [String]$Publisher,
 
         [Parameter(mandatory=$false)]
-        [String]$Version
+        [String]$Version,
+
+        [switch]$AllowManagedVM
      )
 
 $Error.Clear()
@@ -137,18 +144,19 @@ try
 catch 
 {
     write-Log "Specified VM ==> $VmName was not found in the Resource Group ==> $ResourceGroup, please make sure you are the subId/RG/vmName of the problem VM" -color red
-    Write-Log "The operation to create and copy snapshot failed -  Exception Type: $($_.Exception.GetType().FullName)" -logOnly
+    Write-Log "Exception Type: $($_.Exception.GetType().FullName)" -logOnly
     Write-Log "Exception Message: $($_.Exception.Message)" -logOnly
     return   
 }
 write-log "`"$vm`" => $($vm)" -logOnly
 
-if (-not (SupportedVM -vm $vm)) 
+if (-not (SupportedVM -vm $vm -AllowManagedVM $AllowManagedVM)) 
 {  
     write-log "This VM ==> $($vm.name) is not supported, exiting" -Color red
     return 
 }
 Write-Log "Successfully got the VM Object info for $($vm.Name)" -Color Green
+if ($vm.StorageProfile.OsDisk.ManagedDisk) {$managedVM = $true} else {$managedVM = $false}
 if ($vm.StorageProfile.OsDisk.OsType -eq "Windows") 
 {
     write-log "Detected 'Windows' as the OSType for $Vmname"      
@@ -182,14 +190,18 @@ if (-not $stopped)
 }
 
 
-#Step 3 SnapshotAndCopyOSDisk  
-$osDiskVHDToBeRepaired = SnapshotAndCopyOSDisk -vm $vm -prefix $prefix -ResourceGroup $ResourceGroup
-write-log "`"$osDiskVHDToBeRepaired`" => $($osDiskVHDToBeRepaired)" -logOnly
+#Step 3 SnapshotAndCopyOSDisk
+$OriginalosDiskVhdUri = $vm.StorageProfile.OsDisk.Vhd.Uri
+$osDiskVHDToBeRepaired = SnapshotAndCopyOSDisk -vm $vm -prefix $prefix -ResourceGroup $ResourceGroup  
+
 if (-not $osDiskVHDToBeRepaired)
 {
     Write-Log "Unable to snapshot and copy the OS Disk to be repaired, cannot proceed" -Color Red
     Return
 }
+$osDiskVHDToBeRepaired = $osDiskVHDToBeRepaired.Replace("`r`n","")
+write-log "`"$osDiskVHDToBeRepaired`" => $($osDiskVHDToBeRepaired)" -logOnly
+
 
 #Step 4 Create Rescue VM
 $rescueVMNname = "$prefix$Vmname"
@@ -215,18 +227,24 @@ if (-not $rescuevm)
 #Step 6  Attach the OS Disk as data disk to the rescue VM
 #$attached = AttachOsDisktoRescueVM -rescueVMNname $rescueVMNname -RescueResourceGroup $RescueResourceGroup -osDiskVHDToBeRepaired $osDiskToBeRepaired
 #creates a dataDisk off of the copied snapshot of the OSDisk
-if ($vm.StorageProfile.OsDisk.ManagedDisk)
+if ($managedVM)
 {
-    $storageType= "PremiumLRS"
-    $snapshot = Get-AzureRmSnapshot -ResourceGroupName $resourceGroup -SnapshotName $osDiskVHDToBeRepaired
+    #$storageType= "PremiumLRS"
+    #For ManagedVM SnapshotAndCopyOSDisk returns the snapshotname
+    $storageType= "StandardLRS"
+    $snapshotname = $osDiskVHDToBeRepaired
+    $ToBeFixedManagedOsDisk = $prefix + "fixedos" + $vm.StorageProfile.OsDisk.Name 
+    $snapshot = Get-AzureRmSnapshot -ResourceGroupName $resourceGroup -SnapshotName $snapshotname
     $diskConfig = New-AzureRmDiskConfig -AccountType $storageType -Location $snapshot[$snapshot.Count - 1].Location -SourceResourceId $snapshot[$snapshot.Count - 1].Id -CreateOption Copy
-    $disk = New-AzureRmDisk -Disk $diskConfig -ResourceGroupName $resourceGroup -DiskName $osDiskVHDToBeRepaired
-    $VHDNameShort = $osDiskVHDToBeRepaired
+    $ToBeFixedManagedOsDisk = Get-ValidLength -InputString $ToBeFixedManagedOsDisk -Maxlength 80
+    $disk = New-AzureRmDisk -Disk $diskConfig -ResourceGroupName $resourceGroup -DiskName $ToBeFixedManagedOsDisk
+    $diskName = $ToBeFixedManagedOsDisk
     $managedDiskID = $disk.Id
 }
 else
 {
-    $VHDNameShort = ($osDiskVHDToBeRepaired.Split('/')[-1]).split('.')[0] 
+    $diskName = ($osDiskVHDToBeRepaired.Split('/')[-1]).split('.')[0] 
+    $diskName = Get-ValidLength -InputString $diskName -Maxlength 80
     $osDiskSize = $vm.StorageProfile.OsDisk.DiskSizeGB
     if (-not $osDiskSize)
     {
@@ -234,7 +252,7 @@ else
        Write-Log "Unable to retrieve the OSDiskSze for VM $VMname, so instead using 127 when attaching it to the datadisk" 
     }
 }
-$attached = AttachOsDisktoRescueVM -rescueVMNname $rescueVMNname -RescueResourceGroup $RescueResourceGroup -osDiskVHDToBeRepaired $osDiskVHDToBeRepaired -VHDNameShort $VHDNameShort -osDiskSize $osDiskSize -managedDiskID $managedDiskID
+$attached = AttachOsDisktoRescueVM -rescueVMNname $rescueVMNname -RescueResourceGroup $RescueResourceGroup -osDiskVHDToBeRepaired $osDiskVHDToBeRepaired -diskName $diskName -osDiskSize $osDiskSize -managedDiskID $managedDiskID
 
 write-log "`"$attached`" ==> $($attached)" -logonly
 if (-not $attached)
@@ -269,8 +287,15 @@ Write-Log "================================================================"
 Write-Log "================================================================"
 write-log "Rescue VM Name                                ==> $($rescueVm.Name)" 
 write-log "Rescue VM Name's ResourceGroup                ==> $RescueResourceGroup"
-write-log "Data Disk Name that was attached to RescueVM  ==> $VHDNameShort"
-write-log "Fixed OS Disk's ResourceUri                   ==> $osDiskVHDToBeRepaired"
+write-log "Data Disk Name that was attached to RescueVM  ==> $diskName"
+if ($managedVM)
+{
+    write-log "Managed Data disk ID ==> $($managedDiskID)"
+}
+else
+{
+    write-log "Fixed OS Disk's ResourceUri                   ==> $osDiskVHDToBeRepaired"
+}
 
 Write-Log "================================================================"
 Write-Log "================================================================"
@@ -279,7 +304,14 @@ Write-Log "================================================================"
 Write-Log "================================================================"
 write-log "RDP into the rescue VM ==> $($rescueVm.Name) "
 write-log "After fixing the OS Disk run the RecoverVM script to Recover the VM as follows:"
-write-log ".\Restore-AzureRMOriginalVM.ps1 -ResourceGroup `"$ResourceGroup`" -VmName `"$VmName`" -SubID `"$SubID`" -FixedOsDiskUri `"$osDiskVHDToBeRepaired`" -prefix `"$prefix`""
+if ($managedVM)
+{
+    write-log ".\Restore-AzureRMOriginalVM.ps1 -ResourceGroup `"$ResourceGroup`" -VmName `"$VmName`" -SubID `"$SubID`" -diskName `"$diskname`" -snapshotName `"$snapshotname`" -prefix `"$prefix`" -managedVM `$$managedVM "
+}
+else
+{
+    write-log ".\Restore-AzureRMOriginalVM.ps1 -ResourceGroup `"$ResourceGroup`" -VmName `"$VmName`" -SubID `"$SubID`" -FixedOsDiskUri `"$osDiskVHDToBeRepaired`" -diskName `"$diskname`" -OriginalosDiskVhdUri `"$OriginalosDiskVhdUri`"  -prefix `"$prefix`" -managedVM `$$managedVM "
+}
 
 <###### End of script tasks ######>
 $script:scriptEndTime = (Get-Date).ToUniversalTime()
@@ -287,5 +319,8 @@ $script:scriptDuration = New-Timespan -Start $script:scriptStartTime -End $scrip
 Write-Log ('Script Duration: ' +  ('{0:hh}:{0:mm}:{0:ss}.{0:ff}' -f $script:scriptDuration)) -color Cyan
 
 Invoke-Item $LogFile
+
+
+write-host "this is a test `$true"
 
 

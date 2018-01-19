@@ -24,11 +24,15 @@
 
 .PARAMETER prefix
     Optional Parameter. By default the new Rescue VM and its resources are all created under a ResourceGroup named same as the orginal resourceGroup name with a prefix of 'rescue', however the prefix can be changed to a different value to overide the default 'rescue'
+.PARAMETER managedVM
+    This is a mandatory Parameter, this indicates if the VM is a Managed or a non-ManagedVM
 
 
 
 .EXAMPLE
     .\Restore-AzureRMOriginalVM.ps1 -ResourceGroup "rescueportalLin" -VmName "ubuntu2" -SubID "xxxxxxxx-abdf-4aaf-8868-2002dfeea60c" -FixedOsDiskUri "https://vmrecoverytestdisks645.blob.core.windows.net/vhds/fixedosfixedosubuntu220171220164151.vhd" -prefix "rescuered"
+.EXAMPLE .\Restore-AzureRMOriginalVM.ps1 -ResourceGroup "testsujmg" -VmName "sujmanagedvm" -SubID "d7eaa135-abdf-4aaf-8868-2002dfeea60c" -diskName "rescuex32fixedosrescuex19fixedossujmanagedvm_OsDisk_1_6bee8dc1d09d42f9b6
+d7954538"  -prefix "rescuex32" -managedVM $True #ManagedVM
 
 .NOTES
     Name: Restore-AzureRMOriginalVM.ps1
@@ -46,11 +50,23 @@ Param(
         [Parameter(mandatory=$true)]
         [String]$SubID,
 
-        [Parameter(mandatory=$true)]
+        [Parameter(mandatory=$false)]
         [String]$FixedOsDiskUri,
 
+        [Parameter(mandatory=$true)]
+        [String]$diskName,
+
         [Parameter(mandatory=$false)]
-        [String]$prefix = "rescue"
+        [String]$prefix = "rescue",
+
+        [Parameter(mandatory=$true)]
+        [bool]$managedVM,
+
+        [Parameter(mandatory=$false)]
+        [String]$snapshotName,
+
+        [Parameter(mandatory=$false)]
+        [String] $OriginalosDiskVhdUri
      )
 
 
@@ -71,6 +87,7 @@ $CommonFunctions = $runPath+"\Common-Functions.psm1"
 
 if (Get-Module Common-Functions) {remove-module -name Common-Functions}   
 Import-Module -Name $CommonFunctions  -ArgumentList $LogFile -ErrorAction Stop 
+
 
 if (-not (Get-AzureRmContext).Account)
 {
@@ -99,7 +116,6 @@ Write-Log "Successfully got the VM Object info for ==> $($vm.Name)" -Color Green
 
 if ($vm.StorageProfile.OsDisk.OsType -eq "Windows") {$windowsVM= $true} else {$windowsVM= $false}
 
-$Vmname = $vm.Name
 $rescueVMNname = "$prefix$Vmname"
 $RescueResourceGroup = "$prefix$ResourceGroup"
 
@@ -115,12 +131,36 @@ Write-Log "Successfully got the VM Object info for the Rescue VM ==>  $rescueVMN
 
 #Step 3 -Removing the DataDisk from Rescue VM
 $FixedOsDiskUri  = $FixedOsDiskUri.Replace("`r`n","")
-$VHDNameShort = ($FixedOsDiskUri.Split('/')[-1]).split('.')[0]
-write-log "VHDNameShort ==> $($VHDNameShort)" -logonly
+$diskname=$diskname.Replace("`r`n","")
+#$diskName = ($FixedOsDiskUri.Split('/')[-1]).split('.')[0]
+write-log "Disk Name ==> $($diskName)" -logonly
+if ($rescuevm.StorageProfile.DataDisks.Count -gt 0 )
+{
+  if ($managedVM) 
+  {
+    $problemvmOsDiskManagedDiskID = $rescuevm.StorageProfile.DataDisks[0].ManagedDisk.id
+  }
+}
+else
+{
+    write-log "Unable to find the data disk in the Rescue VM ==> $rescueVMNname, cannot proceed with the restore process." -color red
+    return
+}
 Write-Log "Removing the Data disk from the Rescue VM ==>  $rescueVMNname" 
-Remove-AzureRmVMDataDisk -VM $rescuevm -Name $VHDNameShort
-Update-AzureRmVM -ResourceGroupName $RescueResourceGroup -VM $rescuevm
-Write-Log "Successfully removed the Data disk from the Rescue VM ==>  $rescueVMNname" -Color Green
+try
+{
+    Remove-AzureRmVMDataDisk -VM $rescuevm -Name $diskName -ErrorAction Stop
+    Update-AzureRmVM -ResourceGroupName $RescueResourceGroup -VM $rescuevm -ErrorAction stop
+    Write-Log "Successfully removed the Data disk from the Rescue VM ==>  $rescueVMNname" -Color Green
+}
+Catch
+{
+    Write-Log "The operation to remove the data disk from rescue VM failed." -Color Red
+    Write-Log "The operation to remove the data disk from rescue VM failed.: $($_.Exception.GetType().FullName)" -logOnly
+    Write-Log "Exception Message: $($_.Exception.Message)" -logOnly
+    WriteRestoreCommands -ResourceGroup $ResourceGroup -VmName $VmName -problemvmOsDiskUri $vm.StorageProfile.OsDisk.Vhd.Uri  -problemvmOsDiskManagedDiskID $rescuevm.StorageProfile.DataDisks[0].ManagedDisk.id -managedVM $managedVM
+    return $null
+}
 
 #Stop the VM before performing the disk swap.
 Write-Log "Stopping the VM ==> $VmName"  
@@ -135,25 +175,24 @@ if (-not $stopped)
 }
 
 
-#Step 4 -Disk Swapping the OS Disk to point to the fixed OSDisk Uri
-$problemvmOsDiskUri=$vm.StorageProfile.OsDisk.Vhd.Uri 
-Write-Log "Disk Swapping the OS Disk, to point to the fixed OS Disk for VM ==>  $VmName" 
-Write-Log "================================================================" 
-write-log "Commands to restore the VM back to its original state" -logonly
-Write-Log "================================================================" 
-Write-Log "Note: If for any reason you decide to restore the VM back to its orginal problem state, you may run the following commands`n"
-Write-Log "`$problemvm = Get-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -Name `"$VmName`"" 
-Write-Log "Stop-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -Name `"$VmName`""
-Write-Log "`$problemvm.StorageProfile.OsDisk.Vhd.Uri = `"$($problemvmOsDiskUri)`""
-Write-Log "Update-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -VM `$problemvm"
-Write-Log "Start-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -Name `"$VmName`""
-Write-Log "`n================================================================" 
-#before setting the uri, ensure to remove any new line characters
-#$FixedOsDiskUri  = $FixedOsDiskUri.Replace("`r`n","")
-$vm.StorageProfile.OsDisk.Vhd.Uri = $FixedOsDiskUri 
-Update-AzureRmVM -ResourceGroupName $ResourceGroup -VM $vm 
-Write-Log "Successfully Disk Swapped the OS Disk,  for VM ==>  $VmName" 
+#Step 4 -Disk Swapping the OS Disk to point to the fixed OSDisk Uri/updating ManagedDiskID
+Write-Log "Performing the disk swap, swapping the OS disk with the fixed Data disk from the Rescue VM ==>  $rescueVMNname" 
+if (-not $managedVM)
+{
+    $problemvmOsDiskUri=$vm.StorageProfile.OsDisk.Vhd.Uri 
+    WriteRestoreCommands -ResourceGroup $ResourceGroup -VmName $VmName -problemvmOsDiskUri $problemvmOsDiskUri  -problemvmOsDiskManagedDiskID $null -managedVM $managedVM
+    $vm.StorageProfile.OsDisk.Vhd.Uri = $FixedOsDiskUri 
+    Update-AzureRmVM -ResourceGroupName $ResourceGroup -VM $vm 
+    Write-Log "Successfully Disk Swapped the OS Disk,  for VM ==>  $VmName" 
 
+}
+else
+{
+    WriteRestoreCommands -ResourceGroup $ResourceGroup -VmName $VmName -problemvmOsDiskUri $null  -problemvmOsDiskManagedDiskID $problemvmOsDiskManagedDiskID -managedVM $managedVM
+    set-AzureRmVMOSDisk -vm $vm -ManagedDiskId $problemvmOsDiskManagedDiskID -CreateOption FromImage
+    Update-AzureRmVM -ResourceGroupName $ResourceGroup -VM $vm 
+    Write-Log "Successfully Disk Swapped the OS Disk,  for VM ==>  $VmName" 
+}
 
 
 #Step 5 -Start the VM
@@ -176,8 +215,9 @@ if ($windowsVM)
     Get-AzureRmRemoteDesktopFile -ResourceGroupName $ResourceGroup -Name $VmName -Launch
 }
 
+#Step 6 Clean up
 Write-Host "`nWere you able to successfully recover the VM ==> $VmName and are you ready to delete all the rescue reources that were created under the Resource Group $RescueResourceGroup (Y/N)?" -ForegroundColor Yellow
-if ((read-host) -eq 'Y' -or (read-host) -eq 'y')
+if ((read-host) -eq 'Y' )
 {
     Write-Log "Acknowledged deleting the rescource group ==> $RescueResourceGroup" -color Cyan
     Remove-AzureRmResourceGroup -Name $RescueResourceGroup -Force
@@ -186,6 +226,21 @@ else
 {
     Write-Log "Did not acknowledge deleting the rescource group ==> $RescueResourceGroup" -color Cyan
 }
+
+if ($managedVM)
+{
+    Write-log "`nWould you like to delete the snapshot ==> $Snapshotname that was taken (Y/N)?"
+    if ((read-host) -eq 'Y' )
+    {
+        write-log "Acknowledged deleting the snapshot ==> $Snapshotname" -color Cyan
+        Remove-AzureRmSnapshot -SnapshotName $snapshotName -ResourceGroupName $ResourceGroup -Force 
+    }
+}
+else
+{
+    DeleteSnapShotAndVhd -osDiskVhdUri $OriginalosDiskVhdUri -ResourceGroup $ResourceGroup
+}
+
 
 Invoke-Item $LogFile
 
