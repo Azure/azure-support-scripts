@@ -6,7 +6,7 @@ Occasionally Azure IaaS VMs (Microsoft.Compute/virtualMachines) may not start be
 - Create a Temporary Rescue VM
 - Attach the OS Disk to the Rescue VM
 - RDP to RescueVM
-- Run the script [TS_RecoveryWorker2.ps1](./TS_RecoveryWorker2.ps1) as an elevated administrator    from the recovery VM and perform other manual steps
+- From the Rescue VM and fix the disks manually.
 - Detach the Data disk from Rescue VM
 - Perform Disk Swap to point the OsDisk.Vhd.Uri to the recovered OS Disk Uri
 - Finally Remove all the resources that were created for the Rescue VM

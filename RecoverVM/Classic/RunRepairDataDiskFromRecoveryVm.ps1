@@ -1,8 +1,8 @@
 ﻿function RunRepairDataDiskFromRecoveryVm  (
     [string] $ServiceName,
     [string] $RecoVmName,
-    [string] $GuestRecoveryScriptUri = 'https://raw.githubusercontent.com/Azure/azure-support-scripts/master/FixDisk/TS_RecoveryWorker2.ps1',
-    [string] $GuestRecoveryScript= "TS_RecoveryWorker2.ps1"
+    [string] $GuestRecoveryScriptUri = 'https://raw.githubusercontent.com/Azure/azure-support-scripts/master/GuestOS/Repair-WindowsGuestOS.ps1',
+    [string] $GuestRecoveryScript= "Repair-WindowsGuestOS.ps1"
     )
 {
     Add-Type -AssemblyName System.Web
