@@ -18,12 +18,12 @@
 .PARAMETER VMName
     This is a mandatory Parameter, Name of the problem VM
 
-.PARAMETER TakeSnapshot
-    This is an optional Parameter, by specifying this switch it always takes a snapshot of the OS Disk and does not prompt for a snapshot consent
+.PARAMETER NoSnapshot
+    This is an optional Parameter, by specifying NoSnapshot the script does not take a snapshot of the OS Disk
 
 .EXAMPLE
     .\New-AzureRescueVM.ps1 -VMName hackathonvm -ServiceName hackathonvm6614
-    .\New-AzureRescueVM.ps1 -VMName hackathonvm -ServiceName hackathonvm6614 -TakeSnapshot
+    .\New-AzureRescueVM.ps1 -VMName hackathonvm -ServiceName hackathonvm6614 -NoSnapShot
     .\New-AzureRescueVM.ps1 -ServiceName testredhat1 -VMName classiclinuxvm
 
 .NOTES
@@ -34,7 +34,7 @@
 Param(
     [Parameter(Mandatory=$true)][string]$ServiceName ,
     [Parameter(Mandatory=$true)][string]$VMName,
-    [switch] $TakeSnapshot  
+    [switch] $NoSnapshot  
 )
 
 $Sub = Get-AzureSubscription -Current
@@ -46,7 +46,6 @@ if ( ! $Sub )
 
 . $PSScriptRoot\AttachOsDiskAsDataDiskToRecoveryVm.ps1 
 . $PSScriptRoot\RecreateVmFromVhd.ps1 
-. $PSScriptRoot\RunRepairDataDiskFromRecoveryVm.ps1 
 . $PSScriptRoot\SnapShotFunctions.ps1 
 
 
@@ -66,21 +65,12 @@ if (-not $vm)
     return
 }
 
-if ($TakeSnapshot)
-{
-    $SnapshotConsent = 'Y'
-}
-else
-{
-    Write-Host "`nWould you like to take a snapshot of the OSDisk first? (Y/N)" 
-    $SnapshotConsent=read-host   
-}
 
-if ($SnapshotConsent -eq 'Y')
+if (-not $NoSnapshot)
 {
     try
     {
-        Write-host "Acknowledging request for taking a snapshot" 
+        Write-host "Looks like -NoSnapshot was not specifed so will proceed to take a snapshot of the OS Disk" 
         Write-host "Stopping the VM first"
         Stop-AzureVM -ServiceName $ServiceName -VM $vm -StayProvisioned -ErrorAction stop
         if (-not $vm.VM.OSVirtualHardDisk.MediaLink.Authority) 
@@ -126,13 +116,13 @@ write-host "Next Steps"
 write-host ('='*47)
 write-host "RDP into the $($recoVM.RoleName) and take all the necessary steps to fix the OS Disk that is attached as the datadisk"
 Write-Host "After the OS Disk has been fixed run the following script to Recreate the VM with the fixed OS Disk"
-if ($SnapshotConsent -eq 'Y')
+if ($NoSnapshot)
 {
-    write-host ".\Restore-AzureOriginalVM.ps1 -ServiceName $ServiceName -RecoVMName $($recoVM.RoleName) -storageAccountName $storageAccountName -osDiskvhd $osDiskvhd -ContainerName $ContainerName"
+    write-host ".\Restore-AzureOriginalVM.ps1 -ServiceName $ServiceName -RecoVMName $($recoVM.RoleName)"    
 }
 else
 {
-    write-host ".\Restore-AzureOriginalVM.ps1 -ServiceName $ServiceName -RecoVMName $($recoVM.RoleName)"
+    write-host ".\Restore-AzureOriginalVM.ps1 -ServiceName $ServiceName -RecoVMName $($recoVM.RoleName) -storageAccountName $storageAccountName -osDiskvhd $osDiskvhd -ContainerName $ContainerName"
 }
 
 

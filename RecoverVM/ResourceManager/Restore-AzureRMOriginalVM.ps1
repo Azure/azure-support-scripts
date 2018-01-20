@@ -24,15 +24,26 @@
 
 .PARAMETER prefix
     Optional Parameter. By default the new Rescue VM and its resources are all created under a ResourceGroup named same as the orginal resourceGroup name with a prefix of 'rescue', however the prefix can be changed to a different value to overide the default 'rescue'
+
+.PARAMETER diskName
+    Optional Parameter. This is always passed for a Managed VM, diskname of the attached data disk so that it can be removed from RescueVM
+
+.PARAMETER snapshotName
+    Optional Parameter. This is always passed for a Managed VM, passes the Snapshotname so that the scripty can allow it to delete it.
+
+.PARAMETER OriginalosDiskVhdUri
+    Optional Parameter. This is always passed for a non Managed VM, this is so that scripty can allow to delete the snapshot
+
 .PARAMETER managedVM
     This is a mandatory Parameter, this indicates if the VM is a Managed or a non-ManagedVM
 
 
 
 .EXAMPLE
-    .\Restore-AzureRMOriginalVM.ps1 -ResourceGroup "rescueportalLin" -VmName "ubuntu2" -SubID "xxxxxxxx-abdf-4aaf-8868-2002dfeea60c" -FixedOsDiskUri "https://vmrecoverytestdisks645.blob.core.windows.net/vhds/fixedosfixedosubuntu220171220164151.vhd" -prefix "rescuered"
-.EXAMPLE .\Restore-AzureRMOriginalVM.ps1 -ResourceGroup "testsujmg" -VmName "sujmanagedvm" -SubID "d7eaa135-abdf-4aaf-8868-2002dfeea60c" -diskName "rescuex32fixedosrescuex19fixedossujmanagedvm_OsDisk_1_6bee8dc1d09d42f9b6
-d7954538"  -prefix "rescuex32" -managedVM $True #ManagedVM
+    .\Restore-AzureRMOriginalVM.ps1 -ResourceGroup "testsujmg" -VmName "sujmanagedvm" -SubID "d7eaa135-abdf-4aaf-8868-2002dfeea60c" -diskName "rescuexm001fixedosrescuex001fixedossujmanagedvm_OsDisk_1_6bee8dc1d09d42f9b6d7954" -snapshotName "rescuexm001fixedosSnaprescuex001fixedossujmanagedvm_OsDisk_1_6bee8dc1d09d42f9b6d" -prefix "rescuexm001" -managedVM $True
+
+.EXAMPLE 
+    .\Restore-AzureRMOriginalVM.ps1 -ResourceGroup "sujtemp" -VmName "sujnortheurope" -SubID "d7eaa135-abdf-4aaf-8868-2002dfeea60c" -FixedOsDiskUri "https://sujtemp6422.blob.core.windows.net/vhds/rescuexU001fixedosrescuexUnARMfixedosrescuex51fixedosrescuex48fixedosrescuex47fixedosrescuex2fixedosrescuefixedosrescue02fixedossujnortheurope.vhd" -OriginalosDiskVhdUri "https://sujtemp6422.blob.core.windows.net/vhds/rescuexUnARMfixedosrescuex51fixedosrescuex48fixedosrescuex47fixedosrescuex2fixedosrescuefixedosrescue02fixedossujnortheurope.vhd"  -prefix "rescuexU001" -managedVM $False
 
 .NOTES
     Name: Restore-AzureRMOriginalVM.ps1
@@ -53,7 +64,7 @@ Param(
         [Parameter(mandatory=$false)]
         [String]$FixedOsDiskUri,
 
-        [Parameter(mandatory=$true)]
+        [Parameter(mandatory=$false)]
         [String]$diskName,
 
         [Parameter(mandatory=$false)]
@@ -131,6 +142,10 @@ Write-Log "Successfully got the VM Object info for the Rescue VM ==>  $rescueVMN
 
 #Step 3 -Removing the DataDisk from Rescue VM
 $FixedOsDiskUri  = $FixedOsDiskUri.Replace("`r`n","")
+if (-not $managedVM)
+{
+    $diskname = ($FixedOsDiskUri.Split('/')[-1]).split('.')[0]
+}
 $diskname=$diskname.Replace("`r`n","")
 #$diskName = ($FixedOsDiskUri.Split('/')[-1]).split('.')[0]
 write-log "Disk Name ==> $($diskName)" -logonly
