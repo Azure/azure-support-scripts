@@ -15,7 +15,7 @@
     This is a mandatory Parameter, Name of the problem VM
 
 .EXAMPLE
-    .\Restore-AzureOriginalVM.ps1 -ServiceName hackathonvm6614 -RecoVMName RC1801110602 -storageAccountName sujnoavsetwe4433 -osDiskvhd hackathonvm-os-5685.vhd -ContainerName vhds
+    .\Restore-AzureOriginalVM.ps1 -ServiceName hackathonvm6614 -VMName RC1801110602 -storageAccountName sujnoavsetwe4433 -osDiskvhd hackathonvm-os-5685.vhd -ContainerName vhds
 
 .NOTES
     Name: Restore-AzureOriginalVM.ps1
@@ -25,7 +25,7 @@
 
 Param(
     [Parameter(Mandatory=$true)][string]$ServiceName ,
-    [Parameter(Mandatory=$true)][string]$RecoVMName,
+    [Parameter(Mandatory=$true)][string]$VMName,
     [Parameter(Mandatory=$false)][string]$storageAccountName,
     [Parameter(Mandatory=$false)][string]$osDiskvhd,
     [Parameter(Mandatory=$false)][string] $ContainerName
@@ -43,7 +43,7 @@ if ( ! $Sub )
 . $PSScriptRoot\SnapShotFunctions.ps1 
 
 
-RecreateVmFromVhd $ServiceName $RecoVMName $true 
+RecreateVmFromVhd $ServiceName $VMName $true 
 
 if ($storageAccountName -and $osDiskvhd -and$ContainerName)
 {

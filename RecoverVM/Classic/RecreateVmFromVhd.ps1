@@ -1,15 +1,15 @@
 ﻿function RecreateVmFromVhd (
     [string] $ServiceName,
-    [string] $RecoVmName,
+    [string] $VMName,
     [bool] $DeleteRecoVM
     )
 {
-    
-    $attachedVm = Get-AzureVM -ServiceName $ServiceName -Name $RecoVmName
+    Write-host "Running `$attachedVm = Get-AzureVM -ServiceName `"$ServiceName`" -Name `"$VMName`""
+    $attachedVm = Get-AzureVM -ServiceName $ServiceName -Name $VMName
     $location = (Get-AzureService -ServiceName $ServiceName).Location
     if ( $attachedVm.VM.DataVirtualHardDisks.Count -eq 0 )
     {
-        Write-Error "No data disk attached to recover vm $RecoVmName unable to proceed!"
+        Write-Error "No data disk attached to recover vm $VMName unable to proceed!"
         return
     }
 
@@ -22,7 +22,9 @@
     $Sub = Get-AzureSubscription -Current 
     Set-AzureSubscription -CurrentStorageAccountName $SAName -SubscriptionId $sub.SubscriptionId
     
-    #detach the data disk     
+    #detach the data disk 
+    Write-host "Detaching the Data disk from the Resuce VM"    
+    Write-host "Running `$attachedVm | Remove-AzureDataDisk -LUN 0 | Update-AzureVM"
     $attachedVm | Remove-AzureDataDisk -LUN 0 | Update-AzureVM
     Start-Sleep -Seconds 45
     
@@ -34,6 +36,7 @@
 
         if ( Test-Path -Path $VMExportPath  )  
         {
+            Write-host "Running `$vm = Import-AzureVM   -Path `"$VMExportPath`""    
             $vm = Import-AzureVM   -Path $VMExportPath    
         }
         else
@@ -77,13 +80,15 @@
             $vm | Set-AzureSubnet $SubNetNames
         }
     }
-
-    New-AzureVM -ServiceName $ServiceName -VMs $vm -Location $location -WaitForBoot
+    Write-host "Running New-AzureVM -ServiceName `"$ServiceName`" -VMs `$vm -Location `"$location`" -WaitForBoot -WarningAction SilentlyContinue"
+    New-AzureVM -ServiceName $ServiceName -VMs $vm -Location $location -WaitForBoot -WarningAction SilentlyContinue
     if ( $attachedVm )
     {        
         if ( $DeleteRecoVM)
         {
-            Remove-AzureVM -ServiceName $ServiceName -Name $RecoVmName -DeleteVHD
+            Write-Host "Removing Rescue VM ==>  $VMName"
+            Write-Host "Running Remove-AzureVM -ServiceName `"$ServiceName`" -Name `"$VMName`" -DeleteVHD"
+            Remove-AzureVM -ServiceName $ServiceName -Name $VMName -DeleteVHD
         }
     }
 }

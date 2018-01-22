@@ -118,11 +118,11 @@ write-host "RDP into the $($recoVM.RoleName) and take all the necessary steps to
 Write-Host "After the OS Disk has been fixed run the following script to Recreate the VM with the fixed OS Disk"
 if ($NoSnapshot)
 {
-    write-host ".\Restore-AzureOriginalVM.ps1 -ServiceName $ServiceName -RecoVMName $($recoVM.RoleName)"    
+    write-host ".\Restore-AzureOriginalVM.ps1 -ServiceName $ServiceName -VMName $($recoVM.RoleName)"    
 }
 else
 {
-    write-host ".\Restore-AzureOriginalVM.ps1 -ServiceName $ServiceName -RecoVMName $($recoVM.RoleName) -storageAccountName $storageAccountName -osDiskvhd $osDiskvhd -ContainerName $ContainerName"
+    write-host ".\Restore-AzureOriginalVM.ps1 -ServiceName $ServiceName -VMName $($recoVM.RoleName) -storageAccountName $storageAccountName -osDiskvhd $osDiskvhd -ContainerName $ContainerName"
 }
 
 
