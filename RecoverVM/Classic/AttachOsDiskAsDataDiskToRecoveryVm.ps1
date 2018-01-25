@@ -42,7 +42,8 @@
     
         if ( $vm.VM.OSVirtualHardDisk.OS -eq 'Windows' )
         {
-            $RecoveryImage =  Get-AzureVMImage |where ImageFamily -eq 'Windows Server 2012 R2 Datacenter'  | sort PublishedDate -Descending | select  -First 1 
+            #$RecoveryImage =  Get-AzureVMImage |where ImageFamily -eq 'Windows Server 2012 R2 Datacenter'  | sort PublishedDate -Descending | select  -First 1 
+            $RecoveryImage =  Get-AzureVMImage |where ImageFamily -eq 'Windows Server 2016 Datacenter'  | sort PublishedDate -Descending | select  -First 1
             write-host "Running New-AzureQuickVM -Windows -WaitForBoot -ServiceName `"$ServiceName`" -Name `"$RecoveryVMName`" -InstanceSize $($vm.InstanceSize) -AdminUsername `"$RecoveryAdmin`" -Password `"$RecoveryPW`" -ImageName $($RecoveryImage.ImageName) -EnableWinRMHttp -ErrorAction stop -WarningAction SilentlyContinue"
             $recoveryVM = New-AzureQuickVM -Windows -WaitForBoot -ServiceName $ServiceName -Name $RecoveryVMName -InstanceSize $vm.InstanceSize -AdminUsername $RecoveryAdmin -Password $RecoveryPW -ImageName $RecoveryImage.ImageName -EnableWinRMHttp -ErrorAction stop -WarningAction SilentlyContinue
         }

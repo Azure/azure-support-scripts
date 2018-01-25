@@ -22,6 +22,25 @@ function Get-ValidLength (
     }
 }
 
+function Get-ScriptResultObject
+(
+    [bool] $scriptSucceeded ,
+    [string] $restoreScriptCommand,
+    [string] $rescueScriptCommand,
+    [string] $FailureReason
+ )
+{
+    $scriptResult = [ordered]@{
+        'result' = $scriptSucceeded # set to $true for success, else populate with the terminal error
+        'restoreScriptCommand' = $restoreScriptCommand # set this to the command they should run the restore the problem VM
+        'rescueScriptCommand' = $rescueScriptCommand # since it may be useful to also have the exact syntax that was used for New-AzureRMRescueVM.ps1
+        'failureReason' = $FailureReason #If the script fails, this will contain the reason for failure
+    }
+    $scriptResult = New-Object -TypeName PSObject -Property $scriptResult
+    return $scriptResult
+
+}
+
 
 function DeleteSnapShotAndVhd
 (
@@ -576,3 +595,4 @@ Export-ModuleMember -Function SupportedVM
 Export-ModuleMember -Function WriteRestoreCommands
 Export-ModuleMember -Function Get-ValidLength
 Export-ModuleMember -Function DeleteSnapShotAndVhd
+Export-ModuleMember -Function Get-ScriptResultObject

@@ -12,7 +12,7 @@ In such cases it is a common practice to recover the problem VM by performing th
 
 # Current version supports
 - Classic VM Microsoft.ClassicCompute/virtualMachines
-- Windows 2008 R2 - 2012 R2
+- Windows Server 2016 Datacenter
 
 # Scenarios
 

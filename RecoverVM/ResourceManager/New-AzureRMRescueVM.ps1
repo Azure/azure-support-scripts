@@ -48,13 +48,13 @@
     Optional Parameter. Allows to pass in the Version of the preferred image of the OS for the Rescue VM
 
 .EXAMPLE
-    .\New-AzureRMRescueVM.ps1 -ResourceGroup sujtemp -VmName sujnortheurope -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c ## <==Is an example is with all the mandatory fields
+    $scriptResult = .\New-AzureRMRescueVM.ps1 -ResourceGroup sujtemp -VmName sujnortheurope -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c ## <==Is an example is with all the mandatory fields
 .EXAMPLE
-    .\New-AzureRMRescueVM.ps1 -VmName ubuntu -ResourceGroup portalLin -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -Publisher RedHat -Offer RHEL -Sku 7.3 -Version 7.3.2017090723 -prefix rescuered #--Examples with optional parametersm in this example it will create the rescue VM with RedHat installed
+    $scriptResult =  .\New-AzureRMRescueVM.ps1 -VmName ubuntu -ResourceGroup portalLin -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -Publisher RedHat -Offer RHEL -Sku 7.3 -Version 7.3.2017090723 -prefix rescuered #--Examples with optional parametersm in this example it will create the rescue VM with RedHat installed
 .EXAMPLE
-.\New-AzureRMRescueVM.ps1 -ResourceGroup sujtemp -VmName sujnortheurope -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex2"
+    $scriptResult = .\New-AzureRMRescueVM.ps1 -ResourceGroup sujtemp -VmName sujnortheurope -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex2"
 .EXAMPLE
-.\New-AzureRMRescueVM.ps1 -ResourceGroup testsujmg -VmName sujmanagedvm -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex17" -AllowManagedVM   #--Example for Managed VM
+    $scriptResult =  .\New-AzureRMRescueVM.ps1 -ResourceGroup testsujmg -VmName sujmanagedvm -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex17" -AllowManagedVM   #--Example for Managed VM
 
 .NOTES
     Name: CreateCRPRescueVM.ps1
@@ -121,7 +121,7 @@ Write-Log  $MyInvocation.Line -logOnly
 
 if (-not (Get-AzureRmContext).Account)
 {
-    Login-AzureRmAccount
+    $null = Login-AzureRmAccount
 }
 
 #Set the context to the correct subid
@@ -131,7 +131,8 @@ write-log $subContext -logOnly
 if ($subContext -eq $null) 
 {
     Write-Log "Unable to set the Context for the given subId ==> $SubID, Please make sure you first  run the command ==> Login-AzureRMAccount" -Color Red
-    return
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason "Unable to set the Context for the given subId ==> $SubID, Please make sure you first  run the command ==> Login-AzureRMAccount"
+    return $scriptResult
 }
 
 
@@ -146,14 +147,16 @@ catch
     write-Log "Specified VM ==> $VmName was not found in the Resource Group ==> $ResourceGroup, please make sure you are the subId/RG/vmName of the problem VM" -color red
     Write-Log "Exception Type: $($_.Exception.GetType().FullName)" -logOnly
     Write-Log "Exception Message: $($_.Exception.Message)" -logOnly
-    return   
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason "Specified VM ==> $VmName was not found in the Resource Group ==> $ResourceGroup, please make sure you are the subId/RG/vmName of the problem VM"
+    return $scriptResult
 }
 write-log "`"$vm`" => $($vm)" -logOnly
 
 if (-not (SupportedVM -vm $vm -AllowManagedVM $AllowManagedVM)) 
 {  
     write-log "This VM ==> $($vm.name) is not supported, exiting" -Color red
-    return 
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason "This VM ==> $($vm.name) is not supported, exiting"
+    return $scriptResult
 }
 Write-Log "Successfully got the VM Object info for $($vm.Name)" -Color Green
 if ($vm.StorageProfile.OsDisk.ManagedDisk) {$managedVM = $true} else {$managedVM = $false}
@@ -186,7 +189,8 @@ write-log "`"$stopped`" ==> $($stopped)" -logOnly
 if (-not $stopped) 
 {
     Write-Log "Unable to stop the VM ==> $($VmName)" -Color Red
-    Return
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason "Unable to stop the VM ==> $($VmName)"
+    return $scriptResult
 }
 
 
@@ -197,7 +201,8 @@ $osDiskVHDToBeRepaired = SnapshotAndCopyOSDisk -vm $vm -prefix $prefix -Resource
 if (-not $osDiskVHDToBeRepaired)
 {
     Write-Log "Unable to snapshot and copy the OS Disk to be repaired, cannot proceed" -Color Red
-    Return
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason "Unable to snapshot and copy the OS Disk to be repaired, cannot proceed"
+    return $scriptResult
 }
 $osDiskVHDToBeRepaired = $osDiskVHDToBeRepaired.Replace("`r`n","")
 write-log "`"$osDiskVHDToBeRepaired`" => $($osDiskVHDToBeRepaired)" -logOnly
@@ -211,7 +216,8 @@ Write-Log "$reccueVM ==> $($rescueVm)" -logOnly
 if (-not $rescuevm)
 {
     Write-Log "Unable to create the Rescue VM, cannot proceed." -Color Red
-    Return
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason "Unable to create the Rescue VM, cannot proceed."
+    return $scriptResult
 }
 
 
@@ -221,7 +227,8 @@ $rescuevm = Get-AzureRmVM -ResourceGroupName $RescueResourceGroup -Name $rescueV
 if (-not $rescuevm)
 {
     Write-Log "RescueVM ==>  $rescueVMNname cannot be found, Cannot proceed" -Color Red
-    return
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason "RescueVM ==>  $rescueVMNname cannot be found, Cannot proceed"
+    return $scriptResult
 }
 
 #Step 6  Attach the OS Disk as data disk to the rescue VM
@@ -306,12 +313,17 @@ write-log "RDP into the rescue VM ==> $($rescueVm.Name) "
 write-log "After fixing the OS Disk run the RecoverVM script to Recover the VM as follows:"
 if ($managedVM)
 {
-    write-log ".\Restore-AzureRMOriginalVM.ps1 -ResourceGroup `"$ResourceGroup`" -VmName `"$VmName`" -SubID `"$SubID`" -diskName `"$diskname`" -snapshotName `"$snapshotname`" -prefix `"$prefix`" -managedVM `$$managedVM "
+    $restoreScriptCommand = ".\Restore-AzureRMOriginalVM.ps1 -ResourceGroup `"$ResourceGroup`" -VmName `"$VmName`" -SubID `"$SubID`" -diskName `"$diskname`" -snapshotName `"$snapshotname`" -prefix `"$prefix`""
+    write-log $restoreScriptCommand
 }
 else
 {
-    write-log ".\Restore-AzureRMOriginalVM.ps1 -ResourceGroup `"$ResourceGroup`" -VmName `"$VmName`" -SubID `"$SubID`" -FixedOsDiskUri `"$osDiskVHDToBeRepaired`" -OriginalosDiskVhdUri `"$OriginalosDiskVhdUri`"  -prefix `"$prefix`" -managedVM `$$managedVM "
+    $restoreScriptCommand = ".\Restore-AzureRMOriginalVM.ps1 -ResourceGroup `"$ResourceGroup`" -VmName `"$VmName`" -SubID `"$SubID`" -FixedOsDiskUri `"$osDiskVHDToBeRepaired`" -OriginalosDiskVhdUri `"$OriginalosDiskVhdUri`"  -prefix `"$prefix`""
+    write-log $restoreScriptCommand
 }
+
+$scriptResult = Get-ScriptResultObject -scriptSucceeded $true -restoreScriptCommand $restoreScriptCommand -rescueScriptCommand $MyInvocation.Line 
+
 
 <###### End of script tasks ######>
 $script:scriptEndTime = (Get-Date).ToUniversalTime()
@@ -320,7 +332,8 @@ Write-Log ('Script Duration: ' +  ('{0:hh}:{0:mm}:{0:ss}.{0:ff}' -f $script:scri
 
 Invoke-Item $LogFile
 
+return $scriptResult
 
-write-host "this is a test `$true"
+
 
 
