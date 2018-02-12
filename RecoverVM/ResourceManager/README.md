@@ -23,16 +23,29 @@ If VM in Azure does not boot. Typically in this scenario VM screenshot from [boo
 
 ## Execution guidance
 ### PowerShell - Cloud Shell
-- Open [Azure Cloudshell](https://docs.microsoft.com/en-us/azure/cloud-shell/overview) and switch from **Bash** to **PowerShell**. 
-- From the **`PS Azure:\>`** prompt type **`c:`** then **`<ENTER>`**.
-- Download the files into your cloud shell storage by running
+1. Open [Azure Cloud Shell](https://docs.microsoft.com/en-us/azure/cloud-shell/overview) and switch from **Bash** to **PowerShell**. 
+
+2. From the **`PS Azure:\>`** prompt type **`c:`** then **`<ENTER>`**.
+
+3. Download the files into your cloud shell storage by running:
+
 **`git clone https://github.com/azure/azure-support-scripts.git c:\azure-support-scripts`**
-- **`cd c:\azure-support-scripts\RecoverVM\ResourceManager`**
-- Run the following command to attach the OS disk of the problem VM to a rescue VM - **`.\New-AzureRMRescueVM.ps1 -ResourceGroup <ResourceGroup> -VmName <vmName> -SubID <subscriptionId>`**
+
+4. Switch into the the folder by running:
+
+**`cd c:\azure-support-scripts\RecoverVM\ResourceManager`**
+
+5. Run the following command to attach the OS disk of the problem VM to a rescue VM:
+
+**`.\New-AzureRMRescueVM.ps1 -ResourceGroup <ResourceGroup> -VmName <vmName> -SubID <subscriptionId>`**
+
 To double-check the resource group name and VM name, you can run **`Get-AzureRmVM`**. To double-check the subscription ID you can run **`Get-AzureRmSubscription`**.
-- When it completes, it will return the command to use later to restore the problem VM.
-- Connect to the rescue VM and resolve the issue with the OS disk of the problem VM.
-- Run Restore-AzureRMOriginalVM.ps1 with the syntax shown in the output from New-AzureRMRescueVM.ps1
+
+6. When it completes, it will return the command to use later to restore the problem VM.
+
+7. Connect to the rescue VM and resolve the issue with the OS disk of the problem VM.
+
+8. Run Restore-AzureRMOriginalVM.ps1 with the syntax shown in the output from New-AzureRMRescueVM.ps1
 
 ### Powershell - Local
 - The script must be executed in two phases
