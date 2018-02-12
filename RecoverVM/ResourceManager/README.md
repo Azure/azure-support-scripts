@@ -14,8 +14,7 @@ If an Azure VM is inaccessible it may be necessary to attach the OS disk to anot
 - Finally Remove all the resources that were created for the Rescue VM
 
 ## Current version supports
-Azure VMs created using the Resource Manager deployment model (Microsoft.Compute/virtualMachines) using unmanaged disks. VM recovery script support for managed disk VMs is planned but not currently implemented.
-Supports Windows OS
+Azure VMs using either Linux or Windows that were created using the Resource Manager deployment model (Microsoft.Compute/virtualMachines) with unmanaged disks. Support for managed disk VMs is planned but not currently implemented.
 
 ## Scenarios
 
