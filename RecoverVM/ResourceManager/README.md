@@ -24,15 +24,15 @@ If an Azure VM is inaccessible it may be necessary to attach the OS disk to anot
 If VM in Azure does not boot. Typically in this scenario VM screenshot from [boot diagnostics](https://azure.microsoft.com/en-us/blog/boot-diagnostics-for-virtual-machines-v2/) does not show login screen but a boot issue.
 
 ## Execution guidance
-### CloudShell
+### CloudShell - PowerShell
 - Start Azure Cloudshell for more info https://docs.microsoft.com/en-us/azure/cloud-shell/overview
 - From the cloudshell prompt ==> Type c:
-- Download the files run ==>  git clone https://github.com/sebdau/azure-support-scripts.git c:\azscripts\
-- CD c:\azscripts\RecoverRMVm
-- Phase 1 Run New-AzureRMRescueVM -ResourceGroup <ResourceGroup> -VmName <-VmName> -SubID <SUBID> 
-- Step Fix the disk issue
-- Phase 2 Run After running phase 1, it will give the parameters needed to run Restore-AzureRMOriginalVM.PS1
-
+- Download the files run ==>  git clone https://github.com/azure-support-scripts.git c:\azure-support-scripts
+- cd c:\azure-support-scripts\RecoverVM\ResourceManager
+- Run .\New-AzureRMRescueVM.ps1 -ResourceGroup <ResourceGroup> -VmName <vmName> -SubID <subscriptionId>
+- When it completes, it will return the command to use later to restore the problem VM.
+- Connect to the rescue VM and resolve the issue with the OS disk of the problem VM.
+- Run Restore-AzureRMOriginalVM.ps1 with the syntax shown in the output from New-AzureRMRescueVM.ps1
 
 ### Powershell
 - The script must be executed in two phases
