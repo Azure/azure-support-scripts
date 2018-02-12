@@ -13,9 +13,9 @@ If an Azure VM is inaccessible it may be necessary to attach the OS disk to anot
 - Perform Disk Swap to point the OsDisk.Vhd.Uri to the recovered OS Disk Uri
 - Finally Remove all the resources that were created for the Rescue VM
 
-## Current version supports 
-    Microsoft.Compute/virtualMachines (Non-Managed VM's)
-    Supports Windows OS
+## Current version supports
+Azure VMs created using the Resource Manager deployment model (Microsoft.Compute/virtualMachines) using unmanaged disks. VM recovery script support for managed disk VMs is planned but not currently implemented.
+Supports Windows OS
 
 ## Scenarios
 
