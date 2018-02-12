@@ -24,7 +24,7 @@ If VM in Azure does not boot. Typically in this scenario VM screenshot from [boo
 
 ## Execution guidance
 ### CloudShell - PowerShell
-- Start Azure Cloudshell for more info https://docs.microsoft.com/en-us/azure/cloud-shell/overview
+- Open [Azure Cloudshell](https://docs.microsoft.com/en-us/azure/cloud-shell/overview) and switch from **Bash** to **PowerShell**. 
 - From the cloudshell prompt ==> Type c:
 - Download the files run ==>  git clone https://github.com/azure-support-scripts.git c:\azure-support-scripts
 - cd c:\azure-support-scripts\RecoverVM\ResourceManager
