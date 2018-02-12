@@ -13,47 +13,40 @@ If an Azure VM is inaccessible it may be necessary to attach the OS disk to anot
 - Perform Disk Swap to point the OsDisk.Vhd.Uri to the recovered OS Disk Uri
 - Finally Remove all the resources that were created for the Rescue VM
 
-## Current version supports
-Azure VMs using either Linux or Windows that were created using the Resource Manager deployment model (Microsoft.Compute/virtualMachines) with unmanaged disks. Support for managed disk VMs is planned but not currently implemented.
+# Supported VM Types
 
-## Scenarios
+The VM recovery scripts are supported for use with Azure VMs created using the Resource Manager deployment model. Both Linux and Windows guests are supported. Only unmanaged disk VMs are supported. Support for managed disk VMs is planned but not currently implemented.
 
 ## When would you use the script?
 
 If VM in Azure does not boot. Typically in this scenario VM screenshot from [boot diagnostics](https://azure.microsoft.com/en-us/blog/boot-diagnostics-for-virtual-machines-v2/) does not show login screen but a boot issue.
 
 ## Execution guidance
-### Cloud Shell - PowerShell
+### PowerShell - Cloud Shell
 - Open [Azure Cloudshell](https://docs.microsoft.com/en-us/azure/cloud-shell/overview) and switch from **Bash** to **PowerShell**. 
-- From the cloudshell prompt ==> Type c:
-- Download the files run ==>  git clone https://github.com/azure-support-scripts.git c:\azure-support-scripts
-- cd c:\azure-support-scripts\RecoverVM\ResourceManager
-- Run .\New-AzureRMRescueVM.ps1 -ResourceGroup <ResourceGroup> -VmName <vmName> -SubID <subscriptionId>
+- From the **`PS Azure:\>`** prompt type **`c:`** then **`<ENTER>`**.
+- Download the files into your cloud shell storage by running **`git clone https://github.com/azure/azure-support-scripts.git c:\azure-support-scripts`**
+- **`cd c:\azure-support-scripts\RecoverVM\ResourceManager`**
+- Run the following command to attach the OS disk of the problem VM to a rescue VM - **`.\New-AzureRMRescueVM.ps1 -ResourceGroup <ResourceGroup> -VmName <vmName> -SubID <subscriptionId>`**
 - When it completes, it will return the command to use later to restore the problem VM.
 - Connect to the rescue VM and resolve the issue with the OS disk of the problem VM.
 - Run Restore-AzureRMOriginalVM.ps1 with the syntax shown in the output from New-AzureRMRescueVM.ps1
 
-### Powershell
+### Powershell - Local
 - The script must be executed in two phases
 - Phase 1  From Powershell Execute => Get-Help New-AzureRMRescueVM #For details
-            New-AzureRMRescueVM -ResourceGroup <ResourceGroup> -VmName <-VmName> -SubID <SUBID>
-- Fix OS Disk issue            
-            in addition to any other additional manual steps (To be provided by support)
+            **`.\New-AzureRMRescueVM -ResourceGroup <ResourceGroup> -VmName <-VmName> -SubID <subscriptionId>`**
+- Fix OS Disk issue
+           in addition to any other additional manual steps (To be provided by support)
 - Phase 2 - From Powershell Execute =>  Get-Help Restore-AzureRMOriginalVM.PS1 #For details
-            Restore-AzureRMOriginalVM.PS1  -ResourceGroup <ResourceGroup> -VmName <-VmName> -SubID <SUBID> -FixedOsDiskUri <FixedOsDiskUri-This will be provided in the console output plus Log after executing first step>
+            `.\Restore-AzureRMOriginalVM.PS1  -ResourceGroup <ResourceGroup> -VmName <-VmName> -SubID <SUBID> -FixedOsDiskUri <FixedOsDiskUri>` This will be provided in the console output plus Log after executing first step>
             After the OS Disk has been recovered, execute the Restore-AzureRMOriginalVM.PS1
 ## Version of Rescue VM
 - For Windows Rescue VM is created with the latest version of 2016 image(GUI)
 - For Linux   Rescue VM is created with the latest version of Canonical.UbuntuServer.16.04-LTS.latest
 
-Follow the instructions and be patient (it may take between 15mins to an hour)
-
-## Parameters or input
-- ResourceGroup Name of the Problem VM
-- VM name of the problem VM
-- Subscription ID
-
 ## To get help on the scripts and its parameters run the following
-- get-help .\New-AzureRMRescueVM.ps1
-- get-help .\Restore-AzureRMOriginalVM.ps1
+
+**`get-help .\New-AzureRMRescueVM.ps1`**
+**`get-help .\Restore-AzureRMOriginalVM.ps1`**
 
