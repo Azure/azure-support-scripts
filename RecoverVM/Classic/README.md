@@ -2,16 +2,12 @@
 
 # Overview
 
-Occasionally Azure IaaS VMs may not start because there is something wrong with the operating system (OS) disk preventing it from booting up correctly.
-In such cases it is a common practice to recover the problem VM by performing the following steps:
+If an Azure VM is inaccessible it may be necessary to attach the OS disk to another Azure VM in order to perform recovery steps. The VM recovery scripts automate the recovery steps below.
 
-- Delete the VM (but keep the disks)
-- Attach the disk(s) to another bootable VM as a Data Disk
+- Delete the VM (but keep the disks).
+- Attach the disk(s) to another bootable VM as a data disk.
 - Fix the disk manually.
-- Detach the disk and recreate the original VM using the recovered operating system disk
-
-> the full details on this recovery process are explained in this blog post:
-> https://blogs.msdn.microsoft.com/mast/2014/11/20/recover-azure-vm-by-attaching-os-disk-to-another-azure-vm/
+- Detach the disk and recreate the original VM using the recovered OS disk.
 
 # Current version supports
 - Classic VM Microsoft.ClassicCompute/virtualMachines
