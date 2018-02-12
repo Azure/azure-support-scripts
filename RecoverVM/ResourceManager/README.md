@@ -1,9 +1,9 @@
 # WARNING: This preliminary release of the VM recovery scripts should only be used with the assistance of a Microsoft support engineer when working on a support incident.
 
 # Overview
-Occasionally Azure IaaS VMs (Microsoft.Compute/virtualMachines) may not start because there is something wrong with the operating system (OS) disk preventing it from booting up correctly.In such cases it is a common practice to recover the problem VM by performing the following steps.
+If an Azure VM is inaccessible it may be necessary to attach the OS disk to another Azure VM in order to perform recovery steps. The VM recovery scripts automate the recovery steps below.
 
- - Stop VM
+- Stop VM
 - Take a snapshot of the OS Disk
 - Create a Temporary Rescue VM
 - Attach the OS Disk to the Rescue VM
