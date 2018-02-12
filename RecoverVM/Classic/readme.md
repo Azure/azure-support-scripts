@@ -1,4 +1,4 @@
-# WARNING This preliminary release of the VM recovery scripts should only be used with the assistance of a Microsoft support engineer when working on a support incident.
+# WARNING: This preliminary release of the VM recovery scripts should only be used with the assistance of a Microsoft support engineer when working on a support incident.
 
 # Overview
 
