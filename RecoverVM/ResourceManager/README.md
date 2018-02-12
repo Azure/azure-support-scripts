@@ -19,9 +19,9 @@ If an Azure VM is inaccessible it may be necessary to attach the OS disk to anot
 
 ## Scenarios
 
-###  When would you use the script?
-    If VM in Azure does not boot. Typically in this scenario VM screenshot from [boot diagnostics](https://azure.microsoft.com/en-us/blog/boot-diagnostics-for-virtual-machines-v2/) 
-    does not show login screen but a boot issue.
+## When would you use the script?
+
+If VM in Azure does not boot. Typically in this scenario VM screenshot from [boot diagnostics](https://azure.microsoft.com/en-us/blog/boot-diagnostics-for-virtual-machines-v2/) does not show login screen but a boot issue.
 
 ## Execution guidance
 ### CloudShell
