@@ -4,14 +4,14 @@
 
 If an Azure VM is inaccessible it may be necessary to attach the OS disk to another Azure VM in order to perform recovery steps. The VM recovery scripts automate the recovery steps below.
 
-- Delete the VM (but keep the disks).
-- Attach the disk(s) to another bootable VM as a data disk.
-- Fix the disk manually.
+- Delete the VM but keep the disks.
+- Attach the OS disk to another Azure VM as a data disk.
+- Logon to that VM and fix the disk manually.
 - Detach the disk and recreate the original VM using the recovered OS disk.
 
-# Current version supports
-- Classic VM Microsoft.ClassicCompute/virtualMachines
-- Windows Server 2016 Datacenter
+# Supported VM Types
+
+The VM recovery scripts are supported for use with Azure VMs created with the Classic deployment model. Both Linux and Windows guests are supported.
 
 # Scenarios
 
