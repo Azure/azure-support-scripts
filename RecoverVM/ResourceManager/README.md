@@ -23,7 +23,7 @@ Azure VMs using either Linux or Windows that were created using the Resource Man
 If VM in Azure does not boot. Typically in this scenario VM screenshot from [boot diagnostics](https://azure.microsoft.com/en-us/blog/boot-diagnostics-for-virtual-machines-v2/) does not show login screen but a boot issue.
 
 ## Execution guidance
-### CloudShell - PowerShell
+### Cloud Shell - PowerShell
 - Open [Azure Cloudshell](https://docs.microsoft.com/en-us/azure/cloud-shell/overview) and switch from **Bash** to **PowerShell**. 
 - From the cloudshell prompt ==> Type c:
 - Download the files run ==>  git clone https://github.com/azure-support-scripts.git c:\azure-support-scripts
