@@ -47,7 +47,7 @@ To double-check the resource group name and VM name, you can run **`Get-AzureRmV
 
 8. Run Restore-AzureRMOriginalVM.ps1 with the syntax shown in the output from New-AzureRMRescueVM.ps1
 
-### Powershell - Local
+### PowerShell - Local
 - The script must be executed in two phases
 - Phase 1  From Powershell Execute => Get-Help New-AzureRMRescueVM #For details
             **`.\New-AzureRMRescueVM -ResourceGroup <ResourceGroup> -VmName <-VmName> -SubID <subscriptionId>`**
