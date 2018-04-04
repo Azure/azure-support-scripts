@@ -39,6 +39,3 @@ Step 3 c:\azscripts\RecoverVM\Classic\Restore-AzureOriginalVM MYCLOUDSERVICENAME
 
 ## Supported Platforms / Dependencies
  - current version of Azure PowerShell (Tested with 5.1.14393)
- 
-
-
