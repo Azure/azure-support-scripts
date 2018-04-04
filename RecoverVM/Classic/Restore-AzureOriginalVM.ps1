@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     This script is recreateds the original VM with the Fixed OS Dishk VHD
 
