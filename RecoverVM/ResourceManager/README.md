@@ -64,4 +64,3 @@ To double-check the resource group name and VM name, you can run **`Get-AzureRmV
 
 **`get-help .\New-AzureRMRescueVM.ps1`**
 **`get-help .\Restore-AzureRMOriginalVM.ps1`**
-
