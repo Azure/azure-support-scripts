@@ -1,4 +1,4 @@
-﻿function TakeSnapshotofOSDisk (
+function TakeSnapshotofOSDisk (
     [string] $storageAccountName , 
     [string] $StorageAccountKey,
     [string] $ContainerName,
