@@ -1,4 +1,4 @@
-﻿function AttachOsDiskAsDataDiskToRecoveryVm   (
+function AttachOsDiskAsDataDiskToRecoveryVm   (
     [string] $ServiceName , 
     [string] $VName ,    
     [string] $RecoveryAdmin = 'recoveryAdmin',
