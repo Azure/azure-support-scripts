@@ -1,4 +1,4 @@
-﻿param(
+param(
     [parameter(Position=0,Mandatory=$true)]
         [string] $LogFile
 )
@@ -98,32 +98,6 @@ function SnapshotAndCopyOSDisk  (
 {
 
     Write-Log "Initiating the snapshot process"  
-    if ($vm.StorageProfile.OsDisk.ManagedDisk)
-    {
-      Try
-      #Special Case for taking snapshot for ManagedDisk
-      {
-          $osDiskName = $vm.StorageProfile.OsDisk.Name          
-          $storageAccountType = $vm.StorageProfile.OsDisk.ManagedDisk.StorageAccountType
-          $ResourceGroup = $vm.ResourceGroupName 
-          $snapshotName = $prefix+ "fixedosSnap" + $osDiskName
-          $snapshotName = Get-ValidLength -InputString $snapshotName -Maxlength 80
-          write-log "`$snapshotName = $snapshotName"
-          $disk = Get-AzureRmDisk -ResourceGroupName $ResourceGroup -DiskName $osDiskName 
-          $location = $disk.Location
-          $snapshotconfig =  New-AzureRmSnapshotConfig -SourceUri $disk.Id -CreateOption Copy -Location $location -ErrorAction Stop
-          $result = New-AzureRmSnapshot -Snapshot $snapshotconfig -SnapshotName $snapshotName -ResourceGroupName $ResourceGroup  -ErrorAction Stop
-          return $snapshotName
-      }
-      Catch
-      {
-        Write-Log "The operation to create and copy snapshot failed" -Color Red
-        Write-Log "The operation to create and copy snapshot failed -  Exception Type: $($_.Exception.GetType().FullName)" -logOnly
-        Write-Log "Exception Message: $($_.Exception.Message)" -logOnly
-        return $null
-      }
-
-    }
     $osDiskVhdUri = $vm.StorageProfile.OsDisk.Vhd.Uri
     if (-not $osDiskVhdUri)
     {
