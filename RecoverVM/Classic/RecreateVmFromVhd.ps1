@@ -1,4 +1,4 @@
-﻿function RecreateVmFromVhd (
+function RecreateVmFromVhd (
     [string] $ServiceName,
     [string] $VMName,
     [bool] $DeleteRecoVM
@@ -92,4 +92,3 @@
         }
     }
 }
-
