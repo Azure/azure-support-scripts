@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Creates a Rescue VM and attaches the OS Disk of the problem VM to this intermediate rescue VM.
 
@@ -65,6 +65,7 @@ if (-not $vm)
     return
 }
 
+$RestoreCommandFile = "Restore_" + $VMName + ".ps1"
 
 if (-not $NoSnapshot)
 {
@@ -118,22 +119,13 @@ write-host "RDP into the $($recoVM.RoleName) and take all the necessary steps to
 Write-Host "After the OS Disk has been fixed run the following script to Recreate the VM with the fixed OS Disk"
 if ($NoSnapshot)
 {
-    write-host ".\Restore-AzureOriginalVM.ps1 -ServiceName $ServiceName -VMName $($recoVM.RoleName)"    
+    ".\Restore-AzureOriginalVM.ps1 -ServiceName $ServiceName -VMName $($recoVM.RoleName)"  | Set-Content $RestoreCommandFile 
+    #write-host ".\Restore-AzureOriginalVM.ps1 -ServiceName $ServiceName -VMName $($recoVM.RoleName)"    
 }
 else
 {
-    write-host ".\Restore-AzureOriginalVM.ps1 -ServiceName $ServiceName -VMName $($recoVM.RoleName) -storageAccountName $storageAccountName -osDiskvhd $osDiskvhd -ContainerName $ContainerName"
+   ".\Restore-AzureOriginalVM.ps1 -ServiceName $ServiceName -VMName $($recoVM.RoleName) -storageAccountName $storageAccountName -osDiskvhd $osDiskvhd -ContainerName $ContainerName" | Set-Content $RestoreCommandFile 
+    #write-host ".\Restore-AzureOriginalVM.ps1 -ServiceName $ServiceName -VMName $($recoVM.RoleName) -storageAccountName $storageAccountName -osDiskvhd $osDiskvhd -ContainerName $ContainerName"
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
+$restoreScriptCommand = ".\" + $RestoreCommandFile.Split('\')[-1]
+write-host $restoreScriptCommand
