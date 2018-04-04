@@ -37,7 +37,7 @@ function Get-ScriptResultObject
         'failureReason' = $FailureReason #If the script fails, this will contain the reason for failure
     }
     $scriptResult = New-Object -TypeName PSObject -Property $scriptResult
-    return $scriptResult
+    return $scriptResult
 
 }
 
