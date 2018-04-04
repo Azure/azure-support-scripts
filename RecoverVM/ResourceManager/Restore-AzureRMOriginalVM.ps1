@@ -28,15 +28,12 @@
 .PARAMETER diskName
     Optional Parameter. This is always passed for a Managed VM, diskname of the attached data disk so that it can be removed from RescueVM
 
-.PARAMETER snapshotName
-    Optional Parameter. This is always passed for a Managed VM, passes the Snapshotname so that the scripty can allow it to delete it.
-
 .PARAMETER OriginalosDiskVhdUri
     Optional Parameter. This is always passed for a non Managed VM, this is so that scripty can allow to delete the snapshot
 
 
 .EXAMPLE
-    .\Restore-AzureRMOriginalVM.ps1 -ResourceGroup "testsujmg" -VmName "sujmanagedvm" -SubID "d7eaa135-abdf-4aaf-8868-2002dfeea60c" -diskName "rescuexm001fixedosrescuex001fixedossujmanagedvm_OsDisk_1_6bee8dc1d09d42f9b6d7954" -snapshotName "rescuexm001fixedosSnaprescuex001fixedossujmanagedvm_OsDisk_1_6bee8dc1d09d42f9b6d" -prefix "rescuexm001" 
+    .\Restore-AzureRMOriginalVM.ps1 -ResourceGroup "testsujmg" -VmName "sujmanagedvm" -SubID "d7eaa135-abdf-4aaf-8868-2002dfeea60c" -diskName "rescuexm001fixedosrescuex001fixedossujmanagedvm_OsDisk_1_6bee8dc1d09d42f9b6d7954"  -prefix "rescuexm001" 
 
 .EXAMPLE 
     .\Restore-AzureRMOriginalVM.ps1 -ResourceGroup "sujtemp" -VmName "sujnortheurope" -SubID "d7eaa135-abdf-4aaf-8868-2002dfeea60c" -FixedOsDiskUri "https://sujtemp6422.blob.core.windows.net/vhds/rescuexU001fixedosrescuexUnARMfixedosrescuex51fixedosrescuex48fixedosrescuex47fixedosrescuex2fixedosrescuefixedosrescue02fixedossujnortheurope.vhd" -OriginalosDiskVhdUri "https://sujtemp6422.blob.core.windows.net/vhds/rescuexUnARMfixedosrescuex51fixedosrescuex48fixedosrescuex47fixedosrescuex2fixedosrescuefixedosrescue02fixedossujnortheurope.vhd"  -prefix "rescuexU001" 
@@ -65,9 +62,6 @@ Param(
 
         [Parameter(mandatory=$false)]
         [String]$prefix = "rescue",
-
-        [Parameter(mandatory=$false)]
-        [String]$snapshotName,
 
         [Parameter(mandatory=$false)]
         [String] $OriginalosDiskVhdUri
@@ -252,29 +246,11 @@ else
 {
     Write-Log "Did not acknowledge deleting the rescource group ==> $RescueResourceGroup" -color Cyan
 }
-
-if ($managedVM)
-{
-    Write-host "`nWould you like to delete the snapshot ==> $Snapshotname that was taken (Y/N)?"
-    if ((read-host) -eq 'Y' )
-    {
-        write-log "Acknowledged deleting the snapshot ==> $Snapshotname" -color Cyan
-        Remove-AzureRmSnapshot -SnapshotName $snapshotName -ResourceGroupName $ResourceGroup -Force 
-    }
-}
-else
+if (-not $managedVM)
 {
     DeleteSnapShotAndVhd -osDiskVhdUri $OriginalosDiskVhdUri -ResourceGroup $ResourceGroup
 }
 
-
 Invoke-Item $LogFile
 $scriptResult = Get-ScriptResultObject -scriptSucceeded $true -rescueScriptCommand $MyInvocation.Line 
 return $scriptResult
-
-
-
-
-
-
-
