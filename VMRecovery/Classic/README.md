@@ -19,15 +19,23 @@ This version of the VM recovery script is for for use with Azure VMs created usi
 If a Windows VM in Azure does not boot. Typically in this scenario VM screenshot from [boot diagnostics] (https://azure.microsoft.com/en-us/blog/boot-diagnostics-for-virtual-machines-v2/) does not show login screen but a boot issue.
 
 ### Execution guidance 
-1. Download and extract the entire project folder https://github.com/Azure/azure-support-scripts/archive/master.zip to c:\azscripts\ (or custom)
-2. Or pull it using git client github-windows://openRepo/https://github.com/Azure/azure-support-scripts
-3. Open Azure Powershell and and execute. 
+1. Download and extract the azure-support-scripts repo to a local folder:
+   https://github.com/Azure/azure-support-scripts/archive/master.zip  
+   
+   Or if you have the Git client installed you can use the following command:
+
+   git clone https://github.com/Azure/azure-support-scripts <local folder>
+
+2. Launch Azure Powershell and and execute. 
 ```PowerShell
-Step 1 c:\azscripts\RecoverVM\Classic\New-AzureRescueVM.ps1 MYCLOUDSERVICENAME MYVMNAME
-Step 2 Log to the Recovery VM created in step 1 fix OSDisk issues and follow instruction to run
-Step 3 c:\azscripts\RecoverVM\Classic\Restore-AzureOriginalVM MYCLOUDSERVICENAME <NameofRecoveryVM that was created in step 1>
+.\New-AzureRescueVM.ps1 <cloud service name> <vm name>
 ```
-4. Follow the instructions in the script output.
+3. Log on to the rescue VM created by the script to fix the problem VM's OS disk.
+
+4. To recreate the problem VM, run:
+```PowerShell
+.\Restore-AzureOriginalVM <cloud service name> <rescue vm name>
+```
 
 ## Parameters or input
 - Cloud service name
