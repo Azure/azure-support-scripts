@@ -11,7 +11,7 @@ If an Azure VM is inaccessible it may be necessary to attach the OS disk to anot
 
 # Supported VM Types
 
-The VM recovery scripts are supported for use with Azure VMs created with the Classic deployment model. Both Linux and Windows guests are supported.
+This version of the VM recovery script is for for use with Azure VMs created using Classic deployment model. Both Linux and Windows guests are supported. For VMs created using the Resource Manager deployment model, use the version located under \ResourceManager instead of \Classic.
 
 # Scenarios
 
@@ -19,26 +19,19 @@ The VM recovery scripts are supported for use with Azure VMs created with the Cl
 If a Windows VM in Azure does not boot. Typically in this scenario VM screenshot from [boot diagnostics] (https://azure.microsoft.com/en-us/blog/boot-diagnostics-for-virtual-machines-v2/) does not show login screen but a boot issue.
 
 ### Execution guidance 
-- download and extract the entire project folder https://github.com/Azure/azure-support-scripts/archive/master.zip to c:\azscripts\ (or custom)
-- Or pull it using git client github-windows://openRepo/https://github.com/Azure/azure-support-scripts
-- Open Azure Powershell and and execute
- 
-
+1. Download and extract the entire project folder https://github.com/Azure/azure-support-scripts/archive/master.zip to c:\azscripts\ (or custom)
+2. Or pull it using git client github-windows://openRepo/https://github.com/Azure/azure-support-scripts
+3. Open Azure Powershell and and execute. 
 ```PowerShell
 Step 1 c:\azscripts\RecoverVM\Classic\New-AzureRescueVM.ps1 MYCLOUDSERVICENAME MYVMNAME
 Step 2 Log to the Recovery VM created in step 1 fix OSDisk issues and follow instruction to run
 Step 3 c:\azscripts\RecoverVM\Classic\Restore-AzureOriginalVM MYCLOUDSERVICENAME <NameofRecoveryVM that was created in step 1>
 ```
-
-
-- Follow the instructions and be patient (it may take between 15mins and multiple hours [if disk repair takes long])
+4. Follow the instructions in the script output.
 
 ## Parameters or input
-- hosting service name (cloud service name)
+- Cloud service name
 - VM name
 
-## Supported Platforms / Dependencies
- - current version of Azure PowerShell (Tested with 5.1.14393)
- 
-
-
+## Supported platforms/dependencies
+ - Azure PowerShell 5.1.14393 or later.
