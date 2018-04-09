@@ -15,7 +15,7 @@ If an Azure VM is inaccessible it may be necessary to attach the OS disk to anot
 
 # Supported VM Types
 
-The VM recovery scripts are supported for use with Azure VMs created using the Resource Manager deployment model. Both Linux and Windows guests are supported. Only unmanaged disk VMs are supported. Support for managed disk VMs is planned but not currently implemented.
+The VM recovery scripts are supported for use with Azure VMs created using the Resource Manager deployment model. Both Linux and Windows guests are supported. VMs using either managed or unmanaged disks are supported.
 
 ## When would you use the script?
 
@@ -23,17 +23,19 @@ If VM in Azure does not boot. Typically in this scenario VM screenshot from [boo
 
 ## Execution guidance
 ### PowerShell - Cloud Shell
-1. Open [Azure Cloud Shell](https://docs.microsoft.com/en-us/azure/cloud-shell/overview) and switch from **Bash** to **PowerShell**. 
+1. Launch PowerShell in Azure Cloud Shell 
 
-2. From the **`PS Azure:\>`** prompt type **`c:`** then **`<ENTER>`**.
+   [![](https://shell.azure.com/images/launchcloudshell@2x.png "Launch Azure Cloud Shell")](https://shell.azure.com/powershell)  
+
+2. From the **`PS Azure:\>`** prompt type **`cd C:\`** then **`<ENTER>`**.
 
 3. Download the files into your cloud shell storage by running:
 
-**`git clone https://github.com/azure/azure-support-scripts.git c:\azure-support-scripts`**
+**`git clone https://github.com/Azure/azure-support-scripts c:\azure-support-scripts`**
 
-4. Switch into the the folder by running:
+4. Switch into the folder by running:
 
-**`cd c:\azure-support-scripts\RecoverVM\ResourceManager`**
+**`cd C:\azure-support-scripts\VMRecovery\ResourceManager`**
 
 5. Run the following command to attach the OS disk of the problem VM to a rescue VM:
 
@@ -57,8 +59,8 @@ To double-check the resource group name and VM name, you can run **`Get-AzureRmV
             `.\Restore-AzureRMOriginalVM.PS1  -ResourceGroup <ResourceGroup> -VmName <-VmName> -SubID <SUBID> -FixedOsDiskUri <FixedOsDiskUri>` This will be provided in the console output plus Log after executing first step>
             After the OS Disk has been recovered, execute the Restore-AzureRMOriginalVM.PS1
 ## Version of Rescue VM
-- For Windows Rescue VM is created with the latest version of 2016 image(GUI)
-- For Linux   Rescue VM is created with the latest version of Canonical.UbuntuServer.16.04-LTS.latest
+- For Windows, the rescue VM is created from the Windows Server 2016 version 1607 build 14393 marketplace image that includes the Desktop Experience.
+- For Linux, the rescue VM is created from the Canonical Ubuntu Server 16.04 LTS marketplace image.
 
 ## To get help on the scripts and its parameters run the following
 
