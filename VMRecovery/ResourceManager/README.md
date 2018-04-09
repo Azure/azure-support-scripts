@@ -30,17 +30,17 @@ If VM in Azure does not boot. Typically in this scenario VM screenshot from [boo
 2. From the **`PS Azure:\>`** prompt type **`cd C:\`** then **`<ENTER>`**.
 
 3. Download the files into your cloud shell storage by running:
-
-**`git clone https://github.com/Azure/azure-support-scripts c:\azure-support-scripts`**
-
+```PowerShell
+git clone https://github.com/Azure/azure-support-scripts c:\azure-support-scripts
+```
 4. Switch into the folder by running:
-
-**`cd C:\azure-support-scripts\VMRecovery\ResourceManager`**
-
+```PowerShell
+cd C:\azure-support-scripts\VMRecovery\ResourceManager
+```
 5. Run the following command to attach the OS disk of the problem VM to a rescue VM:
-
-**`.\New-AzureRMRescueVM.ps1 -ResourceGroup <ResourceGroup> -VmName <vmName> -SubID <subscriptionId>`**
-
+```PowerShell
+.\New-AzureRMRescueVM.ps1 -ResourceGroup <ResourceGroup> -VmName <vmName> -SubID <subscriptionId>
+```
 To double-check the resource group name and VM name, you can run **`Get-AzureRmVM`**. To double-check the subscription ID you can run **`Get-AzureRmSubscription`**.
 
 6. When it completes, it will return the command to use later to restore the problem VM.
