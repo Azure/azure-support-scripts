@@ -20,12 +20,13 @@ If a Windows VM in Azure does not boot. Typically in this scenario VM screenshot
 
 ### Execution guidance 
 1. Download and extract the azure-support-scripts repo to a local folder:
+
    https://github.com/Azure/azure-support-scripts/archive/master.zip  
    
    Or if you have the Git client installed you can use the following command:
-
+```PowerShell
    git clone https://github.com/Azure/azure-support-scripts <local folder>
-
+```
 2. Launch Azure Powershell and and execute. 
 ```PowerShell
 .\New-AzureRescueVM.ps1 <cloud service name> <vm name>
