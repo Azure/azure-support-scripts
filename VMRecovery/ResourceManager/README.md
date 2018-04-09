@@ -15,7 +15,7 @@ If an Azure VM is inaccessible it may be necessary to attach the OS disk to anot
 
 # Supported VM Types
 
-The VM recovery scripts are supported for use with Azure VMs created using the Resource Manager deployment model. Both Linux and Windows guests are supported. VMs using either managed or unmanaged disks are supported.
+This version of the VM recovery script is for use with Azure VMs created using the Resource Manager deployment model. It supports both Linx and Windows VMs. It supports both managed and unmanaged disk VMs. For VMs created using the Classic deployment model, use the version located under \Classic instead of \ResourceManager.
 
 ## When would you use the script?
 
