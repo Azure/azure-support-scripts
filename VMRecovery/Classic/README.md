@@ -16,7 +16,7 @@ This version of the VM recovery script is for for use with Azure VMs created usi
 # Scenarios
 
 ## When would you use the script?
-If a Windows VM in Azure does not boot. Typically in this scenario VM screenshot from [boot diagnostics] (https://azure.microsoft.com/en-us/blog/boot-diagnostics-for-virtual-machines-v2/) does not show login screen but a boot issue.
+The VM recovery script can be used to investigate and mitigate issues with a VM that is inaccessible or can't boot. For example, if you are unable to connect to the VM via RDP or SSH, or the [boot diagnostics](https://azure.microsoft.com/en-us/blog/boot-diagnostics-for-virtual-machines-v2/) screenshot shows a boot failure, the VM recovery script automates the process of attaching the problem VM's OS disk to a rescue VM so you have file system access to the OS disk to troubleshoot it.
 
 ### Execution guidance 
 1. Download and extract the azure-support-scripts repo to a local folder:
