@@ -29,7 +29,7 @@ If VM in Azure does not boot. Typically in this scenario VM screenshot from [boo
 
 2. From the **`PS Azure:\>`** prompt type **`cd C:\`** then **`<ENTER>`**.
 
-3. Download the files into your cloud shell storage by running:
+3. Run the following command to download the scripts. Git is preinstalled in Cloud Shell. You do not need to install it separately.
 ```PowerShell
 git clone https://github.com/Azure/azure-support-scripts c:\azure-support-scripts
 ```
