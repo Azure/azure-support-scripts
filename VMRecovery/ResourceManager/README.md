@@ -21,33 +21,37 @@ This version of the VM recovery script is for use with Azure VMs created using t
 
 If VM in Azure does not boot. Typically in this scenario VM screenshot from [boot diagnostics](https://azure.microsoft.com/en-us/blog/boot-diagnostics-for-virtual-machines-v2/) does not show login screen but a boot issue.
 
-## Execution guidance
+## Usage
 ### PowerShell - Cloud Shell
 1. Launch PowerShell in Azure Cloud Shell 
 
    <a href="https://shell.azure.com/powershell" target="_blank"><img border="0" alt="Launch Cloud Shell" src="https://shell.azure.com/images/launchcloudshell@2x.png"></a>
 
-2. From the **`PS Azure:\>`** prompt type **`cd C:\`** then **`<ENTER>`**.
+2. If it is your first time connecting to Azure Cloud Shell, select **`PowerShell (Windows)`** when you see **`Welcome to Azure Cloud Shell`**. 
 
-3. Run the following command to download the scripts. Git is preinstalled in Cloud Shell. You do not need to install it separately.
+3. If you then see **`You have no storage mounted`**, select the subscription where the VM you are troubleshooting resides, then select **`Create storage`**.
+
+4. From the **`PS Azure:\>`** prompt type **`cd C:\`** then **`<ENTER>`**.
+
+5. Run the following command to download the scripts. Git is preinstalled in Cloud Shell. You do not need to install it separately.
 ```PowerShell
 git clone https://github.com/Azure/azure-support-scripts c:\azure-support-scripts
 ```
-4. Switch into the folder by running:
+6. Switch into the folder by running:
 ```PowerShell
 cd C:\azure-support-scripts\VMRecovery\ResourceManager
 ```
-5. Run the following command to attach the OS disk of the problem VM to a rescue VM:
+7. Run the following command to attach the OS disk of the problem VM to a rescue VM:
 ```PowerShell
 .\New-AzureRMRescueVM.ps1 -ResourceGroup <ResourceGroup> -VmName <vmName> -SubID <subscriptionId>
 ```
 To double-check the resource group name and VM name, you can run **`Get-AzureRmVM`**. To double-check the subscription ID you can run **`Get-AzureRmSubscription`**.
 
-6. When it completes, it will return the command to use later to restore the problem VM.
+8. When it completes, it will return the command to use later to restore the problem VM.
 
-7. Connect to the rescue VM and resolve the issue with the OS disk of the problem VM.
+9. Connect to the rescue VM and resolve the issue with the OS disk of the problem VM.
 
-8. Run Restore-AzureRMOriginalVM.ps1 with the syntax shown in the output from New-AzureRMRescueVM.ps1
+10. Run Restore-AzureRMOriginalVM.ps1 with the syntax shown in the output from New-AzureRMRescueVM.ps1
 
 ### PowerShell - Local
 - The script must be executed in two phases
