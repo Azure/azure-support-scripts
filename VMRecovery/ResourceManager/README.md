@@ -25,7 +25,7 @@ If VM in Azure does not boot. Typically in this scenario VM screenshot from [boo
 ### PowerShell - Cloud Shell
 1. Launch PowerShell in Azure Cloud Shell 
 
-   <a href="https://shell.azure.com/powershell"><img border="0" alt="Launch Cloud Shell" src="https://shell.azure.com/images/launchcloudshell@2x.png"></a>
+   <a href="https://shell.azure.com/powershell" target="_blank"><img border="0" alt="Launch Cloud Shell" src="https://shell.azure.com/images/launchcloudshell@2x.png"></a>
 
 2. From the **`PS Azure:\>`** prompt type **`cd C:\`** then **`<ENTER>`**.
 
