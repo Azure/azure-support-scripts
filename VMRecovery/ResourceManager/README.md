@@ -3,15 +3,14 @@
 # Overview
 If an Azure VM is inaccessible it may be necessary to attach the OS disk to another Azure VM in order to perform recovery steps. The VM recovery scripts automate the recovery steps below.
 
-- Stop VM
-- Take a snapshot of the OS Disk
-- Create a Temporary Rescue VM
-- Attach the OS Disk to the Rescue VM
-- RDP to RescueVM
-- From the Rescue VM and fix the disks manually.
-- Detach the Data disk from Rescue VM
-- Perform Disk Swap to point the OsDisk.Vhd.Uri to the recovered OS Disk Uri
-- Finally Remove all the resources that were created for the Rescue VM
+1. Stops the problem VM
+2. Takes a snapshot of the problem VM's OS disk
+3. Creates a new temporary VM ("rescue VM")
+4. Attaches the problem VM's OS disk as a data disk on the rescue VM
+5. You can then connect to the rescue VM to investigate and mitigates issues with the problem VM's OS disk
+6. Detaches the data disk from rescue VM
+7. Performs a disk swap to swap the problem VM's OS disk from the rescue VM back to the problem VM
+8. Removes the resources that were created for the rescue VM
 
 # Supported VM Types
 
