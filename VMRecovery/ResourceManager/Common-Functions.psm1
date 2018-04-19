@@ -226,19 +226,22 @@ function SupportedVM([Object[]]$vm,
     #Checks to see if the Image exist, if not it returns false as disk swap does not works unless the imgage is available.
     Try
     {
-        if ($vm.StorageProfile.OsDisk.CreateOption -eq "FromImage")
+        if ($vm.Plan)
         {
-            $ImageObj =(get-azurermvmimage -Location $vm.Location -PublisherName $vm.StorageProfile.ImageReference.Publisher -Offer $vm.StorageProfile.ImageReference.Offer -Skus $vm.StorageProfile.ImageReference.sku)[-1]
-            if (-not $ImageObj)
+            if($vm.Plan.Publisher) ##Indicates that this is a VM with a plan
             {
-                Write-Log "Artifact: VMImage was not found,script can't be used you may hit the same error if you manually try to perform the same steps as well." -color red
-                return $false
+                $ImageObj =(get-azurermvmimage -Location $vm.Location -PublisherName $vm.StorageProfile.ImageReference.Publisher -Offer $vm.StorageProfile.ImageReference.Offer -Skus $vm.StorageProfile.ImageReference.sku)[-1]
+                if (-not $ImageObj)
+                {
+                    Write-Log "This VM was created from a marketplace image with Plan information, but the marketplace image is no longer published, so if this VM were removed, it would not be possible to recreate it from the existing disk." -color red
+                    return $false
+                }
             }
         }
     }
     catch
     {
-        Write-Log "Artifact: VMImage was not found,script can't be used you may hit the same error if you manually try to perform the same steps as well." -color red
+        Write-Log "This VM was created from a marketplace image with Plan information, but the marketplace image is no longer published, so if this VM were removed, it would not be possible to recreate it from the existing disk." -color red
         return $false
     }
 
