@@ -1,12 +1,12 @@
 ﻿<#
 .SYNOPSIS
-    This script is recreateds the original VM with the Fixed OS Dishk VHD
+    This script  recreates the original VM with the Fixed OS Dishk VHD
 
 .DESCRIPTION
-    This script automates the creation of the orinal VM, by recreating it using the fixed OS Disk VHD.
+    This script automates the creation of the original VM, by recreating it using the fixed OS Disk VHD.
 	-Detaches the disk from the rescue VM
 	-Creates the Original VM using the fixed OS Disk
-    -Parameter list for this is provided after the successfull completion of .\CreateClassicRescueVM.ps1
+    -Parameter list for this is provided after the successful completion of .\CreateClassicRescueVM.ps1
 
 .PARAMETER ServiceName
     This is a mandatory Parameter, Name of the cloud service of the problem  VM belong

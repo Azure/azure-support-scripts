@@ -23,7 +23,7 @@
     Set-AzureSubscription -CurrentStorageAccountName $SAName -SubscriptionId $sub.SubscriptionId
     
     #detach the data disk 
-    Write-host "Detaching the Data disk from the Resuce VM"    
+    Write-host "Detaching the Data disk from the Rescue VM"    
     Write-host "Running `$attachedVm | Remove-AzureDataDisk -LUN 0 | Update-AzureVM"
     $attachedVm | Remove-AzureDataDisk -LUN 0 | Update-AzureVM
     Start-Sleep -Seconds 45
@@ -47,7 +47,7 @@
     }
     catch
     {     
-        #default values only used when vm export path can not be imported as vm
+        #default values only used when vm export path cannot be imported as vm
         $VMSize = $vm.VM.RoleSize
         $PublicRdpPort = 3389
         $SubNetNames = '' #"PubSubnet","PrivSubnet" #leave empty if not required

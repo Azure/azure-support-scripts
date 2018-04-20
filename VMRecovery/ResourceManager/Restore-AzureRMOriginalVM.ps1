@@ -23,7 +23,7 @@
     This is a mandatory Parameter, This would be the uri of the fixedOSDisk, this information will be provided after the successful execution of CreateARMRescueVM.
 
 .PARAMETER prefix
-    Optional Parameter. By default the new Rescue VM and its resources are all created under a ResourceGroup named same as the orginal resourceGroup name with a prefix of 'rescue', however the prefix can be changed to a different value to overide the default 'rescue'
+    Optional Parameter. By default the new Rescue VM and its resources are all created under a ResourceGroup named same as the original resourceGroup name with a prefix of 'rescue', however the prefix can be changed to a different value to override the default 'rescue'
 
 .PARAMETER diskName
     Optional Parameter. This is always passed for a Managed VM, diskname of the attached data disk so that it can be removed from RescueVM
@@ -188,8 +188,8 @@ write-log "`"$stopped`" ==> $($stopped)" -logOnly
 if (-not $stopped) 
 {
    write-log   "$($Stopped)" -logonly
-   Write-Log "Unable to stop the  VM ==> $VmName successfully, try manully stopping the VM from portal" -Color Red
-   $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason "Unable to stop the  VM ==> $VmName successfully, try manully stopping the VM from portal"
+   Write-Log "Unable to stop the  VM ==> $VmName successfully, try manually stopping the VM from portal" -Color Red
+   $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason "Unable to stop the  VM ==> $VmName successfully, try manually stopping the VM from portal"
    return $scriptResult
 }
 
@@ -236,7 +236,7 @@ if ($windowsVM)
 }
 
 #Step 6 Clean up
-Write-Host "`nWere you able to successfully recover the VM ==> $VmName and are you ready to delete all the rescue reources that were created under the Resource Group $RescueResourceGroup (Y/N)?" -ForegroundColor Yellow
+Write-Host "`nWere you able to successfully recover the VM ==> $VmName and are you ready to delete all the rescue resources that were created under the Resource Group $RescueResourceGroup (Y/N)?" -ForegroundColor Yellow
 if ((read-host) -eq 'Y' )
 {
     Write-Log "Acknowledged deleting the rescource group ==> $RescueResourceGroup" -color Cyan

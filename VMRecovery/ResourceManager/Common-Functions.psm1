@@ -142,7 +142,7 @@ function SnapshotAndCopyOSDisk  (
         }
 
 
-        Write-Log "Initiating Copy proccess of Snapshot" 
+        Write-Log "Initiating Copy process of Snapshot" 
         #Save array of all snapshots
         $VMsnaps = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | sort @{expression="SnapshotTime";Descending=$true} | Where-Object {$_.Name -eq $osDiskvhd -and $_.ICloudBlob.IsSnapshot -and $_.SnapshotTime -ne $null } 
 
@@ -161,7 +161,7 @@ function SnapshotAndCopyOSDisk  (
         }
         else
         {
-           Write-Log "Snapshot copy was unsuccessfull" -Color Red       
+           Write-Log "Snapshot copy was unsuccessful" -Color Red       
         }
     }
     Catch
@@ -223,22 +223,25 @@ function SupportedVM([Object[]]$vm,
         Return $false
     }
 
-    #Checks to see if the Image exist, if not it returns false as disk swap does not works unless the imgage is available.
+    #Checks to see if the Image exist, if not it returns false as disk swap does not works unless the image is available.
     Try
     {
-        if ($vm.StorageProfile.OsDisk.CreateOption -eq "FromImage")
+        if ($vm.Plan)
         {
-            $ImageObj =(get-azurermvmimage -Location $vm.Location -PublisherName $vm.StorageProfile.ImageReference.Publisher -Offer $vm.StorageProfile.ImageReference.Offer -Skus $vm.StorageProfile.ImageReference.sku)[-1]
-            if (-not $ImageObj)
+            if($vm.Plan.Publisher) ##Indicates that this is a VM with a plan
             {
-                Write-Log "Artifact: VMImage was not found,script can't be used you may hit the same error if you manually try to perform the same steps as well." -color red
-                return $false
+                $ImageObj =(get-azurermvmimage -Location $vm.Location -PublisherName $vm.StorageProfile.ImageReference.Publisher -Offer $vm.StorageProfile.ImageReference.Offer -Skus $vm.StorageProfile.ImageReference.sku)[-1]
+                if (-not $ImageObj)
+                {
+                    Write-Log "This VM was created from a marketplace image with Plan information, but the marketplace image is no longer published, so if this VM were removed, it would not be possible to recreate it from the existing disk." -color red
+                    return $false
+                }
             }
         }
     }
     catch
     {
-        Write-Log "Artifact: VMImage was not found,script can't be used you may hit the same error if you manually try to perform the same steps as well." -color red
+        Write-Log "This VM was created from a marketplace image with Plan information, but the marketplace image is no longer published, so if this VM were removed, it would not be possible to recreate it from the existing disk." -color red
         return $false
     }
 
@@ -296,7 +299,7 @@ function CreateRescueVM(
         }
         if ([string]::IsNullOrWhitespace($osType))
         {
-            Write-log "Unable to determine the osType of the $($vm.name)" -color red
+            Write-log "Unable to determine the OS Type of the $($vm.name)" -color red
             return null
         }
         if ([string]::IsNullOrWhitespace($location))
@@ -306,7 +309,7 @@ function CreateRescueVM(
         }
         if ([string]::IsNullOrWhitespace($networkInterfaceName))
         {
-            Write-log "Unable to determine the networkInterfaceName of the $($vm.name)" -color red
+            Write-log "Unable to determine the NetworkInterfaceName of the $($vm.name)" -color red
             return null
         }
         $rescueOSDiskName = "$prefix$osDiskName"
@@ -346,7 +349,7 @@ function CreateRescueVM(
         $rg = Get-AzureRmResourceGroup -Name $RescueResourceGroup -Location $Location -ErrorAction SilentlyContinue
         if ($rg)
         {
-            Write-log "`nResourceGroup ==> $($RescueResourceGroup) already exists!!! `nIt looks like you may be rerunning the script without actully deleting the resourcegroup that was created from the previous execution or you may already have a resourcegroup by that same name. `nPlease either delete the ResourceGroup ==> $($RescueResourceGroup) if you no longer need it or rerun the script again by adding the parameter '-prefix' and specify a new prefix  to make a new resourcegroup"  -color red
+            Write-log "`nResourceGroup ==> $($RescueResourceGroup) already exists!!! `nIt looks like you may be rerunning the script without actually deleting the resourcegroup that was created from the previous execution or you may already have a resourcegroup by that same name. `nPlease either delete the ResourceGroup ==> $($RescueResourceGroup) if you no longer need it or rerun the script again by adding the parameter '-prefix' and specify a new prefix  to make a new resourcegroup"  -color red
             return $null
         }
         else

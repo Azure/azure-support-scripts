@@ -44,7 +44,7 @@
         }
         else
         {
-            Write-host "Snapshot copy was unsuccessfull" -ForegroundColor Red       
+            Write-host "Snapshot copy was unsuccessful" -ForegroundColor Red       
         }
     }
     catch

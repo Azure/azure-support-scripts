@@ -71,7 +71,7 @@ if (-not $NoSnapshot)
 {
     try
     {
-        Write-host "Looks like -NoSnapshot was not specifed so will proceed to take a snapshot of the OS Disk" 
+        Write-host "Looks like -NoSnapshot was not specified so will proceed to take a snapshot of the OS Disk" 
         Write-host "Stopping the VM first"
         Stop-AzureVM -ServiceName $ServiceName -VM $vm -StayProvisioned -ErrorAction stop
         if (-not $vm.VM.OSVirtualHardDisk.MediaLink.Authority) 
@@ -89,7 +89,7 @@ if (-not $NoSnapshot)
     }
     catch
     {
-        Write-Host "Unable to take snapshot, plese see the error below" -ForegroundColor Red
+        Write-Host "Unable to take snapshot, please see the error below" -ForegroundColor Red
         write-host "Exception Message: $($_.Exception.Message)" -ForegroundColor Red
         Write-host "Error in Line# : $($_.Exception.Line) =>  $($MyInvocation.MyCommand.Name)" -ForegroundColor Red
         return $null

@@ -21,10 +21,10 @@
 .PARAMETER SubID
     Optional Parameter, SubscriptionID - the VM belongs to.
 .PARAMETER showErrors
-    Optional Parameter. By default it is set to true, so it displays all errors thrown by Powershell in the console, if set to False it runs in silentMode. 
+    Optional Parameter. By default it is set to true, so it displays all errors thrown by PowerShell in the console, if set to False it runs in silentMode. 
 
 .PARAMETER prefix
-    Optional Parameter. By default the new Rescue VM and its resources are all created under a ResourceGroup named same as the orginal resourceGroup name with a prefix of 'rescue', however the prefix can be changed to a different value to overide the default 'resuce'
+    Optional Parameter. By default the new Rescue VM and its resources are all created under a ResourceGroup named same as the original resourceGroup name with a prefix of 'rescue', however the prefix can be changed to a different value to override the default 'rescue'
 
 .PARAMETER UserName
     Optional Parameter. Allows to pass in the UserName  of the Rescue VM during its creation, by default during case creation it will prompt
@@ -57,6 +57,11 @@
     $scriptResult =  .\New-AzureRMRescueVM.ps1 -ResourceGroup testsujmg -VmName sujmanagedvm -SubID d7eaa135-abdf-4aaf-8868-2002dfeea60c -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex17" -AllowManagedVM   #--Example for Managed VM
 .EXAMPLE
     $scriptResult = .\New-AzureRMRescueVM.ps1 -ResourceGroup testsujmg -VmName sujmanagedvm  -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex17" -AllowManagedVM   #--Example for Managed VM
+.EXAMPLE (test with a Market place image with a Plan Object)
+    $scriptResult = .\New-AzureRMRescueVM.ps1 -ResourceGroup recoverytest -VmName datasciencevm  -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex17" -AllowManagedVM
+.EXAMPLE (Using a Cutsom Image VM)
+    $scriptResult =  .\New-AzureRMRescueVM.ps1 -ResourceGroup testvmrecovery2 -VmName win2016custom  -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex18"
+
 
 
 .NOTES
@@ -125,8 +130,8 @@ Write-Log  $MyInvocation.Line -logOnly
 #Checks to see if AzureRM is available
 if (-not (get-module -ListAvailable -name "AzureRM.Profile")) 
 {
-    write-log "Cannot procceed, Please install Azure Powershell from (https://docs.microsoft.com/en-us/powershell/azure/install-azurerm-ps) or use cloudshell (https://shell.azure.com/" -color red
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason "Cannot procceed, Please install Azure Powershell from (https://docs.microsoft.com/en-us/powershell/azure/install-azurerm-ps) or use cloudshell (https://shell.azure.com/"
+    write-log "Cannot proceed, Please install Azure PowerShell from (https://docs.microsoft.com/en-us/powershell/azure/install-azurerm-ps) or use Cloud Shell (https://shell.azure.com/" -color red
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason "Cannot proceed, Please install Azure PowerShell from (https://docs.microsoft.com/en-us/powershell/azure/install-azurerm-ps) or use Cloud Shell (https://shell.azure.com/"
     return $scriptResult
 
 } 
@@ -141,7 +146,7 @@ if (-not $SubID)
     $SubID = (Get-AzureRmContext).Subscription.Id 
     if (-not $SubID)
     {
-        Write-Log "Unable to determine the  $SubID, Please run the scipt and provide the subscriptionID with -SubscriptionID switch." -Color Red
+        Write-Log "Unable to determine the  $SubID, Please run the script and provide the subscriptionID with -SubscriptionID switch." -Color Red
         $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason "Unable to determine the  $SubID, Please run the scipt and provide the subscriptionID with -SubscriptionID switch."
         return $scriptResult
     }
@@ -171,10 +176,10 @@ try
 }
 catch 
 {
-    write-Log "Specified VM ==> $VmName was not found in the Resource Group ==> $ResourceGroup and in Subscription ==> $SubID, please make sure you are providing the correct subId/RG/vmName of the problem VM" -color red
+    write-Log "Specified VM ==> $VmName was not found in the Resource Group ==> $ResourceGroup and in Subscription ==> $SubID, please make sure you are providing the correct SubId/RG/VmName of the problem VM" -color red
     Write-Log "Exception Type: $($_.Exception.GetType().FullName)" -logOnly
     Write-Log "Exception Message: $($_.Exception.Message)" -logOnly
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason "Specified VM ==> $VmName was not found in the Resource Group ==> $ResourceGroup, please make sure you are the subId/RG/vmName of the problem VM"
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason "Specified VM ==> $VmName was not found in the Resource Group ==> $ResourceGroup, please make sure you are the SubId/RG/VmName of the problem VM"
     return $scriptResult
 }
 write-log "`"$vm`" => $($vm)" -logOnly
@@ -189,12 +194,12 @@ Write-Log "Successfully got the VM Object info for $($vm.Name)" -Color Green
 if ($vm.StorageProfile.OsDisk.ManagedDisk) {$managedVM = $true} else {$managedVM = $false}
 if ($vm.StorageProfile.OsDisk.OsType -eq "Windows") 
 {
-    write-log "Detected 'Windows' as the OSType for $Vmname"      
+    write-log "Detected 'Windows' as the OS Type for $Vmname"      
     $windowsVM= $true
 }
 else 
 {   
-    write-log "Detected 'Linux' as the OSType for $Vmname" 
+    write-log "Detected 'Linux' as the OS Type for $Vmname" 
     $windowsVM= $false
 }
 
