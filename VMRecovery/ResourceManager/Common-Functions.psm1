@@ -320,12 +320,12 @@ function CreateRescueVM(
             $rescueosDiskVhduri = $osDiskVhdUri.Replace($osDiskName,$rescueOSDiskName)
         }
 
-        $rescuevm = New-AzureRmVMConfig -VMName $rescueVMNname -VMSize $vmSize;
+        $rescuevm = New-AzureRmVMConfig -VMName $rescueVMNname -VMSize $vmSize -WarningAction SilentlyContinue
         $rescuenetworkInterfaceName = "$prefix$networkInterfaceName"
         $nic1 = Get-AzureRmNetworkInterface   -ResourceGroupName $ResourceGroup | Where-Object {$_.Name -eq $networkInterfaceName}
         $nic1Id = $nic1.Id
         $rescuenic1Id = $nic1Id.Replace($networkInterfaceName,$rescuenetworkInterfaceName)
-        $rescuevm = Add-AzureRmVMNetworkInterface -VM $rescuevm -Id $rescuenic1Id
+        $rescuevm = Add-AzureRmVMNetworkInterface -VM $rescuevm -Id $rescuenic1Id -WarningAction SilentlyContinue
         $rescuevm.NetworkProfile.NetworkInterfaces[0].Primary = $true
         #$rescuevm = Set-AzureRmVMOSDisk -VM $rescuevm -VhdUri $rescueosDiskVhduri -name $rescueOSDiskName -CreateOption attach -Windows              
         $rescueStorageType = "Standard_GRS"
@@ -391,16 +391,16 @@ function CreateRescueVM(
             $Credential = Get-Credential -Message "Enter a username and password for the Rescue virtual machine."
         }
    
-        $rescuevm = New-AzureRmVMConfig -VMName $rescueVMNname -VMSize $rescueVMSize
+        $rescuevm = New-AzureRmVMConfig -VMName $rescueVMNname -VMSize $rescueVMSize -WarningAction SilentlyContinue
         if ($osType -eq 'Windows')
         {
-            $rescuevm = Set-AzureRmVMOperatingSystem -VM $rescuevm -Windows -ComputerName $rescueComputerName -Credential $Credential -ProvisionVMAgent -EnableAutoUpdate 
+            $rescuevm = Set-AzureRmVMOperatingSystem -VM $rescuevm -Windows -ComputerName $rescueComputerName -Credential $Credential -ProvisionVMAgent -EnableAutoUpdate -WarningAction SilentlyContinue
             #get the latest" version of 2016 image with a GUI
             $ImageObj =(get-azurermvmimage -Location $location -PublisherName 'MicrosoftWindowsServer' -Offer 'WindowsServer' -Skus '2016-Datacenter')[-1]
         }
         else
         {
-            $rescuevm = Set-AzureRmVMOperatingSystem -VM $rescuevm -Linux -ComputerName $rescueComputerName -Credential $Credential 
+            $rescuevm = Set-AzureRmVMOperatingSystem -VM $rescuevm -Linux -ComputerName $rescueComputerName -Credential $Credential -WarningAction SilentlyContinue
             #$ImageObj = (get-azurermvmimage -Location westus -PublisherName 'Canonical' -Offer 'UbuntuServer' -Skus '16.04-LTS')[-1]
             $ImageObj = (get-azurermvmimage -Location $location -PublisherName 'Canonical' -Offer 'UbuntuServer' -Skus '16.04-LTS')[-1]
         }
@@ -426,20 +426,20 @@ function CreateRescueVM(
             #$Publisher = $vm.StorageProfile.ImageReference.Publisher
             $Publisher = $ImageObj.PublisherName
         }
-        $rescuevm = Set-AzureRmVMSourceImage -VM $rescuevm -PublisherName $Publisher -Offer $offer -Skus $sku -Version $Version
-        $rescuevm = Add-AzureRmVMNetworkInterface -VM $rescuevm -Id $rescueInterface.Id
+        $rescuevm = Set-AzureRmVMSourceImage -VM $rescuevm -PublisherName $Publisher -Offer $offer -Skus $sku -Version $Version -WarningAction SilentlyContinue
+        $rescuevm = Add-AzureRmVMNetworkInterface -VM $rescuevm -Id $rescueInterface.Id -WarningAction SilentlyContinue
 
 
         #$rescuevm = Set-AzureRmVMOSDisk -VM $rescuevm -Name $rescueOSDiskName -VhdUri $rescueOSDiskUri -CreateOption FromImage
         if ($managedVM)
         {
             #$rescuevm = Set-AzureRmVMOSDisk -VM $rescuevm -ManagedDiskId $disk.Id -CreateOption FromImage
-            $rescuevm = Set-AzureRmVMOSDisk -VM $rescuevm -Name $rescueOSDiskName -CreateOption FromImage
+            $rescuevm = Set-AzureRmVMOSDisk -VM $rescuevm -Name $rescueOSDiskName -CreateOption FromImage -WarningAction SilentlyContinue
         }
         else
         {
             $rescueOSDiskUri = $rescueStorageAccount.PrimaryEndpoints.Blob.ToString() + "vhds/" + $rescueOSDiskName + ".vhd"
-            $rescuevm = Set-AzureRmVMOSDisk -VM $rescuevm -Name $rescueOSDiskName -VhdUri $rescueOSDiskUri -CreateOption FromImage
+            $rescuevm = Set-AzureRmVMOSDisk -VM $rescuevm -Name $rescueOSDiskName -VhdUri $rescueOSDiskUri -CreateOption FromImage -WarningAction SilentlyContinue
         }
 
 
@@ -452,7 +452,7 @@ function CreateRescueVM(
 
         ## Create the VM in Azure
         Write-Log "Creating Resuce VM name ==> $($rescuevm.Name) under ResourceGroup ==> $RescueResourceGroup" 
-        $created = New-AzureRmVM -ResourceGroupName $RescueResourceGroup -Location $Location -VM $rescuevm -ErrorAction Stop
+        $created = New-AzureRmVM -ResourceGroupName $RescueResourceGroup -Location $Location -VM $rescuevm -ErrorAction Stop -WarningAction SilentlyContinue
         Write-Log "Successfully created Rescue VM ==> $rescueVMNname was created under ResourceGroup==> $RescueResourceGroup" -Color Green 
        
         Return $created
@@ -479,7 +479,7 @@ function AttachOsDisktoRescueVM(
 {
     $returnVal = $true
     Write-Log "Running Get-AzureRmVM -ResourceGroupName `"$RescueResourceGroup`" -Name `"rescueVMNname`"" 
-    $rescuevm = Get-AzureRmVM -ResourceGroupName $RescueResourceGroup -Name $rescueVMNname
+    $rescuevm = Get-AzureRmVM -ResourceGroupName $RescueResourceGroup -Name $rescueVMNname -WarningAction SilentlyContinue
     if (-not $rescuevm)
     {
         Write-Log "RescueVM ==>  $rescueVMNname cannot be found, Cannot proceed" -Color Red

@@ -1,1 +1,0 @@
-.\Restore-AzureRMOriginalVM.ps1 -ResourceGroup "WindowsVMmd" -VmName "WindowsVMmd" -SubID "927f2a7f-5662-40f2-8d19-521fe803ed2e" -FixedOsDiskUri "https://sathifdvzs0404035645.blob.core.windows.net/vhds/rescuefixedosWindowsVMmdosdisk.vhd" -OriginalosDiskVhdUri "https://sathifdvzs0404035645.blob.core.windows.net/vhds/WindowsVMmdosdisk.vhd"  -prefix "rescue"

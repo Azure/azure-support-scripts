@@ -104,14 +104,14 @@ Param(
         [Parameter(mandatory=$false)]
         [String]$Version,
 
-        [switch]$AllowManagedVM
+        [switch]$AllowManagedVM = $true
      )
 
 $Error.Clear()
 if (-not $showErrors) {
     $ErrorActionPreference = 'SilentlyContinue'
 }
-$AllowManagedVM = $true
+
 $script:scriptStartTime = (Get-Date).ToUniversalTime()
 $LogFile = $env:TEMP + "\" + $VmName + "_" + ( Get-Date $script:scriptStartTime -f yyyyMMddHHmmss ) + ".log"  
 $RestoreCommandFile = "Restore_" + $VmName + ".ps1"
@@ -172,7 +172,7 @@ Write-log "Current SubscriptionID ==> $SubID"
 Write-Log "Running Get-AzureRmVM -ResourceGroupName `"$ResourceGroup`" -Name `"$VmName`"" 
 try
 {
-    $vm = Get-AzureRmVM -ResourceGroupName $ResourceGroup -Name $VmName -ErrorAction Stop
+    $vm = Get-AzureRmVM -ResourceGroupName $ResourceGroup -Name $VmName -ErrorAction Stop -WarningAction SilentlyContinue
 }
 catch 
 {
@@ -263,7 +263,7 @@ if (-not $rescuevm)
 
 #Step 5 #Get a reference to the rescue VM Object
 Write-Log "Running Get-AzureRmVM -ResourceGroupName `"$RescueResourceGroup`" -Name `"rescueVMNname`"" 
-$rescuevm = Get-AzureRmVM -ResourceGroupName $RescueResourceGroup -Name $rescueVMNname
+$rescuevm = Get-AzureRmVM -ResourceGroupName $RescueResourceGroup -Name $rescueVMNname -WarningAction SilentlyContinue
 if (-not $rescuevm)
 {
     Write-Log "RescueVM ==>  $rescueVMNname cannot be found, Cannot proceed" -Color Red
