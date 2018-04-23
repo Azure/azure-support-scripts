@@ -87,17 +87,17 @@ For example, if you extracted the scripts to c:\azure-support-scripts, run the f
 ```PowerShell
 cd C:\azure-support-scripts\VMRecovery\ResourceManager
 ```
-7. Run the following command to create a new "rescue VM" and attach the OS disk of the problem VM to the rescue VM as a data disk:
+6. Run the following command to create a new "rescue VM" and attach the OS disk of the problem VM to the rescue VM as a data disk:
 ```PowerShell
 .\New-AzureRMRescueVM.ps1 -ResourceGroup <ResourceGroup> -VmName <vmName> -SubID <subscriptionId>
 ```
 If you need to verify the resource group name and VM name, run **`Get-AzureRmVM`**. If you need to verify the subscription ID, run **`Get-AzureRmSubscription`**.
 
-8. When New-AzureRMRescueVM.ps1 completes, it will create a PowerShell script, Restore_<problemVmName>.ps1, that you will run later to swap the problem VM's OS disk back to the problem VM.
+7. When New-AzureRMRescueVM.ps1 completes, it will create a PowerShell script, Restore_<problemVmName>.ps1, that you will run later to swap the problem VM's OS disk back to the problem VM.
 
-9. RDP to the rescue VM to resolve the issue with the OS disk of the problem VM.
+8. RDP to the rescue VM to resolve the issue with the OS disk of the problem VM.
 
-10. To swap the problem VM's OS disk back to the problem VM, run the Restore_<problemVmName>.ps1 script located in the same folder as the recovery scripts.
+9. To swap the problem VM's OS disk back to the problem VM, run the Restore_<problemVmName>.ps1 script located in the same folder as the recovery scripts.
 
 ## Script help syntax
 
