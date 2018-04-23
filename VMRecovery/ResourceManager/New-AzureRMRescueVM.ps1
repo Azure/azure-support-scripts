@@ -131,17 +131,21 @@ if (-not $showErrors) {
     $ErrorActionPreference = 'SilentlyContinue'
 }
 
-$script:scriptStartTime = (Get-Date).ToUniversalTime()
-$logFile = $env:TEMP + "\" + $vmName + "_" + (Get-Date $script:scriptStartTime -f yyyyMMddHHmmss) + ".log"
-$RestoreCommandFile = "Restore_" + $vmName + ".ps1"
-# Get running path
-$RunPath = split-path -parent $MyInvocation.MyCommand.Source
-cd $RunPath
-$CommonFunctions = $runPath+"\Common-Functions.psm1"
+$script:scriptStartTime = (get-date).ToUniversalTime()
+$timestamp = get-date $script:scriptStartTime -f yyyyMMddHHmmss
+$scriptPath = split-path -path $MyInvocation.MyCommand.Path -parent
+$scriptName = (split-path -path $MyInvocation.MyCommand.Path -leaf).Split('.')[0]
+$logFile = "$scriptPath\$($scriptName)_$($vmName)_$($timestamp).log"
+$restoreCommandFile = "Restore_" + $vmName + ".ps1"
+set-location $scriptPath
+$commonFunctionsModule = "$scriptPath\Common-Functions.psm1"
 
 #Import-Module Common-Functions -ArgumentList $logFile -ErrorAction Stop 
-if (Get-Module Common-Functions) {remove-module -name Common-Functions}   
-import-module -Name $CommonFunctions  -ArgumentList $logFile -ErrorAction Stop 
+if (get-module Common-Functions) 
+{
+    remove-module -name Common-Functions
+}   
+import-module -Name $commonFunctionsModule -ArgumentList $logFile -ErrorAction Stop 
 write-log "Log file: $logFile"
 write-log $MyInvocation.Line -logOnly
 
@@ -161,10 +165,11 @@ if (-not (Get-AzureRmContext).Account)
 
 if (-not $subscriptionId)
 {    
-    $subscriptionId = (Get-AzureRmContext).Subscription.Id 
-    if (-not $subscriptionId)
-    {
-        $message = "Unable to determine subscription ID. Run the script again using -SubscriptionID to specify the subscription ID." 
+    write-log "[Running] Getting authentication context"
+    $authContext = Get-AzureRmContext
+    if (-not $authContext.Subscription.Id)
+    {        
+        $message = "[Error] Unable to determine subscription ID. Run the script again using -SubscriptionID to specify the subscription ID." 
         write-log $message -color red
         $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
         return $scriptResult
@@ -173,28 +178,38 @@ if (-not $subscriptionId)
 else
 {
     #Set the context to the correct subscription ID
-    write-log "Setting the context to subscriptionId $subscriptionId" 
-    $subContext= Set-AzureRmContext -SubscriptionId $subscriptionId
-    write-log $subContext -logOnly
-    if ($subContext -eq $null) 
+    write-log "[Running] Setting context to subscriptionId $subscriptionId"
+    $authContext = Set-AzureRmContext -SubscriptionId $subscriptionId
+    write-log $authContext -logOnly
+    if (-not $authContext.Subscription.Id)
     {
-        $message = "Unable to set context to subscription ID $subscriptionId. Run Login-AzureRMAccount and then try the script again." 
+        $message = "[Error] Unable to set context to subscription ID $subscriptionId. Run Login-AzureRMAccount and then try the script again." 
         write-log $message -color red
         $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
         return $scriptResult
     }
 }
-write-log "subscriptionId: $subscriptionId"
+$subscriptionId = $authContext.Subscription.Id
+$subscriptionName = $authcontext.Subscription.Name
+$accountId = $authContext.Account.Id
+$accountType = $authContext.Account.Type
+$tenantId = $authContext.tenant.Id
+$environmentName = $authContext.Environment.Name
+write-log "[Success] Using subscriptionId: $subscriptionId, subscriptionName: $subscriptionName" -color green
+write-log "AccountId: $accountId" -logOnly
+write-log "AccountType: $accountType" -logOnly
+write-log "TenantId: $tenantId" -logOnly
+write-log "Environment: $environmentName" -logOnly
 
-#Step 1 Get the VM Object
-write-log "Running Get-AzureRmVM -resourceGroupName $resourceGroupName -Name $vmName" 
+# Step 1 Get VM object
+write-log "[Running] Get-AzureRmVM -resourceGroupName $resourceGroupName -Name $vmName"
 try
 {
     $vm = Get-AzureRmVM -ResourceGroupName $resourceGroupName -Name $vmName -ErrorAction Stop -WarningAction SilentlyContinue
 }
 catch 
 {
-    $message = "VM $vmName not found in resource group $resourceGroupName in subscription $subscriptionId. Make sure you are specifying the correct resourceGroupName, vmName, and subscriptionId for the problem VM."
+    $message = "[Error] VM $vmName not found in resource group $resourceGroupName in subscription $subscriptionId. Verify the vmName, resourceGroupName, and subscriptionId and run the script again."
     write-log $message -color red
     write-log "Exception Type: $($_.Exception.GetType().FullName)" -logOnly
     write-log "Exception Message: $($_.Exception.Message)" -logOnly
@@ -205,13 +220,13 @@ write-log "`$vm: $vm" -logOnly
 
 if (-not (SupportedVM -vm $vm -AllowManagedVM $AllowManagedVM)) 
 {  
-    $message = "VM $($vm.name) is not supported."
+    $message = "[Error] VM $($vm.name) is not supported."
     write-log $message -color red
     $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
     return $scriptResult
 }
 
-write-log "Found VM $($vm.Name)" -color green
+write-log "[Success] Found VM $($vm.Name)" -color green
 
 if ($vm.StorageProfile.OsDisk.ManagedDisk)
 {
@@ -222,7 +237,7 @@ else
     $managedVM = $false
 }
 
-write-log "VM $vmName OsType is $($vm.StorageProfile.OsDisk.OsType)"
+write-log "[Running] Getting OsType for VM $vmName"
 if ($vm.StorageProfile.OsDisk.OsType -eq 'Windows') 
 {
     $windowsVM = $true
@@ -231,26 +246,32 @@ else
 {   
     $windowsVM = $false
 }
+write-log "[Success] VM $vmName OsType is $($vm.StorageProfile.OsDisk.OsType)" -color green
 
-#collecting user name and Password if not passed
+# Collect user name and password if they weren't specified at the command line
 if ($Password -and $UserName) 
 {
+    write-log "Rescue VM will use the user name and password specified with the -username and -password parameters."
     $secPassword = ConvertTo-SecureString -String $Password -AsPlainText -Force
     $Cred = New-Object System.Management.Automation.PSCredential -ArgumentList $UserName, $secPassword
- }
- else
- {
-    $message = "Enter username and password to use for the new rescue VM that will be created."
+}
+else
+{
+    $message = "[Running] Waiting on username and password to be entered at credential prompt. These will be the username and password to logon to the new rescue VM that will be created."
     write-log $message
-    $Cred = Get-Credential -Message $message
- }
+    $Cred = Get-Credential -Message "Enter username and password to use for the new rescue VM that will be created"
+    if ($Cred)
+    {
+        write-log "[Success] Credential prompt returned" -color green        
+    }
+}
 
-#Step 2 Stop VM
+# Step 2 Stop problem VM
 $stopped = StopTargetVM -resourceGroupName $resourceGroupName -VmName $vmName
 write-log "`$stopped: $stopped" -logOnly
 if (-not $stopped) 
 {
-    $message = "Unable to stop VM $vmName"
+    $message = "[Error] Unable to stop VM $vmName"
     write-log $message -color red
     $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
     return $scriptResult
@@ -265,12 +286,12 @@ if (-not $managedVM)
 }
 else
 { 
-    $osDiskVHDToBeRepaired = $prefix+ "fixedosdisk" + $OrignalosDiskName
+    $osDiskVHDToBeRepaired = $prefix + "fixedosdisk" + $OrignalosDiskName
 }
 
 if (-not $osDiskVHDToBeRepaired)
 {
-    $message = "Unable to snapshot and copy the problem VM's OS disk." 
+    $message = "[Error] Unable to snapshot and copy the problem VM's OS disk." 
     write-log $message -color red
     $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
     return $scriptResult
@@ -278,31 +299,35 @@ if (-not $osDiskVHDToBeRepaired)
 $osDiskVHDToBeRepaired = $osDiskVHDToBeRepaired.Replace("`r`n","")
 write-log "`$osDiskVHDToBeRepaired: $osDiskVHDToBeRepaired" -logOnly
 
-#Step 4 Create Rescue VM
+# Step 4 Create rescue VM
 $rescueVMName = "$prefix$vmName"
 $rescueResourceGroupName = "$prefix$resourceGroupName"
-$rescueVm = CreateRescueVM -vm $vm -resourceGroupName $resourceGroupName -rescueVMName $rescueVMName -rescueResourceGroupName $rescueResourceGroupName -prefix $prefix -Sku $sku -Offer $offer -Publisher $Publisher -Version $Version -Credential $cred 
-write-log "`$rescueVM: $rescueVm" -logOnly
-if (-not $rescuevm)
+$rescueVM = CreateRescueVM -vm $vm -resourceGroupName $resourceGroupName -rescueVMName $rescueVMName -rescueResourceGroupName $rescueResourceGroupName -prefix $prefix -Sku $sku -Offer $offer -Publisher $Publisher -Version $Version -Credential $cred 
+write-log "`$rescueVM: $rescueVM" -logOnly
+if (-not $rescueVM)
 {
-    $message = "Unable to create the Rescue VM, cannot proceed."
+    $message = "[Error] Unable to create the Rescue VM, cannot proceed."
     write-log $message -color red
     $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
     return $scriptResult
 }
 
 #Step 5 #Get a reference to the rescue VM Object
-write-log "Running Get-AzureRmVM -resourceGroupName $rescueResourceGroupName -Name $rescueVMName"
-$rescuevm = Get-AzureRmVM -resourceGroupName $rescueResourceGroupName -Name $rescueVMName -WarningAction SilentlyContinue
-if (-not $rescuevm)
+write-log "[Running] Get-AzureRmVM -resourceGroupName $rescueResourceGroupName -Name $rescueVMName"
+$rescueVM = Get-AzureRmVM -resourceGroupName $rescueResourceGroupName -Name $rescueVMName -WarningAction SilentlyContinue
+if (-not $rescueVM)
 {
-    $message = "Rescue VM $rescueVMName not found." 
+    $message = "[Error] Rescue VM $rescueVMName not found." 
     write-log $message -color red
     $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
     return $scriptResult
 }
+else
+{
+    write-log "[Success] Found rescue VM $rescueVMName" -color green
+}
 
-#Step 6  Attach the OS Disk as data disk to the rescue VM
+#Step 6 Attach problem VM's OS disk as a data disk to the rescue VM
 #$attached = AttachOsDisktoRescueVM -rescueVMName $rescueVMName -rescueResourceGroupName $rescueResourceGroupName -osDiskVHDToBeRepaired $osDiskToBeRepaired
 #creates a dataDisk off of the copied snapshot of the OSDisk
 if ($managedVM)
@@ -310,14 +335,14 @@ if ($managedVM)
     #$storageType= "PremiumLRS"
     #For ManagedVM SnapshotAndCopyOSDisk returns the snapshotname
     $storageType = 'StandardLRS'
-    $snapshotname = $osDiskVHDToBeRepaired
+    $snapshotName = $osDiskVHDToBeRepaired
     $ToBeFixedManagedOsDisk = $prefix + "fixedos" + $vm.StorageProfile.OsDisk.Name 
-    $olddisk = Get-AzureRmDisk -resourceGroupName $resourceGroupName -DiskName $OrignalosDiskName -WarningAction SilentlyContinue
-    $location = $olddisk.Location
-    $diskconfig = New-AzureRmDiskConfig -AccountType $storageType -Location $location -SourceResourceId $olddisk.Id -CreateOption Copy -WarningAction SilentlyContinue
-    $ToBeFixedManagedOsDisk = Get-ValidLength -InputString $ToBeFixedManagedOsDisk -Maxlength 80
-    $disk = New-AzureRmDisk -Disk $diskConfig -resourceGroupName $resourceGroupName -DiskName $ToBeFixedManagedOsDisk -WarningAction SilentlyContinue
-    $diskName = $ToBeFixedManagedOsDisk
+    $oldDisk = Get-AzureRmDisk -resourceGroupName $resourceGroupName -DiskName $OrignalosDiskName -WarningAction SilentlyContinue
+    $location = $oldDisk.Location
+    $diskConfig = New-AzureRmDiskConfig -AccountType $storageType -Location $location -SourceResourceId $oldDisk.Id -CreateOption Copy -WarningAction SilentlyContinue
+    $toBeFixedManagedOsDisk = Get-ValidLength -InputString $toBeFixedManagedOsDisk -Maxlength 80
+    $disk = New-AzureRmDisk -Disk $diskConfig -resourceGroupName $resourceGroupName -DiskName $toBeFixedManagedOsDisk -WarningAction SilentlyContinue
+    $diskName = $toBeFixedManagedOsDisk
     $managedDiskID = $disk.Id
 }
 else
@@ -328,7 +353,7 @@ else
     if (-not $osDiskSize)
     {
        $osDiskSize = 127    
-       write-log "Could not determine the OS disk size for VM $vmName. Will use 127GB when attaching it to the rescue VM as a data disk." 
+       write-log "Unable to determine OS disk size for VM $vmName. Will use 127GB when attaching it to the rescue VM as a data disk." 
     }
 }
 $attached = AttachOsDisktoRescueVM -rescueVMName $rescueVMName -rescueResourceGroupName $rescueResourceGroupName -osDiskVHDToBeRepaired $osDiskVHDToBeRepaired -diskName $diskName -osDiskSize $osDiskSize -managedDiskID $managedDiskID
@@ -336,41 +361,45 @@ $attached = AttachOsDisktoRescueVM -rescueVMName $rescueVMName -rescueResourceGr
 write-log "`$attached: $attached" -logonly
 if (-not $attached)
 {
-    write-log "Unable to attach disk $osDiskToBeRepaired as a data disk to rescue VM $rescueVMName" -color red
+    write-log "[Error] Unable to attach disk $osDiskToBeRepaired as a data disk to rescue VM $rescueVMName" -color red
     return
 }
 
 #Step 7 Start the VM
-write-log "Starting rescue VM: $($rescueVm.Name)"
-$started = Start-AzureRmVM -resourceGroupName $rescueResourceGroupName -Name $rescuevm.Name 
+write-log "[Running] Starting rescue VM $($rescueVm.Name)"
+$started = Start-AzureRmVM -resourceGroupName $rescueResourceGroupName -Name $rescuevm.Name
 write-log "`$started: $started" -logOnly
 if ($started)
 {
-   write-log "Successfully started rescue VM $($rescueVm.Name)" -color green
+   write-log "[Success] Started rescue VM $($rescueVm.Name)" -color green
 }
 
 #Step 8 Automatically start up the RDP Connection
 #Manual Fixing of the oS Disk
 if ($windowsVM)
 {
-    write-log "Opening RDP file for rescue VM $($rescuevm.Name)"
-    Get-AzureRmRemoteDesktopFile -resourceGroupName $rescueResourceGroupName -Name $rescuevm.Name -Launch
+    write-log "[Running] Getting RDP file for rescue VM $($rescuevm.Name)"
+    Get-AzureRmRemoteDesktopFile -resourceGroupName $rescueResourceGroupName -Name $rescuevm.Name -Launch 
 }
 
-#Log basic info into the log file.
-write-log "Rescue VM name: $($rescueVm.Name)"
-write-log "Rescue VM resource group name: $rescueResourceGroupName"
-write-log "Data disk name attached to rescue VM: $diskName"
+$script:scriptEndTime = (get-date).ToUniversalTime()
+$script:scriptDuration = new-timespan -Start $script:scriptStartTime -End $script:scriptEndTime
+write-log "Script duration: $('{0:hh}:{0:mm}:{0:ss}.{0:ff}' -f $script:scriptDuration)"
+write-log "Log file: $logFile"
+
+# Log summary information
+write-log "`nRescue VM name: $($rescueVm.Name)" -notimestamp
+write-log "Rescue VM resource group name: $rescueResourceGroupName" -notimestamp
+write-log "Data disk name: $diskName" -notimestamp
 if ($managedVM)
 {
-    write-log "Managed disk ID of data disk: $managedDiskID"
+    write-log "Data disk ID: $managedDiskID" -notimestamp
 }
 else
 {
-    write-log "ResourceUri of fixed OS disk: $osDiskVHDToBeRepaired"
+    write-log "ResourceUri of fixed OS disk: $osDiskVHDToBeRepaired" -notimestamp
 }
 
-write-log "Next Steps: RDP to rescue VM $($rescueVm.Name). After fixing the OS disk, run Restore-AzureRMOriginalVM.ps1 to swap the disk back to the problem VM:"
 if ($managedVM)
 {
     #$restoreScriptCommand = ".\Restore-AzureRMOriginalVM.ps1 -resourceGroupName `"$resourceGroupName`" -VmName `"$vmName`" -subscriptionId `"$subscriptionId`" -diskName `"$diskname`" -snapshotName `"$snapshotname`" -prefix `"$prefix`""
@@ -380,16 +409,16 @@ else
 {
     $restoreScriptCommand = ".\Restore-AzureRMOriginalVM.ps1 -resourceGroupName $resourceGroupName -VmName $vmName -subscriptionId $subscriptionId -FixedOsDiskUri $osDiskVHDToBeRepaired -OriginalosDiskVhdUri $OriginalosDiskVhdUri -prefix $prefix"
 }
-$restoreScriptCommand | set-content $RestoreCommandFile 
-$restoreScriptCommand = ".\" + $RestoreCommandFile.Split('\')[-1]
-write-log $restoreScriptCommand
+$restoreScriptCommand | set-content $restoreCommandFile 
+$restoreScriptCommand = ".\" + $restoreCommandFile.Split('\')[-1]
+$restoreScriptPath = (get-childitem $restoreScriptCommand).FullName
+
+write-log "`nNext Steps:`n" -notimestamp
+write-log "1. RDP to the rescue VM $($rescueVm.Name) to resolve issues with the problem VM's OS disk which is now attached to the rescue VM as a data disk." -notimestamp
+write-log "2. After fixing the problem VM's OS disk, run the following script to swap the disk back to the problem VM:`n" -notimestamp
+write-log "$restoreScriptPath`n" -notimestamp
+
 $scriptResult = Get-ScriptResultObject -scriptSucceeded $true -restoreScriptCommand $restoreScriptCommand -rescueScriptCommand $MyInvocation.Line
 
-<###### End of script tasks ######>
-$script:scriptEndTime = (get-date).ToUniversalTime()
-$script:scriptDuration = new-timespan -Start $script:scriptStartTime -End $script:scriptEndTime
-write-log ('Script Duration: ' + ('{0:hh}:{0:mm}:{0:ss}.{0:ff}' -f $script:scriptDuration)) -color cyan
-
-invoke-item $logFile
-
-return $scriptResult
+#invoke-item $logFile
+#return $scriptResult
