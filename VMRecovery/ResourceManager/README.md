@@ -101,6 +101,8 @@ If you need to verify the resource group name and VM name, run **`Get-AzureRmVM`
 
 ## Script help syntax
 
-**`get-help .\New-AzureRMRescueVM.ps1`**
+```PowerShell
+get-help .\New-AzureRMRescueVM.ps1
 
-**`get-help .\Restore-AzureRMOriginalVM.ps1`**
+get-help .\Restore-AzureRMOriginalVM.ps1
+```
