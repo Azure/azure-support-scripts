@@ -46,7 +46,7 @@ The VM recovery script is most applicable when a VM is not booting, as seen on t
    ```
    If you need to verify the resource group name and VM name, run **`Get-AzureRmVM`**. If you need to verify the subscription ID, run **`Get-AzureRmSubscription`**.
 
-8. When New-AzureRMRescueVM.ps1 completes, it will create a PowerShell script, Restore_`<problemVmName`>.ps1, that you will run later to swap the problem VM's OS disk back to the problem VM.
+8. When New-AzureRMRescueVM.ps1 completes, it will create a PowerShell script, `Restore_<problemVmName>.ps1`, that you will run later to swap the problem VM's OS disk back to the problem VM.
 
 9. RDP to the rescue VM to resolve the issue with the OS disk of the problem VM.
 
