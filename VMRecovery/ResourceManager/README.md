@@ -33,9 +33,9 @@ The VM recovery script is most applicable when a VM is not booting, as seen on t
 4. From the **`PS Azure:\>`** prompt type **`cd C:\`** then **`<ENTER>`**.
 
 5. Run the following command to download the scripts. Git is preinstalled in Cloud Shell. You do not need to install it separately.
-  ```PowerShell
-  git clone https://github.com/Azure/azure-support-scripts c:\azure-support-scripts
-  ```
+   ```PowerShell
+   git clone https://github.com/Azure/azure-support-scripts c:\azure-support-scripts
+   ```
 6. Switch into the folder by running:
 ```PowerShell
 cd C:\azure-support-scripts\VMRecovery\ResourceManager
