@@ -37,14 +37,14 @@ The VM recovery script is most applicable when a VM is not booting, as seen on t
    git clone https://github.com/Azure/azure-support-scripts c:\azure-support-scripts
    ```
 6. Switch into the folder by running:
-```PowerShell
-cd C:\azure-support-scripts\VMRecovery\ResourceManager
-```
+   ```PowerShell
+   cd C:\azure-support-scripts\VMRecovery\ResourceManager
+   ```
 7. Run the following command to create a new "rescue VM" and attach the OS disk of the problem VM to the rescue VM as a data disk:
-```PowerShell
-.\New-AzureRMRescueVM.ps1 -ResourceGroup <ResourceGroup> -VmName <vmName> -SubID <subscriptionId>
-```
-If you need to verify the resource group name and VM name, run **`Get-AzureRmVM`**. If you need to verify the subscription ID, run **`Get-AzureRmSubscription`**.
+   ```PowerShell
+   .\New-AzureRMRescueVM.ps1 -ResourceGroup <ResourceGroup> -VmName <vmName> -SubID <subscriptionId>
+   ```
+   If you need to verify the resource group name and VM name, run **`Get-AzureRmVM`**. If you need to verify the subscription ID, run **`Get-AzureRmSubscription`**.
 
 8. When New-AzureRMRescueVM.ps1 completes, it will create a PowerShell script, Restore_<problemVmName>.ps1, that you will run later to swap the problem VM's OS disk back to the problem VM.
 
@@ -55,43 +55,43 @@ If you need to verify the resource group name and VM name, run **`Get-AzureRmVM`
 ### Local PowerShell
 1. To download the recovery scripts you can download the zip file or use the Git client. 
 
-Download and extract zip file:
+   Download and extract zip file:
 
-https://github.com/Azure/azure-support-scripts/archive/master.zip
+   https://github.com/Azure/azure-support-scripts/archive/master.zip
 
-Or download using Git client:
+   Or download using Git client:
 
-You can use any local directory, c:\azure-support-scripts is just an example.
+   You can use any local directory, c:\azure-support-scripts is just an example.
 
-```PowerShell
-git clone https://github.com/Azure/azure-support-scripts c:\azure-support-scripts 
-```
+   ```PowerShell
+   git clone https://github.com/Azure/azure-support-scripts c:\azure-support-scripts 
+   ```
 2. Launch PowerShell locally.
 
 3. The recovery scripts require the AzureRM PowerShell module. If you do not have it installed, you can install it by running the following command:
 
-```PowerShell
-Install-Module -Name AzureRM
-```
+   ```PowerShell
+   Install-Module -Name AzureRM
+   ```
 4. Logon to your Azure subscription using the following command:
-```PowerShell
-Connect-AzureRMAccount
-```
+   ```PowerShell
+   Connect-AzureRMAccount
+   ```
 If you receive an error that the Connect-AzureRMAccount cmdlet is not found, make sure you update to the latest AzureRM module version by running the following command:
-```PowerShell
-Update-Module -Name AzureRM
-```
+   ```PowerShell
+   Update-Module -Name AzureRM
+   ```
 5. Switch into the folder where you extracted the scripts, and then into the \VMRecovery\ResourceManager folder under that.
 
-For example, if you extracted the scripts to c:\azure-support-scripts, run the following command:
-```PowerShell
-cd C:\azure-support-scripts\VMRecovery\ResourceManager
-```
+   For example, if you extracted the scripts to c:\azure-support-scripts, run the following command:
+   ```PowerShell
+   cd C:\azure-support-scripts\VMRecovery\ResourceManager
+   ```
 6. Run the following command to create a new "rescue VM" and attach the OS disk of the problem VM to the rescue VM as a data disk:
-```PowerShell
-.\New-AzureRMRescueVM.ps1 -ResourceGroup <ResourceGroup> -VmName <vmName> -SubID <subscriptionId>
-```
-If you need to verify the resource group name and VM name, run **`Get-AzureRmVM`**. If you need to verify the subscription ID, run **`Get-AzureRmSubscription`**.
+   ```PowerShell
+   .\New-AzureRMRescueVM.ps1 -ResourceGroup <ResourceGroup> -VmName <vmName> -SubID <subscriptionId>
+   ```
+   If you need to verify the resource group name and VM name, run **`Get-AzureRmVM`**. If you need to verify the subscription ID, run **`Get-AzureRmSubscription`**.
 
 7. When New-AzureRMRescueVM.ps1 completes, it will create a PowerShell script, Restore_<problemVmName>.ps1, that you will run later to swap the problem VM's OS disk back to the problem VM.
 
