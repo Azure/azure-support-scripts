@@ -42,7 +42,7 @@ The VM recovery script is most applicable when a VM is not booting, as seen on t
    ```
 7. Run the following command to create a new "rescue VM" and attach the OS disk of the problem VM to the rescue VM as a data disk:
    ```PowerShell
-   .\New-AzureRMRescueVM.ps1 -ResourceGroup <ResourceGroup> -VmName <vmName> -SubID <subscriptionId>
+   .\New-AzureRMRescueVM.ps1 -ResourceGroupName <resourceGroupName> -VmName <vmName>
    ```
    If you need to verify the resource group name and VM name, run **`Get-AzureRmVM`**. If you need to verify the subscription ID, run **`Get-AzureRmSubscription`**.
 
@@ -89,7 +89,7 @@ If you receive an error that the Connect-AzureRMAccount cmdlet is not found, mak
    ```
 6. Run the following command to create a new "rescue VM" and attach the OS disk of the problem VM to the rescue VM as a data disk:
    ```PowerShell
-   .\New-AzureRMRescueVM.ps1 -ResourceGroup <ResourceGroup> -VmName <vmName> -SubID <subscriptionId>
+   .\New-AzureRMRescueVM.ps1 -ResourceGroupName <resourceGroupName> -VmName <vmName>
    ```
    If you need to verify the resource group name and VM name, run **`Get-AzureRmVM`**. If you need to verify the subscription ID, run **`Get-AzureRmSubscription`**.
 
