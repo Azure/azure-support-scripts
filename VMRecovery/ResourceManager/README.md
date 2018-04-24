@@ -38,7 +38,7 @@ The VM recovery script is most applicable when a VM is not booting, as seen on t
    ```
 6. Switch into the folder by running:
    ```PowerShell
-   cd C:\azure-support-scripts\VMRecovery\ResourceManager
+   cd $home\CloudDrive\azure-support-scripts\VMRecovery\ResourceManager
    ```
 7. Run the following command to create a new "rescue VM" and attach the OS disk of the problem VM to the rescue VM as a data disk:
    ```PowerShell
