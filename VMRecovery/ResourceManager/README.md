@@ -5,7 +5,7 @@ If an Azure VM is inaccessible it may be necessary to attach the OS disk to anot
 
 1. Stops the problem VM
 2. Takes a snapshot of the problem VM's OS disk
-3. Creates a new temporary VM ("rescue VM"). If the problem VM is a Windows VM, the rescue VM is created from the Windows Server 2016 marketplace image that has the Desktop Experience installed. If the problem VM is a Linux VM, the rescue VM is created from the Ubuntu 16.04 LTS marketplace image. You can use the -publisher/-offer/-sku parameters when running New-AzureRMRescueVM.ps1 if you need to create the rescue VM from a different marketplace image. 
+3. Creates a new temporary VM ("rescue VM"). 
 4. Attaches the problem VM's OS disk as a data disk on the rescue VM
 5. You can then connect to the rescue VM to investigate and mitigates issues with the problem VM's OS disk
 6. Detaches the data disk from rescue VM
@@ -45,6 +45,12 @@ The VM recovery script is most applicable when a VM is not booting, as seen on t
    .\New-AzureRMRescueVM.ps1 -ResourceGroupName <resourceGroupName> -VmName <vmName>
    ```
    If you need to verify the resource group name and VM name, run **`Get-AzureRmVM`**. If you need to verify the subscription ID, run **`Get-AzureRmSubscription`**.
+   
+   If the problem VM is a Windows VM, the rescue VM is created from the Windows Server 2016 marketplace image that has the Desktop Experience installed. 
+   
+   If the problem VM is a Linux VM, the rescue VM is created from the Ubuntu 16.04 LTS marketplace image. 
+   
+   You can use the -publisher/-offer/-sku parameters when running New-AzureRMRescueVM.ps1 if you need to create the rescue VM from a different marketplace image.
 
 8. When New-AzureRMRescueVM.ps1 completes, it will create a PowerShell script, `Restore_<problemVmName>.ps1`, that you will run later to swap the problem VM's OS disk back to the problem VM.
 
