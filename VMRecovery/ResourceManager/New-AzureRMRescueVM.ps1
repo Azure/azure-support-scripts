@@ -81,6 +81,11 @@
 
     $scriptResult =  .\New-AzureRMRescueVM.ps1 -resourceGroupName testvmrecovery2 -VmName win2016custom  -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex18"
 
+.EXAMPLE 
+    Using a VM Unmanaged Windows VM
+
+    $scriptResult =  .\New-AzureRMRescueVM.ps1 -resourceGroupName testvmrecovery2 -VmName sujUNManagedvm  -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex48"
+
 .NOTES
     Name: New-AzureRMRescueVM.ps1
 
@@ -209,7 +214,7 @@ try
 }
 catch 
 {
-    $message = "[Error] VM $vmName not found in resource group $resourceGroupName in subscription $subscriptionId. Verify the vmName, resourceGroupName, and subscriptionId and run the script again."
+    $message = "[Error] Problem VM $vmName not found in resource group $resourceGroupName in subscription $subscriptionId. Verify the vmName, resourceGroupName, and subscriptionId and run the script again."
     write-log $message -color red
     write-log "Exception Type: $($_.Exception.GetType().FullName)" -logOnly
     write-log "Exception Message: $($_.Exception.Message)" -logOnly
@@ -220,13 +225,13 @@ write-log "`$vm: $vm" -logOnly
 
 if (-not (SupportedVM -vm $vm -AllowManagedVM $AllowManagedVM)) 
 {  
-    $message = "[Error] VM $($vm.name) is not supported."
+    $message = "[Error] Problem VM $($vm.name) is not supported."
     write-log $message -color red
     $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
     return $scriptResult
 }
 
-write-log "[Success] Found VM $($vm.Name)" -color green
+write-log "[Success] Found problem VM $($vm.Name)" -color green
 
 if ($vm.StorageProfile.OsDisk.ManagedDisk)
 {
@@ -237,7 +242,7 @@ else
     $managedVM = $false
 }
 
-write-log "[Running] Getting OsType for VM $vmName"
+write-log "[Running] Getting OsType for problem VM $vmName"
 if ($vm.StorageProfile.OsDisk.OsType -eq 'Windows') 
 {
     $windowsVM = $true
@@ -246,7 +251,7 @@ else
 {   
     $windowsVM = $false
 }
-write-log "[Success] VM $vmName OsType is $($vm.StorageProfile.OsDisk.OsType)" -color green
+write-log "[Success] Problem VM $vmName OsType is $($vm.StorageProfile.OsDisk.OsType)" -color green
 
 # Collect user name and password if they weren't specified at the command line
 if ($Password -and $UserName) 
@@ -271,7 +276,7 @@ $stopped = StopTargetVM -resourceGroupName $resourceGroupName -VmName $vmName
 write-log "`$stopped: $stopped" -logOnly
 if (-not $stopped) 
 {
-    $message = "[Error] Unable to stop VM $vmName"
+    $message = "[Error] Unable to stop problem VM $vmName"
     write-log $message -color red
     $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
     return $scriptResult
@@ -287,6 +292,7 @@ if (-not $managedVM)
 else
 { 
     $osDiskVHDToBeRepaired = $prefix + "fixedosdisk" + $OrignalosDiskName
+    $OriginalProblemOSManagedDiskID = $vm.StorageProfile.OsDisk.ManagedDisk.Id
 }
 
 if (-not $osDiskVHDToBeRepaired)
@@ -302,13 +308,17 @@ write-log "`$osDiskVHDToBeRepaired: $osDiskVHDToBeRepaired" -logOnly
 # Step 4 Create rescue VM
 $rescueVMName = "$prefix$vmName"
 $rescueResourceGroupName = "$prefix$resourceGroupName"
+$removeRescueRgScript = "Remove_Rescue_RG_" + $rescueResourceGroupName + ".ps1"
+CreateRemoveRescueRgScript -rescueResourceGroupName $rescueResourceGroupName -removeRescueRgScript $removeRescueRgScript -scriptonly -subscriptionId $subscriptionId
+$removeRescueRgScriptPath = (get-childitem $removeRescueRgScript).FullName
 $rescueVM = CreateRescueVM -vm $vm -resourceGroupName $resourceGroupName -rescueVMName $rescueVMName -rescueResourceGroupName $rescueResourceGroupName -prefix $prefix -Sku $sku -Offer $offer -Publisher $Publisher -Version $Version -Credential $cred 
 write-log "`$rescueVM: $rescueVM" -logOnly
 if (-not $rescueVM)
 {
-    $message = "[Error] Unable to create the Rescue VM, cannot proceed."
+    $message = "[Error] Unable to create the Rescue VM, cannot proceed. You can use the following command to remove the rescue Resourcegroup $($rescueResourceGroupName) that was created as part of running this script OR execute the PowerShell script .\$($removeRescueRgScript) :`n" 
     write-log $message -color red
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
+    CreateRemoveRescueRgScript -rescueResourceGroupName $rescueResourceGroupName -removeRescueRgScript $removeRescueRgScript -commandOnly -subscriptionId $subscriptionId
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -cleanupScript $removeRescueRgScript
     return $scriptResult
 }
 
@@ -319,7 +329,7 @@ if (-not $rescueVM)
 {
     $message = "[Error] Rescue VM $rescueVMName not found." 
     write-log $message -color red
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -cleanupScript $removeRescueRgScript
     return $scriptResult
 }
 else
@@ -332,7 +342,6 @@ else
 #creates a dataDisk off of the copied snapshot of the OSDisk
 if ($managedVM)
 {
-    #$storageType= "PremiumLRS"
     #For ManagedVM SnapshotAndCopyOSDisk returns the snapshotname
     $storageType = 'StandardLRS'
     $snapshotName = $osDiskVHDToBeRepaired
@@ -353,7 +362,7 @@ else
     if (-not $osDiskSize)
     {
        $osDiskSize = 127    
-       write-log "Unable to determine OS disk size for VM $vmName. Will use 127GB when attaching it to the rescue VM as a data disk." 
+       write-log "Unable to determine OS disk size for problem VM $vmName. Will use 127GB when attaching it to the rescue VM as a data disk." 
     }
 }
 $attached = AttachOsDisktoRescueVM -rescueVMName $rescueVMName -rescueResourceGroupName $rescueResourceGroupName -osDiskVHDToBeRepaired $osDiskVHDToBeRepaired -diskName $diskName -osDiskSize $osDiskSize -managedDiskID $managedDiskID
@@ -402,8 +411,7 @@ else
 
 if ($managedVM)
 {
-    #$restoreScriptCommand = ".\Restore-AzureRMOriginalVM.ps1 -resourceGroupName `"$resourceGroupName`" -VmName `"$vmName`" -subscriptionId `"$subscriptionId`" -diskName `"$diskname`" -snapshotName `"$snapshotname`" -prefix `"$prefix`""
-    $restoreScriptCommand = ".\Restore-AzureRMOriginalVM.ps1 -resourceGroupName $resourceGroupName -VmName $vmName -subscriptionId $subscriptionId -diskName $diskname -prefix $prefix"
+    $restoreScriptCommand = ".\Restore-AzureRMOriginalVM.ps1 -resourceGroupName $resourceGroupName -VmName $vmName -subscriptionId $subscriptionId -diskName $diskname -prefix $prefix -OriginalProblemOSManagedDiskID $OriginalProblemOSManagedDiskID"
 }
 else
 {
@@ -416,9 +424,13 @@ $restoreScriptPath = (get-childitem $restoreScriptCommand).FullName
 write-log "`nNext Steps:`n" -notimestamp
 write-log "1. RDP to the rescue VM $($rescueVm.Name) to resolve issues with the problem VM's OS disk which is now attached to the rescue VM as a data disk." -notimestamp
 write-log "2. After fixing the problem VM's OS disk, run the following script to swap the disk back to the problem VM:`n" -notimestamp
-write-log "$restoreScriptPath`n" -notimestamp
+write-log "   $restoreScriptPath`n" -notimestamp
 
-$scriptResult = Get-ScriptResultObject -scriptSucceeded $true -restoreScriptCommand $restoreScriptCommand -rescueScriptCommand $MyInvocation.Line
+write-log "`n[Information] If you decide not to proceed further and would like to delete all the resources created thus far, you may delete the resource group $rescueResourceGroupName, by executing the script $removeRescueRgScriptPath" -noTimeStamp -color cyan
+write-log "`n $removeRescueRgScript" -notimestamp 
+
+
+$scriptResult = Get-ScriptResultObject -scriptSucceeded $true -restoreScriptCommand $restoreScriptCommand -rescueScriptCommand $MyInvocation.Line -cleanupScript $removeRescueRgScript 
 
 #invoke-item $logFile
 #return $scriptResult
