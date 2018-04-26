@@ -243,7 +243,7 @@ if (-not $managedVM)
 }
 else
 {
-    CreateRestoreOriginalStateScript scriptonly -resourceGroupName $resourceGroupName -VmName $vmName -problemvmOriginalOsDiskUri $null  -OriginalProblemOSManagedDiskID $OriginalProblemOSManagedDiskID -managedVM $managedVM -restoreOriginalStateScript $restoreOriginalStateFile -subscriptionId $subscriptionId
+    CreateRestoreOriginalStateScript -scriptonly -resourceGroupName $resourceGroupName -VmName $vmName -problemvmOriginalOsDiskUri $null  -OriginalProblemOSManagedDiskID $OriginalProblemOSManagedDiskID -managedVM $managedVM -restoreOriginalStateScript $restoreOriginalStateFile -subscriptionId $subscriptionId
     $restoreOriginalStateScriptPath = (get-childitem $restoreOriginalStateFile).FullName
     $null = set-AzureRmVMOSDisk -vm $vm -ManagedDiskId $problemvmOsDiskManagedDiskID -CreateOption FromImage -WarningAction SilentlyContinue
     $null = Update-AzureRmVM -ResourceGroupName $resourceGroupName -VM $vm 
@@ -287,7 +287,7 @@ if ((read-host) -eq 'Y')
 }
 else
 {  
-    write-log "`n[Information] To delete the Rescue Resource Group, you may  execute the below Powershell script from $removeRescueRgScriptPath :`n" -notimestamp -color cyan  
+    write-log "`n[Information] To delete the Rescue Resource Group, you may delete it later by executing the below Powershell script from $removeRescueRgScriptPath :`n" -notimestamp -color cyan  
     write-log "$removeRescueRgScript`n" -notimestamp
 }
 
@@ -297,7 +297,7 @@ if (-not $managedVM)
 }
 
 write-log "`n[Information] If you need to switch back to the problem VM in its original state, you may do so by executing the script $restoreOriginalStateScriptPath" -noTimeStamp -color cyan
-write-log "`n $restoreOriginalStateFile"  -noTimeStamp
+write-log "`n $restoreOriginalStateFile`n"  -noTimeStamp
 $script:scriptEndTime = (get-date).ToUniversalTime()
 $script:scriptDuration = new-timespan -Start $script:scriptStartTime -End $script:scriptEndTime
 write-log "Script duration: $('{0:hh}:{0:mm}:{0:ss}.{0:ff}' -f $script:scriptDuration)"
