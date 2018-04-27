@@ -27,6 +27,8 @@ function Get-ScriptResultObject
     [bool]$scriptSucceeded,
     [string]$restoreScriptCommand,
     [string]$rescueScriptCommand,
+    [string]$cleanupScript,
+    [string]$restoreOriginalStateScript,
     [string]$FailureReason
 )
 {
@@ -35,6 +37,8 @@ function Get-ScriptResultObject
         'restoreScriptCommand' = $restoreScriptCommand # set this to the command they should run the restore the problem VM
         'rescueScriptCommand' = $rescueScriptCommand # since it may be useful to also have the exact syntax that was used for New-AzureRMRescueVM.ps1
         'failureReason' = $FailureReason #If the script fails, this will contain the reason for failure
+        'cleanupScript' = $cleanupScript
+        'restoreOriginalStateScript' = $restoreOriginalStateScript
     }
     $scriptResult = New-Object -TypeName PSObject -Property $scriptResult
     return $scriptResult
@@ -66,19 +70,6 @@ function DeleteSnapShotAndVhd
             }
         }
 
-        <##Deleting the backedupovhd
-        $backupOSDiskVhd = "backup$osDiskvhd" 
-        $osFixDiskblob = Get-AzureStorageAccount -StorageAccountName $storageAccountName | 
-        Get-AzureStorageContainer | where {$_.Name -eq $ContainerName} | Get-AzureStorageBlob | where {$_.Name -eq $backupOSDiskVhd -and $_.ICloudBlob.IsSnapshot -ne $true} -ErrorAction Stop
-        if ($osFixDiskblob)
-        {
-            write-log "`nWould you like to delete the backed up VHD ==> $($backupOSDiskVhd) (Y/N) ?" 
-            if ((read-host) -eq 'Y')
-            {
-                $osFixDiskblob.ICloudBlob.Delete()
-                Write-Host "backupOSDiskVhd has been deleted"
-            }
-        }#>
     }
     catch
     {
@@ -87,6 +78,122 @@ function DeleteSnapShotAndVhd
         return $false
     }
 }
+
+function GetStorageConnection
+(
+    [string] $storageAccountName
+)
+{
+    write-log "[Running] Getting the storage connection info for Storage $($storageAccountName)"
+    try
+    {    
+        $StorageAccountRg = Get-AzureRmStorageAccount | where {$_.StorageAccountName -eq $storageAccountName} | Select-Object -ExpandProperty ResourceGroupName
+        if (-not $StorageAccountRg)
+        {
+            write-log "[Error] Unable to determine resource group for storage account $storageAccountName" -color red
+            return $null
+        } 
+        $StorageAccountKey = (Get-AzureRmStorageAccountKey -Name $storageAccountName -ResourceGroupName $StorageAccountRg).Value[1] 
+        $ContainerName = $osDiskVhdUri.Split('/')[3]
+
+        # Connect to storage account
+        $Ctx = New-AzureStorageContext -StorageAccountName $storageAccountName -StorageAccountKey $StorageAccountKey 
+        write-log "[Success] Gathered the connection info for Storage $($storageAccountName)" -color green
+        Return $ctx
+    }
+    catch
+    {
+        $message = "[Error] Unable to detremine the storage connection"
+        write-log $message -Color Red
+        write-log "$message - Exception Type: $($_.Exception.GetType().FullName)" -logOnly
+        write-log "Exception Message: $($_.Exception.Message)" -logOnly
+        return $null
+    }      
+}
+
+
+
+function CopyBlob
+(
+    [string]$CopyType,
+    [string]$sourceBlobUri,
+    [string]$ContainerName,
+    [string]$toBeFixedosDiskVhd,
+    [object]$CloudBlob,
+    [string]$StorageAccountRg,
+    [object]$Ctx
+
+)
+{ 
+    Try
+    {
+        if ($CopyType -eq 'OsDisk')
+        {
+            write-log "[Running] Making a copy of the OS Disk $osDiskvhd" 
+            $status = Start-AzureStorageBlobCopy -srcUri $sourceBlobUri -SrcContext $ctx -DestContainer $ContainerName -DestBlob $toBeFixedosDiskVhd -ConcurrentTaskCount 10 -Force
+            write-log "[Success] Copied current OSDisk $osDiskvhd as $toBeFixedosDiskVhd" -color green
+        }
+        else
+        {
+            write-log "[Running] Copying snapshot" 
+            $status = Start-AzureStorageBlobCopy -CloudBlob $CloudBlob -Context $Ctx -DestContext $Ctx -DestContainer $ContainerName -DestBlob $toBeFixedosDiskVhd -ConcurrentTaskCount 10 -Force
+            write-log "[Success] Copied snapshot to $copiedOSDiskUri" -color green
+    
+        }
+        $osFixDiskblob = Get-AzureRMStorageAccount -Name $storageAccountName -ResourceGroupName $StorageAccountRg | 
+        Get-AzureStorageContainer | where {$_.Name -eq $ContainerName} | Get-AzureStorageBlob | where {$_.Name -eq $toBeFixedosDiskVhd -and $_.ICloudBlob.IsSnapshot -ne $true}
+        $copiedOSDiskUri =$osFixDiskblob.ICloudBlob.Uri.AbsoluteUri
+        write-Log "[Information] Disk copied URI: $copiedOSDiskUri" 
+        return $copiedOSDiskUri
+    }
+    Catch
+    {
+        $message = "[Error] CopyBlob : Failed"
+        write-log $message -Color Red
+        write-log "$message - Exception Type: $($_.Exception.GetType().FullName)" -logOnly
+        write-log "Exception Message: $($_.Exception.Message)" -logOnly
+        return $null
+    }
+
+}
+
+function CreateSnapshot
+(
+    [string]$ContainerName,
+    [string]$osDiskvhd,
+    [string]$vmName,
+    [object]$Ctx
+)
+{
+    $VMblob = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | Where {$_.Name -eq $osDiskvhd -and $_.ICloudBlob.IsSnapshot -ne $true}
+        
+    if (-not $VMblob)
+    {
+        write-log "[Error] Unable to find OS disk VHD blob for $osDiskvhd" -color red
+        return 
+    }
+
+    # Create snapshot of the problem VM's OS disk
+    write-log "[Running] Creating snapshot of OS disk for problem VM $($vmName)"
+    try
+    {
+        $snap = $VMblob.ICloudBlob.CreateSnapshot()
+        if ($snap)
+        {
+            write-log "[Success] Created snapshot of OS disk for problem VM $($vmName)" -color green
+        }
+        return $snap
+    }
+    catch
+    {
+       $message = "[Error] Snapshot creation or copy failed"
+        write-log $message -Color Red
+        write-log "$message - Exception Type: $($_.Exception.GetType().FullName)" -logOnly
+        write-log "Exception Message: $($_.Exception.Message)" -logOnly
+        return 
+    }
+}
+
 
 function SnapshotAndCopyOSDisk 
 (
@@ -100,7 +207,7 @@ function SnapshotAndCopyOSDisk
     if (-not $osDiskVhdUri)
     {
         write-log "[Error] Unable to determine OS disk VHD URI for problem VM $($vm.Name)" -color red
-        return null
+        return
     } 
     else
     {
@@ -109,61 +216,40 @@ function SnapshotAndCopyOSDisk
 
     $osDiskvhd = $osDiskVhdUri.split('/')[-1]
     $storageAccountName = $vm.StorageProfile.OsDisk.Vhd.Uri.Split('//')[2].Split('.')[0]
-    #$fixedosdiskvhd = "fixedos$osDiskvhd" 
-    $toBeFixedosDiskVhd = $null
+    $toBeFixedosDiskVhd = $prefix + "fixedos" +  $osDiskvhd
+    $ContainerName = $osDiskVhdUri.Split('/')[3]
+    $ctx = GetStorageConnection -storageAccountName $storageAccountName
+    if (-not $ctx) {return }    
+    $StorageAccountRg = Get-AzureRmStorageAccount | where {$_.StorageAccountName -eq $storageAccountName} | Select-Object -ExpandProperty ResourceGroupName    
+    if (-not $StorageAccountRg)
+    {
+        write-log "[Error] Unable to determine the resource group of the storage account $($storageAccountName)" -color red
+        return 
+    }
     try
     {
-        $StorageAccountRg = Get-AzureRmStorageAccount | where {$_.StorageAccountName -eq $storageAccountName} | Select-Object -ExpandProperty ResourceGroupName
-        if (-not $StorageAccountRg)
+        $snap = CreateSnapshot -ContainerName $ContainerName -osDiskvhd $osDiskvhd -vmName $vm.Name -Ctx $ctx
+        if (-not $snap)
         {
-            write-log "[Error] Unable to determine resource group for storage account $storageAccountName" -color red
-            return null
-        } 
-        $StorageAccountKey = (Get-AzureRmStorageAccountKey -Name $storageAccountName -ResourceGroupName $StorageAccountRg).Value[1] 
-        $ContainerName = $osDiskVhdUri.Split('/')[3]
-
-        # Connect to storage account
-        $Ctx = New-AzureStorageContext -StorageAccountName $storageAccountName -StorageAccountKey $StorageAccountKey 
-        $VMblob = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | Where {$_.Name -eq $osDiskvhd -and $_.ICloudBlob.IsSnapshot -ne $true}
-        if (-not $VMblob)
-        {
-            write-log "[Error] Unable to find OS disk VHD blob for $osDiskvhd" -color red
-            return null
-        }
-
-        # Create snapshot of the problem VM's OS disk
-        write-log "[Running] Creating snapshot of OS disk for problem VM $($vm.Name)"
-        $snap = $VMblob.ICloudBlob.CreateSnapshot()
-        if ($snap)
-        {
-            write-log "[Success] Created snapshot of OS disk for problem VM $($vm.Name)" -color green
-        }
-        else
-        {
-            write-log "[Information] Unable to create snapshot of OS disk for problem VM $($vm.Name). Will attempt to use an existing snapshot which may be stale." -color cyan
-        }
-
-        write-log "[Running] Copying snapshot" 
-        # Save array of all snapshots
-        $VMsnaps = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | sort @{expression="SnapshotTime";Descending=$true} | where-object {$_.Name -eq $osDiskvhd -and $_.ICloudBlob.IsSnapshot -and $_.SnapshotTime -ne $null} 
-
-        # Copy the latest snapshot of the OS Disk to the same storage account prefixing with 
-        if ($VMsnaps.Count -gt 0)
-        {   
-            #$toBeFixedosDiskVhd = "fixedos$osDiskvhd" 
-            $toBeFixedosDiskVhd = $prefix + "fixedos" +  $osDiskvhd
-            $status = Start-AzureStorageBlobCopy -CloudBlob $VMsnaps[0].ICloudBlob -Context $Ctx -DestContext $Ctx -DestContainer $ContainerName -DestBlob $toBeFixedosDiskVhd -ConcurrentTaskCount 10 -Force
-            #$status | Get-AzureStorageBlobCopyState            
-            $osFixDiskblob = Get-AzureRMStorageAccount -Name $storageAccountName -ResourceGroupName $StorageAccountRg | 
-            Get-AzureStorageContainer | where {$_.Name -eq $ContainerName} | Get-AzureStorageBlob | where {$_.Name -eq $toBeFixedosDiskVhd -and $_.ICloudBlob.IsSnapshot -ne $true}
-            $copiedOSDiskUri =$osFixDiskblob.ICloudBlob.Uri.AbsoluteUri
-            write-log "[Success] Copied snapshot to $copiedOSDiskUri" -color green
+            write-log "[Information] Unable to create snapshot of OS disk for problem VM $($vm.Name). It will instead make a copy of the current OS Disk: $osDiskvhd" -color cyan
+            $copiedOSDiskUri = CopyBlob -CopyType 'OsDisk' -sourceBlobUri $osDiskVhdUri -ContainerName $ContainerName -toBeFixedosDiskVhd $toBeFixedosDiskVhd -StorageAccountRg $StorageAccountRg -Ctx $ctx
             return $copiedOSDiskUri
         }
         else
         {
-           write-log "[Error] Snapshot copy failed." -color red
+            # Save array of all snapshots
+            $VMsnaps = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | sort @{expression="SnapshotTime";Descending=$true} | where-object {$_.Name -eq $osDiskvhd -and $_.ICloudBlob.IsSnapshot -and $_.SnapshotTime -ne $null} 
+            if ($VMsnaps.Count -gt 0)
+            {
+                $copiedOSDiskUri = CopyBlob -CopyType 'PageBlob' -CloudBlob $VMsnaps[0].ICloudBlob -ContainerName $ContainerName -toBeFixedosDiskVhd $toBeFixedosDiskVhd -StorageAccountRg $StorageAccountRg -Ctx $ctx
+                return $copiedOSDiskUri
+            }
+            else
+            {
+                write-log "[Error] Snapshot copy failed." -color red
+            }
         }
+
     }
     catch
     {
@@ -171,36 +257,137 @@ function SnapshotAndCopyOSDisk
         write-log $message -Color Red
         write-log "$message - Exception Type: $($_.Exception.GetType().FullName)" -logOnly
         write-log "Exception Message: $($_.Exception.Message)" -logOnly
-        throw  
         return $null
     }
-
     return $copiedOSDiskUri
 }
 
-function WriteRestoreCommands (
+function CreateRemoveRescueRgScript(
+    [string]$rescueResourceGroupName,
+    [string]$removeRescueRgScript,
+    [string]$subscriptionId,
+    [switch]$scriptonly,
+    [switch]$commandOnly             
+)
+{
+    $step0="# Step 0: Logs-in to Azure" 
+    $loginCmd = "Login-AzureRmAccount"
+    $step1 ="# Step 1: Setting the context to SubscriptionID :$subscriptionId " 
+    $setSubIdCmd = "`$authContext = Set-AzureRmContext -Subscription $subscriptionId"
+    $step2="# Step 1: Removing the rescue resource Group $rescueResourceGroupName" 
+    $removeRescueRgCmd = "`$result = Remove-AzureRmResourceGroup -Name $rescueResourceGroupName"
+
+    if (-not $scriptonly) 
+    {
+         
+        write-log "$removeRescueRgCmd" -noTimeStamp
+    }
+    try
+    {
+        if (-not $commandOnly)
+        {
+            ("############################################################################" | Out-String).Trim() | out-file $removeRescueRgScript -Force 
+            ("# List of steps to remove the rescue resource group $rescueResourceGroupName" | Out-String).Trim() | out-file $removeRescueRgScript -Append
+            ("############################################################################" | Out-String).Trim() | out-file $removeRescueRgScript -Append
+            ("$step0" | Out-String).Trim() | out-file $removeRescueRgScript -Append 
+            ("$loginCmd" | Out-String).Trim() | out-file $removeRescueRgScript -Append
+            ("$step1" | Out-String).Trim() | out-file $removeRescueRgScript -Append 
+            ("$setSubIdCmd" | Out-String).Trim() | out-file $removeRescueRgScript -Append 
+            ("$step2" | Out-String).Trim() | out-file $removeRescueRgScript -Append 
+            ("$removeRescueRgCmd" | Out-String).Trim() | out-file $removeRescueRgScript -Append 
+        }
+    }
+    catch
+    {
+        $message = "[Error] creating the $removeRescueRgScript"
+        write-log $message -color red
+        write-log "$message - Exception Type: $($_.Exception.GetType().FullName)" -logOnly
+        write-log "Exception Message: $($_.Exception.Message)"
+        return 
+    }
+    return 
+}
+
+function CreateRestoreOriginalStateScript (
     [string]$resourceGroupName,
     [string]$vmName,
-    [string]$problemvmOsDiskUri,
-    [string]$problemvmOsDiskManagedDiskID,
-    [bool]$managedVM
+    [string]$problemvmOriginalOsDiskUri,
+    [string]$OriginalProblemOSManagedDiskID,
+    [string]$subscriptionId,
+    [bool]$managedVM,
+    [string]$restoreOriginalStateScript,
+    [switch]$scriptonly
 )
 {    
-    write-log "`nYou can use the following commands to revert VM $vmName to its original state, instead of using the copy of its OS disk:`n" -noTimeStamp
-    write-log "`$problemvm = Get-AzureRmVM -ResourceGroupName $resourceGroupName -Name $vmName" -noTimeStamp
-    write-log "Stop-AzureRmVM -ResourceGroupName $resourceGroupName -Name $vmName" -noTimeStamp
-    if (-not $managedVM)
-    {
-        write-log "`$problemvm.StorageProfile.OsDisk.Vhd.Uri = $problemvmOsDiskUri" -noTimeStamp
-        write-log "Update-AzureRmVM -ResourceGroupName $resourceGroupName -VM `$problemvm" -noTimeStamp
-        write-log "Start-AzureRmVM -ResourceGroupName $resourceGroupName -Name $vmName" -noTimeStamp
-    }
+    $stepSetUplogin="# SetUp : Logs-in to Azure"
+    $loginCmd = "Login-AzureRmAccount"
+    $stepSetup ="# SetUp : Setting the context to SubscriptionID :$subscriptionId " 
+    $SubIdCmd = "`$authContext = Set-AzureRmContext -Subscription $subscriptionId"
+    $step1="# Step 1: Getting the problem vm $vmName object"
+    $problemVMCmd = "`$problemvm = Get-AzureRmVM -ResourceGroupName $resourceGroupName -Name $vmName"
+    $step2="# Step 2: Stopping the problem vm $vmName"
+    $stopAzurermVMCmd = "Stop-AzureRmVM -ResourceGroupName $resourceGroupName -Name $vmName"
+    $step3="# Step 3: Performing a disk swap, swapping the OS Disk to its original OS Disk to put the VM $vmName back to its original state."
+    if (-not $managedVM){ $vhdUriCmd = "`$problemvm.StorageProfile.OsDisk.Vhd.Uri = `"$problemvmOriginalOsDiskUri`""}
     else
+    {$setAzureRmOsDiskCmd = "Set-AzureRmVMOSDisk -vm `$problemvm -ManagedDiskId `"$OriginalProblemOSManagedDiskID`" -CreateOption FromImage"}
+    $step4="# Step 4: Completing the OSDisk swap operation by running Update-AzureRmVM "
+    $updateAzureRmCMCmd = "Update-AzureRmVM -ResourceGroupName $resourceGroupName -VM `$problemvm"
+    $step5="# Step 5: Starting the problem vm $vmName "
+    $startAzurermVmCmd ="Start-AzureRmVM -ResourceGroupName $resourceGroupName -Name $vmName"
+
+    if (-not $scriptonly)
     {
-        write-log "Set-AzureRmVMOSDisk -vm `$problemvm -ManagedDiskId $problemvmOsDiskManagedDiskID -CreateOption FromImage" -noTimeStamp
-        write-log "Update-AzureRmVM -ResourceGroupName $resourceGroupName -VM `$problemvm" -noTimeStamp
-        write-log "Start-AzureRmVM -ResourceGroupName $resourceGroupName -Name $vmName" -noTimeStamp
+        write-log "`nYou can use the following commands to revert problem VM $vmName to its original state by swaping the original OS Disk:`n" -noTimeStamp
+        write-log "$step1" -noTimeStamp    
+        write-log "$problemVMCmd`n" -noTimeStamp    
+        write-log "$step2" -noTimeStamp    
+        write-log "$stopAzurermVMCmd`n" -noTimeStamp
+        write-log "$step3" -noTimeStamp    
+        if (-not $managedVM){write-log "$vhdUriCmd`n" -noTimeStamp}
+        else{write-log "$setAzureRmOsDiskCmd`n" -noTimeStamp}       
+        write-log "$step4" -noTimeStamp    
+        write-log "$updateAzureRmCMCmd`n" -noTimeStamp    
+        write-log "$step5" -noTimeStamp    
+        write-log "$startAzurermVmCmd`n" -noTimeStamp
     }
+    Try
+    {
+        ("##################################################################################################################" | Out-String).Trim() | out-file $restoreOriginalStateScript -Force 
+        ("# List of steps and cmdlets that can be used to do a OS disk Swap to put the problem VM back to its original state" | Out-String).Trim() | out-file $restoreOriginalStateScript -Append
+        ("##################################################################################################################" | Out-String).Trim() | out-file $restoreOriginalStateScript -Append
+        ("$stepSetUplogin" | Out-String).Trim() | out-file $restoreOriginalStateScript -Append
+        ("$loginCmd" | Out-String).Trim() | out-file $restoreOriginalStateScript -Append
+        ("$stepSetup" | Out-String).Trim() | out-file $restoreOriginalStateScript -Append
+        ("$SubIdCmd" | Out-String).Trim() | out-file $restoreOriginalStateScript -Append
+        ("$step1" | Out-String).Trim() | out-file $restoreOriginalStateScript -Append
+        ("$problemVMCmd" | Out-String).Trim() | out-file $restoreOriginalStateScript -Append
+        ("$step2" | Out-String).Trim() | out-file $restoreOriginalStateScript -Append
+        ("$stopAzurermVMCmd" | Out-String).Trim() | out-file $restoreOriginalStateScript -Append
+        ("$step3" | Out-String).Trim() | out-file $restoreOriginalStateScript -Append
+        if (-not $managedVM)
+        {
+            ("$vhdUriCmd" | Out-String).Trim() | out-file $restoreOriginalStateScript -Append
+        }
+        else
+        {
+            ("$setAzureRmOsDiskCmd" | Out-String).Trim() | out-file $restoreOriginalStateScript -Append
+        }
+        ("$step4" | Out-String).Trim() | out-file $restoreOriginalStateScript -Append
+        ("$updateAzureRmCMCmd" | Out-String).Trim() | out-file $restoreOriginalStateScript -Append
+        ("$step5" | Out-String).Trim() | out-file $restoreOriginalStateScript -Append
+        ("$startAzurermVmCmd" | Out-String).Trim() | out-file $restoreOriginalStateScript -Append
+
+    }
+    catch
+    {
+        $message = "[Error] creating the $restoreOriginalStateScript"
+        write-log $message -color red
+        write-log "$message - Exception Type: $($_.Exception.GetType().FullName)" -logOnly
+        write-log "Exception Message: $($_.Exception.Message)"
+        return 
+    }
+    return 
 }
 
 function SupportedVM(
@@ -210,7 +397,7 @@ function SupportedVM(
 {
     if (-not $vm)
     {
-        write-log "[Error] Unable to find VM. Verify the VM name and resource group name." -color red
+        write-log "[Error] Unable to find VM. Verify the problem VM name and resource group name." -color red
         return $false
     }
      
@@ -231,7 +418,7 @@ function SupportedVM(
                 $ImageObj = (get-azurermvmimage -Location $vm.Location -PublisherName $vm.StorageProfile.ImageReference.Publisher -Offer $vm.StorageProfile.ImageReference.Offer -Skus $vm.StorageProfile.ImageReference.sku)[-1]
                 if (-not $ImageObj)
                 {
-                    write-log "[Error] This VM was created from a marketplace image with Plan information, but the marketplace image is no longer published, so if this VM were removed, it would not be possible to recreate it from the existing disk." -color red
+                    write-log "[Error] This problem VM was created from a marketplace image with Plan information, but the marketplace image is no longer published, so if this VM were removed, it would not be possible to recreate it from the existing disk." -color red
                     return $false
                 }
             }
@@ -239,15 +426,13 @@ function SupportedVM(
     }
     catch
     {
-        write-log "[Error] This VM was created from a marketplace image with Plan information, but the marketplace image is no longer published, so if this VM were removed, it would not be possible to recreate it from the existing disk." -color red
+        $message = "[Error] SupportedVM check Failed."
+        write-log $message -color red
+        write-log "$message - Exception Type: $($_.Exception.GetType().FullName)" -logOnly
+        write-log "Exception Message: $($_.Exception.Message)"
         return $false
     }
 
-    <#if ($vm.StorageProfile.OsDisk.OsType -ne "Windows")
-    {
-        write-log "VM ==> $($vm.Name) is not a Windows VM, and is currently not supported by this script, cannot continue exiting." -color Red
-        return $false
-    } #>   
     return $true
 }
 
@@ -286,28 +471,28 @@ function CreateRescueVM(
         $MaxStorageAccountNameLength = 24
         if ([string]::IsNullOrWhitespace($osDiskName))
         {
-            write-log "[Error] Unable to determine OS disk name for VM $($vm.name)" -color red
-            return null
+            write-log "[Error] Unable to determine OS disk name for problem VM $($vm.name)" -color red
+            return 
         }
         if ([string]::IsNullOrWhitespace($vmSize))
         {
-            write-log "[Error] Unable to determine VM size for VM $($vm.name)" -color red
-            return null
+            write-log "[Error] Unable to determine problem VM size for VM $($vm.name)" -color red
+            return
         }
         if ([string]::IsNullOrWhitespace($osType))
         {
-            write-log "[Error] Unable to determine OS type for VM $($vm.name)" -color red
-            return null
+            write-log "[Error] Unable to determine OS type for problem VM $($vm.name)" -color red
+            return
         }
         if ([string]::IsNullOrWhitespace($location))
         {
-            write-log "[Error] Unable to determine location of VM $($vm.name)" -color red
-            return null
+            write-log "[Error] Unable to determine location of problem VM $($vm.name)" -color red
+            return
         }
         if ([string]::IsNullOrWhitespace($networkInterfaceName))
         {
-            write-log "[Error] Unable to determine network interface name for VM $($vm.name)" -color red
-            return null
+            write-log "[Error] Unable to determine network interface name for problem VM $($vm.name)" -color red
+            return
         }
         $rescueOSDiskName = "$prefix$osDiskName"
         if (-not $managedVM)
@@ -324,7 +509,6 @@ function CreateRescueVM(
         $rescuenic1Id = $nic1Id.Replace($networkInterfaceName,$rescuenetworkInterfaceName)
         $rescueVM = Add-AzureRmVMNetworkInterface -VM $rescueVM -Id $rescuenic1Id -WarningAction SilentlyContinue
         $rescueVM.NetworkProfile.NetworkInterfaces[0].Primary = $true
-        #$rescueVM = Set-AzureRmVMOSDisk -VM $rescueVM -VhdUri $rescueosDiskVhduri -name $rescueOSDiskName -CreateOption attach -Windows              
         $rescueStorageType = 'Standard_GRS'
         $rescueStorageName = "$prefix$storageAccountName"
         $rescueStorageName = $rescueStorageName.ToLower()
@@ -347,13 +531,13 @@ function CreateRescueVM(
         $rg = Get-AzureRmResourceGroup -Name $rescueResourceGroupName -Location $location -ErrorAction SilentlyContinue
         if ($rg)
         {
-            write-log "`n[Error] Resource group $rescueResourceGroupName already exists. `nIt looks like you may be rerunning the script without actually deleting the resource group that was created from the previous execution or you may already have a resource group by that same name. `nPlease either delete the resource group ==> $rescueResourceGroupName) if you no longer need it or rerun the script again by adding the parameter '-prefix' and specify a new prefix  to make a new resource group" -color red
+            write-log "`n[Error] Resource group $rescueResourceGroupName already exists." -color red
             return $null
         }
         else
         {
             write-log "[Running] Creating resource group $rescueResourceGroupName for rescue VM $rescueVMName"
-            New-AzureRmResourceGroup -Name $rescueResourceGroupName -Location $location
+            $createrg = New-AzureRmResourceGroup -Name $rescueResourceGroupName -Location $location -ErrorAction Stop
             write-log "[Success] Created resource group $rescueResourceGroupName for rescue VM $rescueVMName" -color green
         }
 
@@ -361,25 +545,25 @@ function CreateRescueVM(
         if (-not $managedVM)
         {
             write-log "[Running] Creating storage account $rescueStorageName for rescue VM $rescueVMName"
-            $rescueStorageAccount = New-AzureRmStorageAccount -ResourceGroupName $rescueResourceGroupName -Name $rescueStorageName -Type $rescueStorageType -Location $location
+            $rescueStorageAccount = New-AzureRmStorageAccount -ResourceGroupName $rescueResourceGroupName -Name $rescueStorageName -Type $rescueStorageType -Location $location -ErrorAction Stop
             write-log "[Success] Created storage account $rescueStorageName for rescue VM $rescueVMName" -color green
         }
 
         # Network
-        #write-log "Allocating a new PublicIP ==> $rescueInterfaceName" 
-        $rescuePip = New-AzureRmPublicIpAddress -Name $rescueInterfaceName -ResourceGroupName $rescueResourceGroupName -Location $location -AllocationMethod Dynamic -WarningAction SilentlyContinue
-        #write-log "Allocated  PublicIP ==> $rescueInterfaceName" -color Green
+        write-log "[Running] Creating publicIpAddress for interfacename $rescueInterfaceName for rescue VM $rescueVMName"
+        $rescuePip = New-AzureRmPublicIpAddress -Name $rescueInterfaceName -ResourceGroupName $rescueResourceGroupName -Location $location -AllocationMethod Dynamic -WarningAction SilentlyContinue -ErrorAction Stop
+        write-log "[Success] Created publicIpAddress for interfacename $rescueInterfaceName for rescue VM $rescueVMName"
 
         write-log "[Running] Creating subnet config for subnet $rescueSubnet1Name"
-        $rescueSubnetConfig = New-AzureRmVirtualNetworkSubnetConfig -Name $rescueSubnet1Name -AddressPrefix $rescueVNetSubnetAddressPrefix
+        $rescueSubnetConfig = New-AzureRmVirtualNetworkSubnetConfig -Name $rescueSubnet1Name -AddressPrefix $rescueVNetSubnetAddressPrefix -ErrorAction Stop
         write-log "[Success] Created subnet config for subnet $rescueSubnet1Name" -color green
 
         write-log "[Running] Creating virtual network $rescueVNetName"
-        $rescueVNet = New-AzureRmVirtualNetwork -Name $rescueVNetName -ResourceGroupName $rescueResourceGroupName -Location $location -AddressPrefix $rescueVNetAddressPrefix -Subnet $rescueSubnetConfig -WarningAction SilentlyContinue
+        $rescueVNet = New-AzureRmVirtualNetwork -Name $rescueVNetName -ResourceGroupName $rescueResourceGroupName -Location $location -AddressPrefix $rescueVNetAddressPrefix -Subnet $rescueSubnetConfig -WarningAction SilentlyContinue -ErrorAction Stop
         write-log "[Success] Created virtual network $rescueVNetName" -color green
 
         write-log "[Running] Creating network interface $rescueInterfaceName"
-        $rescueInterface = New-AzureRmNetworkInterface -Name $rescueInterfaceName -ResourceGroupName $rescueResourceGroupName -Location $location -SubnetId $rescueVNet.Subnets[0].Id -PublicIpAddressId $rescuePIp.Id -WarningAction SilentlyContinue
+        $rescueInterface = New-AzureRmNetworkInterface -Name $rescueInterfaceName -ResourceGroupName $rescueResourceGroupName -Location $location -SubnetId $rescueVNet.Subnets[0].Id -PublicIpAddressId $rescuePIp.Id -WarningAction SilentlyContinue -ErrorAction Stop
         write-log "[Success] Created network interface $rescueInterfaceName" -color green
     
         ## Setup local VM object
@@ -394,17 +578,17 @@ function CreateRescueVM(
 
         }
    
-        $rescueVM = New-AzureRmVMConfig -VMName $rescueVMName -VMSize $rescueVMSize -WarningAction SilentlyContinue
+        $rescueVM = New-AzureRmVMConfig -VMName $rescueVMName -VMSize $rescueVMSize -WarningAction SilentlyContinue -ErrorAction Stop
         if ($osType -eq 'Windows')
         {
-            $rescueVM = Set-AzureRmVMOperatingSystem -VM $rescueVM -Windows -ComputerName $rescueComputerName -Credential $Credential -ProvisionVMAgent -EnableAutoUpdate -WarningAction SilentlyContinue
+            $rescueVM = Set-AzureRmVMOperatingSystem -VM $rescueVM -Windows -ComputerName $rescueComputerName -Credential $Credential -ProvisionVMAgent -EnableAutoUpdate -WarningAction SilentlyContinue -ErrorAction Stop
             # Use Windows Server 2016 with GUI as some may prefer a GUI for troubleshooting/mitigating the problem VM's OS disk
             # If desired, a different image can be used for the rescue VM by specifying -publisher/-offer/-sku as script parameters.
             $ImageObj = (get-azurermvmimage -Location $location -PublisherName 'MicrosoftWindowsServer' -Offer 'WindowsServer' -Skus '2016-Datacenter')[-1]
         }
         else
         {
-            $rescueVM = Set-AzureRmVMOperatingSystem -VM $rescueVM -Linux -ComputerName $rescueComputerName -Credential $Credential -WarningAction SilentlyContinue
+            $rescueVM = Set-AzureRmVMOperatingSystem -VM $rescueVM -Linux -ComputerName $rescueComputerName -Credential $Credential -WarningAction SilentlyContinue -ErrorAction Stop
             # Use Ubuntu 16.04-LTS as it is a commonly used distro in Azure.
             # If desired, a different image can be used for the rescue VM by specifying -publisher/-offer/-sku as script parameters.
             $ImageObj = (get-azurermvmimage -Location $location -PublisherName 'Canonical' -Offer 'UbuntuServer' -Skus '16.04-LTS')[-1]
@@ -412,46 +596,32 @@ function CreateRescueVM(
 
         if (-not $sku)
         {
-            #$sku = $vm.StorageProfile.ImageReference.sku 
             $sku = $ImageObj.Skus
         }
         if (-not $offer)
         {
-            #$offer =$vm.StorageProfile.ImageReference.Offer
             $offer  = $ImageObj.Offer
         }
         if (-not $version)
         {
-            #$Version = $vm.StorageProfile.ImageReference.Version
-            #$Version = """$Version"""
             $version = $ImageObj.Version
         }
         if (-not $Publisher)
         {
-            #$Publisher = $vm.StorageProfile.ImageReference.Publisher
             $Publisher = $ImageObj.PublisherName
         }
-        $rescueVM = Set-AzureRmVMSourceImage -VM $rescueVM -PublisherName $Publisher -Offer $offer -Skus $sku -Version $Version -WarningAction SilentlyContinue
-        $rescueVM = Add-AzureRmVMNetworkInterface -VM $rescueVM -Id $rescueInterface.Id -WarningAction SilentlyContinue
+        $rescueVM = Set-AzureRmVMSourceImage -VM $rescueVM -PublisherName $Publisher -Offer $offer -Skus $sku -Version $Version -WarningAction SilentlyContinue -ErrorAction Stop
+        $rescueVM = Add-AzureRmVMNetworkInterface -VM $rescueVM -Id $rescueInterface.Id -WarningAction SilentlyContinue -ErrorAction Stop
 
-        #$rescueVM = Set-AzureRmVMOSDisk -VM $rescueVM -Name $rescueOSDiskName -VhdUri $rescueOSDiskUri -CreateOption FromImage
         if ($managedVM)
         {
-            #$rescueVM = Set-AzureRmVMOSDisk -VM $rescueVM -ManagedDiskId $disk.Id -CreateOption FromImage
-            $rescueVM = Set-AzureRmVMOSDisk -VM $rescueVM -Name $rescueOSDiskName -CreateOption FromImage -WarningAction SilentlyContinue
+            $rescueVM = Set-AzureRmVMOSDisk -VM $rescueVM -Name $rescueOSDiskName -CreateOption FromImage -WarningAction SilentlyContinue -ErrorAction Stop
         }
         else
         {
             $rescueOSDiskUri = $rescueStorageAccount.PrimaryEndpoints.Blob.ToString() + "vhds/" + $rescueOSDiskName + ".vhd"
-            $rescueVM = Set-AzureRmVMOSDisk -VM $rescueVM -Name $rescueOSDiskName -VhdUri $rescueOSDiskUri -CreateOption FromImage -WarningAction SilentlyContinue
-        }
-
-        <#if ($ostype -eq "Linux")
-        {
-            $sshPublicKey = Get-Content "$env:USERPROFILE\.ssh\id_rsa.pub"
-            $rescueVM = Add-AzureRmVMSshPublicKey -VM $rescueVM -KeyData $sshPublicKey -Path "/home/azureuser/.ssh/authorized_keys"
-        }#>
-
+            $rescueVM = Set-AzureRmVMOSDisk -VM $rescueVM -Name $rescueOSDiskName -VhdUri $rescueOSDiskUri -CreateOption FromImage -WarningAction SilentlyContinue -ErrorAction Stop
+        } 
         ## Create the VM in Azure
         write-log "[Running] Creating rescue VM $rescueVMName in resource group $rescueResourceGroupName"
         $created = New-AzureRmVM -ResourceGroupName $rescueResourceGroupName -Location $location -VM $rescueVM -ErrorAction Stop -WarningAction SilentlyContinue
@@ -461,12 +631,11 @@ function CreateRescueVM(
     }
     catch
     {
-        $message = "[Error] Unable to create the rescue VM"
+        $message = "[Error] CreateRescueVM Failed."
         write-log $message -color red
         write-log "$message - Exception Type: $($_.Exception.GetType().FullName)" -logOnly
         write-log "Exception Message: $($_.Exception.Message)"
-        throw
-        return null
+        return $null
     }    
 }
 
@@ -579,7 +748,8 @@ Export-ModuleMember -Function CreateRescueVM
 Export-ModuleMember -Function StopTargetVM
 Export-ModuleMember -Function AttachOsDisktoRescueVM
 Export-ModuleMember -Function SupportedVM
-Export-ModuleMember -Function WriteRestoreCommands
+Export-ModuleMember -Function CreateRestoreOriginalStateScript
 Export-ModuleMember -Function Get-ValidLength
 Export-ModuleMember -Function DeleteSnapShotAndVhd
 Export-ModuleMember -Function Get-ScriptResultObject
+Export-ModuleMember -Function CreateRemoveRescueRgScript

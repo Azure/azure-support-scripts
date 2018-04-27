@@ -31,6 +31,9 @@
 .PARAMETER OriginalosDiskVhdUri
     Optional Parameter. This is always passed for a non Managed VM, this is so that scripty can allow to delete the snapshot
 
+.PARAMETER OriginalProblemOSManagedDiskID
+    Optional Parameter. This is always passed for a Managed VM, this is so that script has a refernce to the original Disk ID so if need be it has a way to swap back to its original oS Disk
+
 .EXAMPLE
     .\Restore-AzureRMOriginalVM.ps1 -resourceGroupName "testsujmg" -VmName "sujmanagedvm" -subscriptionId "d7eaa135-abdf-4aaf-8868-2002dfeea60c" -diskName "rescuexm001fixedosrescuex001fixedossujmanagedvm_OsDisk_1_6bee8dc1d09d42f9b6d7954"  -prefix "rescuexm001" 
 
@@ -63,7 +66,10 @@ param(
     [String]$prefix = 'rescue',
 
     [Parameter(mandatory=$false)]
-    [String]$OriginalosDiskVhdUri
+    [String]$OriginalosDiskVhdUri,
+
+    [Parameter(mandatory=$false)]
+    [String]$OriginalProblemOSManagedDiskID
 )
 
 $Error.Clear()
@@ -77,6 +83,7 @@ $timestamp = get-date $script:scriptStartTime -f yyyyMMddHHmmss
 $scriptPath = split-path -path $MyInvocation.MyCommand.Path -parent
 $scriptName = (split-path -path $MyInvocation.MyCommand.Path -leaf).Split('.')[0]
 $logFile = "$scriptPath\$($scriptName)_$($vmName)_$($timestamp).log"
+$restoreOriginalStateFile = "Restore_" + $vmName + "_OriginalState.ps1"
 set-location $scriptPath
 $commonFunctionsModule = "$scriptPath\Common-Functions.psm1"
 
@@ -117,6 +124,16 @@ else
     write-log "Environment: $environmentName" -logOnly
 }
 
+$rescueVMName = "$prefix$vmName"
+$rescueResourceGroupName = "$prefix$resourceGroupName"
+
+#Creates a script that allows to delete the rescue resource grop that was created as part of this operation.
+$removeRescueRgScript = "Remove_Rescue_RG_" + $rescueResourceGroupName + ".ps1"
+$removeRescueRgScriptPath = (get-childitem $removeRescueRgScript).FullName
+
+CreateRemoveRescueRgScript -rescueResourceGroupName $rescueResourceGroupName -removeRescueRgScript $removeRescueRgScript -scriptonly -subscriptionId $subscriptionId
+
+
 # Step 1 Get VM object
 write-log "[Running] Get-AzureRmVM -resourceGroupName $resourceGroupName -Name $vmName"
 $vm = Get-AzureRmVM -ResourceGroupName $resourceGroupName -Name $vmName -WarningAction SilentlyContinue
@@ -127,7 +144,7 @@ if (-not $vm)
     $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
     return $scriptResult
 }
-write-log "[Success] Found VM $($vm.Name)" -color green
+write-log "[Success] Found problem VM $($vm.Name)" -color green
 
 if ($vm.StorageProfile.OsDisk.OsType -eq 'Windows')
 {
@@ -146,7 +163,7 @@ write-log "[Running] Get-AzureRmVM -ResourceGroupName $rescueResourceGroupName -
 $rescuevm = Get-AzureRmVM -ResourceGroupName $rescueResourceGroupName -Name $rescueVMName -WarningAction SilentlyContinue
 if (-not $rescuevm)
 {
-    $message = "[Error] VM $rescueVMName not found. Verify the VM name and resource group name."
+    $message = "[Error] Rescue VM $rescueVMName not found. Verify the VM name and resource group name."
     write-log $message -color red
     $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
     return $scriptResult
@@ -170,7 +187,6 @@ if (-not $managedVM)
     $diskname = ($FixedOsDiskUri.Split('/')[-1]).split('.')[0]
 }
 $diskname = $diskname.Replace("`r`n","")
-#$diskName = ($FixedOsDiskUri.Split('/')[-1]).split('.')[0]
 write-log "Disk name: $diskName" -logonly
 if ($rescuevm.StorageProfile.DataDisks.Count -gt 0)
 {
@@ -195,12 +211,11 @@ try
 }
 catch
 {
-    $message = "[Error] Unable to remove data disk."
+    $message = "[Error] Unable to remove data disk from rescue VM."
     write-log $message -color red
     write-log "$message - $($_.Exception.GetType().FullName)" -logOnly
     write-log "Exception Message: $($_.Exception.Message)" -logOnly
-    WriteRestoreCommands -resourceGroupName $resourceGroupName -VmName $vmName -problemvmOsDiskUri $vm.StorageProfile.OsDisk.Vhd.Uri -problemvmOsDiskManagedDiskID $rescuevm.StorageProfile.DataDisks[0].ManagedDisk.id -managedVM $managedVM
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason "$message. Review the log file to see how the VM can be restored."
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason "$message. To delete the resource group you may delete that by executing the PowerShell script .\$removeRescueRgScript " -cleanupscript $removeRescueRgScript
     return $scriptResult
 }
 
@@ -209,7 +224,7 @@ $stopped = StopTargetVM -resourceGroupName $resourceGroupName -VmName $vmName
 write-log "`$stopped: $stopped" -logOnly
 if (-not $stopped) 
 {
-    $message = "[Error] Unable to stop VM $vmName. Try stopping the VM from the Azure portal."
+    $message = "[Error] Unable to stop problem VM $vmName. Try stopping the VM from the Azure portal."
     write-log $message -color red
     $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
     return $scriptResult
@@ -220,21 +235,23 @@ write-log "[Running] Swapping data disk from $rescueVMName to OS disk on problem
 if (-not $managedVM)
 {
     $problemvmOsDiskUri=$vm.StorageProfile.OsDisk.Vhd.Uri 
-    WriteRestoreCommands -resourceGroupName $resourceGroupName -VmName $vmName -problemvmOsDiskUri $problemVMosDiskUri -problemvmOsDiskManagedDiskID $null -managedVM $managedVM
+    CreateRestoreOriginalStateScript -scriptonly -resourceGroupName $resourceGroupName -VmName $vmName -problemvmOriginalOsDiskUri $problemVMosDiskUri -problemvmOsDiskManagedDiskID $null -managedVM $managedVM -restoreOriginalStateScript $restoreOriginalStateFile -subscriptionId $subscriptionId
+    $restoreOriginalStateScriptPath = (get-childitem $restoreOriginalStateFile).FullName
     $vm.StorageProfile.OsDisk.Vhd.Uri = $FixedOsDiskUri 
     $null = Update-AzureRmVM -ResourceGroupName $resourceGroupName -VM $vm 
-    write-log "[Success] Swapped OS disk for VM $vmName" -color green
+    write-log "[Success] Swapped OS disk for problem VM $vmName" -color green
 }
 else
 {
-    WriteRestoreCommands -resourceGroupName $resourceGroupName -VmName $vmName -problemvmOsDiskUri $null  -problemvmOsDiskManagedDiskID $problemvmOsDiskManagedDiskID -managedVM $managedVM
+    CreateRestoreOriginalStateScript -scriptonly -resourceGroupName $resourceGroupName -VmName $vmName -problemvmOriginalOsDiskUri $null  -OriginalProblemOSManagedDiskID $OriginalProblemOSManagedDiskID -managedVM $managedVM -restoreOriginalStateScript $restoreOriginalStateFile -subscriptionId $subscriptionId
+    $restoreOriginalStateScriptPath = (get-childitem $restoreOriginalStateFile).FullName
     $null = set-AzureRmVMOSDisk -vm $vm -ManagedDiskId $problemvmOsDiskManagedDiskID -CreateOption FromImage -WarningAction SilentlyContinue
     $null = Update-AzureRmVM -ResourceGroupName $resourceGroupName -VM $vm 
-    write-log "[Success] Swapped OS disk for VM $vmName" -color green
+    write-log "[Success] Swapped OS disk for problem VM $vmName" -color green
 }
 
 #Step 5 -Start the VM
-write-log "[Running] Starting VM $vmName"
+write-log "[Running] Starting problem VM $vmName"
 $started = Start-AzureRmVM -ResourceGroupName $resourceGroupName -Name $vmName
 if ($started)
 {
@@ -255,8 +272,9 @@ if ($windowsVM)
     $null = Get-AzureRmRemoteDesktopFile -ResourceGroupName $resourceGroupName -Name $vmName -Launch
 }
 
-#Step 6 Clean up rescue resource group
-write-host "`nWere you able to successfully recover VM $vmName and are you ready to delete all the rescue resources that were created under resource group $rescueResourceGroupName (Y/N)?" -foregroundColor cyan
+#Step 6 Clean up rescue resource group (Allows to delete it from script or later, this script is created from the new-AzureRescueVM)
+write-log "`nIf you were able to successfully recover problem VM $vmName, and no longer need the resources under resource group $rescueResourceGroupName, you have the option to delete it now or delete later by running the script $removeRescueRgScript." -noTimeStamp
+write-log "`n Delete now (Y/N)?" -color cyan -noTimeStamp
 if ((read-host) -eq 'Y')
 {
     write-log "User chose to delete resource group $rescueResourceGroupName" -color cyan
@@ -268,8 +286,9 @@ if ((read-host) -eq 'Y')
     }
 }
 else
-{
-    write-log "User chose not to delete resource group $rescueResourceGroupName" -color cyan
+{  
+    write-log "`n[Information] To delete the Rescue Resource Group, you may delete it later by executing the below Powershell script from $removeRescueRgScriptPath :`n" -notimestamp -color cyan  
+    write-log "$removeRescueRgScript`n" -notimestamp
 }
 
 if (-not $managedVM)
@@ -277,12 +296,14 @@ if (-not $managedVM)
     DeleteSnapShotAndVhd -osDiskVhdUri $OriginalosDiskVhdUri -resourceGroupName $resourceGroupName
 }
 
+write-log "`n[Information] If you need to switch back to the problem VM in its original state, you may do so by executing the script $restoreOriginalStateScriptPath" -noTimeStamp -color cyan
+write-log "`n $restoreOriginalStateFile`n"  -noTimeStamp
 $script:scriptEndTime = (get-date).ToUniversalTime()
 $script:scriptDuration = new-timespan -Start $script:scriptStartTime -End $script:scriptEndTime
 write-log "Script duration: $('{0:hh}:{0:mm}:{0:ss}.{0:ff}' -f $script:scriptDuration)"
 write-log "Log file: $logFile"
 
-$scriptResult = Get-ScriptResultObject -scriptSucceeded $true -rescueScriptCommand $MyInvocation.Line 
+$scriptResult = Get-ScriptResultObject -scriptSucceeded $true -rescueScriptCommand $MyInvocation.Line -cleanupScript $removeRescueRgScript -restoreOriginalStateScript $restoreOriginalStateFile
 
 #invoke-item $logFile
 #return $scriptResult
