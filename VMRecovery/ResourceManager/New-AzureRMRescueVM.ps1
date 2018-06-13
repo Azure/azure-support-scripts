@@ -344,6 +344,12 @@ if ($managedVM)
 {
     #For ManagedVM SnapshotAndCopyOSDisk returns the snapshotname
     $storageType = 'StandardLRS'
+    $AzurePsVersion=Get-Module AzureRM -ListAvailable   
+    if ($AzurePsVersion -and $AzurePsVersion.Version.Major -ge 6)
+    {
+        $storageType = 'Standard_LRS'
+    }
+    
     $snapshotName = $osDiskVHDToBeRepaired
     $ToBeFixedManagedOsDisk = $prefix + "fixedos" + $vm.StorageProfile.OsDisk.Name 
     $oldDisk = Get-AzureRmDisk -resourceGroupName $resourceGroupName -DiskName $OrignalosDiskName -WarningAction SilentlyContinue
