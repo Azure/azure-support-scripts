@@ -34,11 +34,14 @@
 .PARAMETER OriginalProblemOSManagedDiskID
     Optional Parameter. This is always passed for a Managed VM, this is so that script has a refernce to the original Disk ID so if need be it has a way to swap back to its original oS Disk
 
+.PARAMETER OriginalDiskName
+    Optional Parameter. This is always passed for a Managed VM, this is so that script has a refernce to the original Disk name , this parameter is needed to build the script that allows to Restore the original VM back to its original state.
+
 .EXAMPLE
-    .\Restore-AzureRMOriginalVM.ps1 -resourceGroupName "testsujmg" -VmName "sujmanagedvm" -subscriptionId "d7eaa135-abdf-4aaf-8868-2002dfeea60c" -diskName "rescuexm001fixedosrescuex001fixedossujmanagedvm_OsDisk_1_6bee8dc1d09d42f9b6d7954"  -prefix "rescuexm001" 
+    .\Restore-AzureRMOriginalVM.ps1 -resourceGroupName "testsujmg" -VmName "sujmanagedvm" -subscriptionId "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" -diskName "rescuexm001fixedosrescuex001fixedossujmanagedvm_OsDisk_1_6bee8dc1d09d42f9b6d7954"  -prefix "rescuexm001" 
 
 .EXAMPLE 
-    .\Restore-AzureRMOriginalVM.ps1 -resourceGroupName "sujtemp" -VmName "sujnortheurope" -subscriptionId "d7eaa135-abdf-4aaf-8868-2002dfeea60c" -FixedOsDiskUri "https://sujtemp6422.blob.core.windows.net/vhds/rescuexU001fixedosrescuexUnARMfixedosrescuex51fixedosrescuex48fixedosrescuex47fixedosrescuex2fixedosrescuefixedosrescue02fixedossujnortheurope.vhd" -OriginalosDiskVhdUri "https://sujtemp6422.blob.core.windows.net/vhds/rescuexUnARMfixedosrescuex51fixedosrescuex48fixedosrescuex47fixedosrescuex2fixedosrescuefixedosrescue02fixedossujnortheurope.vhd"  -prefix "rescuexU001" 
+    .\Restore-AzureRMOriginalVM.ps1 -resourceGroupName "sujtemp" -VmName "sujnortheurope" -subscriptionId "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" -FixedOsDiskUri "https://sujtemp6422.blob.core.windows.net/vhds/rescuexU001fixedosrescuexUnARMfixedosrescuex51fixedosrescuex48fixedosrescuex47fixedosrescuex2fixedosrescuefixedosrescue02fixedossujnortheurope.vhd" -OriginalosDiskVhdUri "https://sujtemp6422.blob.core.windows.net/vhds/rescuexUnARMfixedosrescuex51fixedosrescuex48fixedosrescuex47fixedosrescuex2fixedosrescuefixedosrescue02fixedossujnortheurope.vhd"  -prefix "rescuexU001" 
 
 .NOTES
     Name: Restore-AzureRMOriginalVM.ps1
@@ -69,7 +72,10 @@ param(
     [String]$OriginalosDiskVhdUri,
 
     [Parameter(mandatory=$false)]
-    [String]$OriginalProblemOSManagedDiskID
+    [String]$OriginalProblemOSManagedDiskID,
+
+    [Parameter(mandatory=$false)]
+    [String]$OriginalDiskName
 )
 
 $Error.Clear()
@@ -154,7 +160,6 @@ else
 {
     $windowsVM = $false
 }
-
 $rescueVMName = "$prefix$vmName"
 $rescueResourceGroupName = "$prefix$resourceGroupName"
 
@@ -243,9 +248,9 @@ if (-not $managedVM)
 }
 else
 {
-    CreateRestoreOriginalStateScript -scriptonly -resourceGroupName $resourceGroupName -VmName $vmName -problemvmOriginalOsDiskUri $null  -OriginalProblemOSManagedDiskID $OriginalProblemOSManagedDiskID -managedVM $managedVM -restoreOriginalStateScript $restoreOriginalStateFile -subscriptionId $subscriptionId
+    CreateRestoreOriginalStateScript -scriptonly -resourceGroupName $resourceGroupName -VmName $vmName -problemvmOriginalOsDiskUri $null  -OriginalProblemOSManagedDiskID $OriginalProblemOSManagedDiskID -managedVM $managedVM -restoreOriginalStateScript $restoreOriginalStateFile -subscriptionId $subscriptionId -OriginalDiskName $OriginalDiskName
     $restoreOriginalStateScriptPath = (get-childitem $restoreOriginalStateFile).FullName
-    $null = set-AzureRmVMOSDisk -vm $vm -ManagedDiskId $problemvmOsDiskManagedDiskID -CreateOption FromImage -WarningAction SilentlyContinue
+    $null = set-AzureRmVMOSDisk -vm $vm -Name $diskName -ManagedDiskId $problemvmOsDiskManagedDiskID -WarningAction SilentlyContinue
     $null = Update-AzureRmVM -ResourceGroupName $resourceGroupName -VM $vm 
     write-log "[Success] Swapped OS disk for problem VM $vmName" -color green
 }
