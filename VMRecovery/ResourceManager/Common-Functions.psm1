@@ -215,7 +215,7 @@ function SnapshotAndCopyOSDisk
     }
 
     $osDiskvhd = $osDiskVhdUri.split('/')[-1]
-    $storageAccountName = $vm.StorageProfile.OsDisk.Vhd.Uri.Split('//')[2].Split('.')[0]
+    $storageAccountName = $vm.StorageProfile.OsDisk.Vhd.Uri.Split('/')[2].Split('.')[0]
     $toBeFixedosDiskVhd = $prefix + "fixedos" +  $osDiskvhd
     $ContainerName = $osDiskVhdUri.Split('/')[3]
     $ctx = GetStorageConnection -storageAccountName $storageAccountName
@@ -314,6 +314,7 @@ function CreateRestoreOriginalStateScript (
     [string]$problemvmOriginalOsDiskUri,
     [string]$OriginalProblemOSManagedDiskID,
     [string]$subscriptionId,
+    [string]$OriginalDiskname,
     [bool]$managedVM,
     [string]$restoreOriginalStateScript,
     [switch]$scriptonly
@@ -330,7 +331,7 @@ function CreateRestoreOriginalStateScript (
     $step3="# Step 3: Performing a disk swap, swapping the OS Disk to its original OS Disk to put the VM $vmName back to its original state."
     if (-not $managedVM){ $vhdUriCmd = "`$problemvm.StorageProfile.OsDisk.Vhd.Uri = `"$problemvmOriginalOsDiskUri`""}
     else
-    {$setAzureRmOsDiskCmd = "Set-AzureRmVMOSDisk -vm `$problemvm -ManagedDiskId `"$OriginalProblemOSManagedDiskID`" -CreateOption FromImage"}
+    {$setAzureRmOsDiskCmd = "Set-AzureRmVMOSDisk -vm `$problemvm -Name `"$OriginalDiskname`" -ManagedDiskId `"$OriginalProblemOSManagedDiskID`" "}
     $step4="# Step 4: Completing the OSDisk swap operation by running Update-AzureRmVM "
     $updateAzureRmCMCmd = "Update-AzureRmVM -ResourceGroupName $resourceGroupName -VM `$problemvm"
     $step5="# Step 5: Starting the problem vm $vmName "
@@ -498,7 +499,7 @@ function CreateRescueVM(
         if (-not $managedVM)
         {
             $osDiskVhdUri = $vm.StorageProfile.OsDisk.Vhd.Uri
-            $storageAccountName = $vm.StorageProfile.OsDisk.Vhd.Uri.Split('//')[2].Split('.')[0]
+            $storageAccountName = $vm.StorageProfile.OsDisk.Vhd.Uri.Split('/')[2].Split('.')[0]
             $rescueosDiskVhduri = $osDiskVhdUri.Replace($osDiskName,$rescueOSDiskName)
         }
 

@@ -51,25 +51,25 @@
 .EXAMPLE
     Example using all the mandatory fields:
 
-    $scriptResult = .\New-AzureRMRescueVM.ps1 -resourceGroupName sujtemp -VmName sujnortheurope -subscriptionId d7eaa135-abdf-4aaf-8868-2002dfeea60c
+    $scriptResult = .\New-AzureRMRescueVM.ps1 -resourceGroupName sujtemp -VmName sujnortheurope -subscriptionId xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 
 .EXAMPLE
     Examples with optional parametersm in this example it will create the rescue VM with RedHat installed
 
-    $scriptResult = .\New-AzureRMRescueVM.ps1 -VmName ubuntu -resourceGroupName portalLin -subscriptionId d7eaa135-abdf-4aaf-8868-2002dfeea60c -Publisher RedHat -Offer RHEL -Sku 7.3 -Version 7.3.2017090723 -prefix rescuered 
+    $scriptResult = .\New-AzureRMRescueVM.ps1 -VmName ubuntu -resourceGroupName portalLin -subscriptionId xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx -Publisher RedHat -Offer RHEL -Sku 7.3 -Version 7.3.2017090723 -prefix rescuered 
 
 .EXAMPLE
-    $scriptResult = .\New-AzureRMRescueVM.ps1 -resourceGroupName sujtemp -VmName sujnortheurope -subscriptionId d7eaa135-abdf-4aaf-8868-2002dfeea60c -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex2"
+    $scriptResult = .\New-AzureRMRescueVM.ps1 -resourceGroupName sujtemp -VmName sujnortheurope -subscriptionId xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex2"
 
 .EXAMPLE
     Example for managed disk VM:
 
-    $scriptResult =  .\New-AzureRMRescueVM.ps1 -resourceGroupName testsujmg -VmName sujmanagedvm -subscriptionId d7eaa135-abdf-4aaf-8868-2002dfeea60c -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex17" -AllowManagedVM   
+    $scriptResult =  .\New-AzureRMRescueVM.ps1 -resourceGroupName recoveryVMRg -VmName recovmtestmg -subscriptionId xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex1" 
 
 .EXAMPLE
     Example for managed disk VM
 
-    $scriptResult = .\New-AzureRMRescueVM.ps1 -resourceGroupName testsujmg -VmName sujmanagedvm  -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex17" -AllowManagedVM   
+    $scriptResult = .\New-AzureRMRescueVM.ps1 -resourceGroupName recoveryVMRg -VmName recovmtestmg  -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex2" 
 
 .EXAMPLE
     Example for marketplace image with Plan
@@ -155,7 +155,7 @@ write-log "Log file: $logFile"
 write-log $MyInvocation.Line -logOnly
 
 #Checks to see if AzureRM is available
-if (-not (get-module -ListAvailable -name 'AzureRM.Profile')) 
+if (-not (get-module -ListAvailable -name 'AzureRM.Profile') -and (-not (Get-Module -ListAvailable -Name 'AzureRM.NetCore'))) 
 {
     $message = "Azure PowerShell not installed. Either install Azure PowerShell from https://docs.microsoft.com/en-us/powershell/azure/install-azurerm-ps or use Cloud Shell PowerShell at https://shell.azure.com/powershell" 
     write-log $message -color red
@@ -344,8 +344,9 @@ if ($managedVM)
 {
     #For ManagedVM SnapshotAndCopyOSDisk returns the snapshotname
     $storageType = 'StandardLRS'
-    $AzurePsVersion=Get-Module AzureRM -ListAvailable   
-    if ($AzurePsVersion -and $AzurePsVersion.Version.Major -ge 6)
+    $AzurePsVersion=Get-Module AzureRM -ListAvailable
+    #checks to See Powershell version, or of its running from Cloudshell using AzureRM.NetCore)
+    if (($AzurePsVersion -and $AzurePsVersion.Version.Major -ge 6) -or (Get-Module -ListAvailable -Name AzureRM.NetCore))
     {
         $storageType = 'Standard_LRS'
     }
@@ -417,7 +418,7 @@ else
 
 if ($managedVM)
 {
-    $restoreScriptCommand = ".\Restore-AzureRMOriginalVM.ps1 -resourceGroupName $resourceGroupName -VmName $vmName -subscriptionId $subscriptionId -diskName $diskname -prefix $prefix -OriginalProblemOSManagedDiskID $OriginalProblemOSManagedDiskID"
+    $restoreScriptCommand = ".\Restore-AzureRMOriginalVM.ps1 -resourceGroupName $resourceGroupName -VmName $vmName -subscriptionId $subscriptionId -diskName $diskname -prefix $prefix -OriginalProblemOSManagedDiskID $OriginalProblemOSManagedDiskID -OriginalDiskName $OrignalosDiskName" 
 }
 else
 {
