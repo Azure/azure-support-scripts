@@ -28,15 +28,15 @@ The VM recovery script is most applicable when a VM is not booting, as seen on t
 
 3. If you then see **`You have no storage mounted`**, select the subscription where the VM you are troubleshooting resides, then select **`Create storage`**.
 
-4. From the **`PS Azure:\>`** prompt type **`cd C:\`** then **`<ENTER>`**.
+4. From the **`PS Azure:\>`** prompt type **`cd C:/`** then **`<ENTER>`**.
 
 5. Run the following command to download the scripts. Git is preinstalled in Cloud Shell. You do not need to install it separately.
    ```PowerShell
-   git clone https://github.com/Azure/azure-support-scripts $home\CloudDrive\azure-support-scripts
+   git clone https://github.com/Azure/azure-support-scripts $home/CloudDrive/azure-support-scripts
    ```
 6. Switch into the folder by running:
    ```PowerShell
-   cd $home\CloudDrive\azure-support-scripts\VMRecovery\ResourceManager
+   cd $home/CloudDrive/azure-support-scripts/VMRecovery/ResourceManager
    ```
 7. Run the following command to create a new "rescue VM" and attach the OS disk of the problem VM to the rescue VM as a data disk:
    ```PowerShell
