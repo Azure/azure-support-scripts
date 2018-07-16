@@ -1,14 +1,14 @@
 # Overview
 If an Azure VM is inaccessible it may be necessary to attach the OS disk to another Azure VM in order to perform recovery steps. The VM recovery scripts automate the recovery steps below.
 
-1. Stops the problem VM
-2. Takes a snapshot of the problem VM's OS disk
+1. Stops the problem VM.
+2. Takes a snapshot of the problem VM's OS disk.
 3. Creates a new temporary VM ("rescue VM"). 
-4. Attaches the problem VM's OS disk as a data disk on the rescue VM
-5. You can then connect to the rescue VM to investigate and mitigates issues with the problem VM's OS disk
-6. Detaches the data disk from rescue VM
-7. Performs a disk swap to swap the problem VM's OS disk from the rescue VM back to the problem VM
-8. Removes the resources that were created for the rescue VM
+4. Attaches the problem VM's OS disk as a data disk on the rescue VM.
+5. You can then connect to the rescue VM to investigate and mitigate issues with the problem VM's OS disk.
+6. Detaches the problem VM's OS disk from the rescue VM.
+7. Performs a disk swap to swap the problem VM's OS disk from the rescue VM back to the problem VM.
+8. Removes the resources that were created for the rescue VM.
 
 # Supported VM Types
 
@@ -16,7 +16,7 @@ This version of the VM recovery script is for use with Azure VMs created using t
 
 ## When would you use the script?
 
-The VM recovery script is most applicable when a VM is not booting, as seen on the VM screenshot in [boot diagnostics](https://azure.microsoft.com/en-us/blog/boot-diagnostics-for-virtual-machines-v2/) in the Azure portal.
+The VM recovery script is most applicable when a VM is not booting, as seen on the VM screenshot in [boot diagnostics](https://azure.microsoft.com/blog/boot-diagnostics-for-virtual-machines-v2/) in the Azure portal.
 
 ## Usage
 ### Cloud Shell PowerShell
@@ -24,11 +24,11 @@ The VM recovery script is most applicable when a VM is not booting, as seen on t
 
    <a href="https://shell.azure.com/powershell" target="_blank"><img border="0" alt="Launch Cloud Shell" src="https://shell.azure.com/images/launchcloudshell@2x.png"></a>
 
-2. If it is your first time connecting to Azure Cloud Shell, select **`PowerShell (Windows)`** when you see **`Welcome to Azure Cloud Shell`**. 
+2. If it is your first time connecting to Azure Cloud Shell, select **`PowerShell (Linux)`** when you see **`Welcome to Azure Cloud Shell`**. 
 
 3. If you then see **`You have no storage mounted`**, select the subscription where the VM you are troubleshooting resides, then select **`Create storage`**.
 
-4. From the **`PS Azure:\>`** prompt type **`cd C:/`** then **`<ENTER>`**.
+4. From the **`PS Azure:/>`** prompt type **`cd /`** then **`<ENTER>`**.
 
 5. Run the following command to download the scripts. Git is preinstalled in Cloud Shell. You do not need to install it separately.
    ```PowerShell
@@ -40,7 +40,7 @@ The VM recovery script is most applicable when a VM is not booting, as seen on t
    ```
 7. Run the following command to create a new "rescue VM" and attach the OS disk of the problem VM to the rescue VM as a data disk:
    ```PowerShell
-   .\New-AzureRMRescueVM.ps1 -ResourceGroupName <resourceGroupName> -VmName <vmName>
+   ./New-AzureRMRescueVM.ps1 -ResourceGroupName <resourceGroupName> -VmName <vmName>
    ```
    If you need to verify the resource group name and VM name, run **`Get-AzureRmVM`**. If you need to verify the subscription ID, run **`Get-AzureRmSubscription`**.
    
@@ -77,7 +77,7 @@ The VM recovery script is most applicable when a VM is not booting, as seen on t
    ```PowerShell
    Install-Module -Name AzureRM
    ```
-4. Logon to your Azure subscription using the following command:
+4. Login to your Azure subscription using the following command:
    ```PowerShell
    Connect-AzureRMAccount
    ```
