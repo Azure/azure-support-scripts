@@ -20,6 +20,10 @@ The VM recovery script is most applicable when a VM is not booting, as seen on t
 
 ## Usage
 ### Cloud Shell PowerShell
+
+> [!NOTE]
+> The Service-to-Service (S2S) connector talks to Exchange Online in order to sync devices. S2S does not support conditional access through Exchange Service Connector. Instead, it uses Azure AD and the modern authentication library (ADAL).
+
 1. Launch PowerShell in Azure Cloud Shell 
 
    <a href="https://shell.azure.com/powershell" target="_blank"><img border="0" alt="Launch Cloud Shell" src="https://shell.azure.com/images/launchcloudshell@2x.png"></a>
