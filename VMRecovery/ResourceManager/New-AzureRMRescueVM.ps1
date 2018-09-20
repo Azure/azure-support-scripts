@@ -155,7 +155,7 @@ write-log "Log file: $logFile"
 write-log $MyInvocation.Line -logOnly
 
 #Checks to see if AzureRM is available
-if (-not (get-module -ListAvailable -name 'AzureRM.Profile') -and (-not (Get-Module -ListAvailable -Name 'AzureRM.NetCore'))) 
+if (-not (get-module -ListAvailable -name 'AzureRM.Profile') -and (-not (Get-Module -ListAvailable -Name 'Az.Profile'))) 
 {
     $message = "Azure PowerShell not installed. Either install Azure PowerShell from https://docs.microsoft.com/en-us/powershell/azure/install-azurerm-ps or use Cloud Shell PowerShell at https://shell.azure.com/powershell" 
     write-log $message -color red
@@ -345,8 +345,8 @@ if ($managedVM)
     #For ManagedVM SnapshotAndCopyOSDisk returns the snapshotname
     $storageType = 'StandardLRS'
     $AzurePsVersion=Get-Module AzureRM -ListAvailable
-    #checks to See Powershell version, or of its running from Cloudshell using AzureRM.NetCore)
-    if (($AzurePsVersion -and $AzurePsVersion.Version.Major -ge 6) -or (Get-Module -ListAvailable -Name AzureRM.NetCore))
+    #checks to See Powershell version, or of its running from Cloudshell using Az.Profile)
+    if (($AzurePsVersion -and $AzurePsVersion.Version.Major -ge 6) -or (Get-Module -ListAvailable -Name Az.Profile))
     {
         $storageType = 'Standard_LRS'
     }
