@@ -271,7 +271,7 @@ else
 }
 
 #Step 5 Launch RDP file to the VM
-if ($windowsVM)
+if ($windowsVM -and -not (RanFromCloudShell))
 {
     write-log "[Running] Opening RDP file for VM $vmName"
     $null = Get-AzureRmRemoteDesktopFile -ResourceGroupName $resourceGroupName -Name $vmName -Launch

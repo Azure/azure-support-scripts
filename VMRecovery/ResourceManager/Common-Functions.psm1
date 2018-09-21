@@ -262,6 +262,18 @@ function SnapshotAndCopyOSDisk
     return $copiedOSDiskUri
 }
 
+function RanfromCloudshell()
+{
+    if (Get-Module -ListAvailable -Name 'Az.Profile')
+    {
+        Return $true
+    }
+    else
+    {
+        Return $false
+    }
+}
+
 function CreateRemoveRescueRgScript(
     [string]$rescueResourceGroupName,
     [string]$removeRescueRgScript,
@@ -754,3 +766,4 @@ Export-ModuleMember -Function Get-ValidLength
 Export-ModuleMember -Function DeleteSnapShotAndVhd
 Export-ModuleMember -Function Get-ScriptResultObject
 Export-ModuleMember -Function CreateRemoveRescueRgScript
+Export-ModuleMember -Function RanfromCloudshell
