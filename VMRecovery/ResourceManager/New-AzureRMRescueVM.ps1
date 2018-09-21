@@ -390,9 +390,9 @@ if ($started)
    write-log "[Success] Started rescue VM $($rescueVm.Name)" -color green
 }
 
-#Step 8 Automatically start up the RDP Connection
+#Step 8 Automatically start up the RDP Connection, if is a windows VM and did not run from cloudshell
 #Manual Fixing of the oS Disk
-if ($windowsVM)
+if ($windowsVM -and -not (RanFromCloudShell))
 {
     write-log "[Running] Getting RDP file for rescue VM $($rescuevm.Name)"
     Get-AzureRmRemoteDesktopFile -resourceGroupName $rescueResourceGroupName -Name $rescuevm.Name -Launch 
