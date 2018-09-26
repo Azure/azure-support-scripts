@@ -2,7 +2,7 @@
 .SYNOPSIS
    Find known issues on Windows Azure VM
 .DESCRIPTION
-   Find-AzureVmKnownIssuesWindows helps to detect known issues that may be blocking network connectivity to a Windows Azure VM (script desiged to be used on Azure VM Serial Console feature)
+   Find-AzureVmKnownIssuesWindows helps to detect known issues that may be blocking network connectivity to a Windows Azure VM (script designed to be used on Azure VM Serial Console feature)
 .NOTES
    Find-AzureVmKnownIssuesWindows was tested only on Windows Servers 2012 R2 and Windows Server 2016. There are plans to include other Windows versions.
 .EXAMPLE
@@ -12,14 +12,12 @@
 
 
 
-#
-# RDP settigns
-
-# get Current is necessary until Serial Console is only shows limited lines on the screen
+<# RDP settings #>
+# get Current is necessary because Serial Console only shows limited lines
 $Current = (Get-ItemProperty HKLM:\SYSTEM\Select -Name Current).Current
 if ($null -eq $Current)
 {
-    $Current = 1 # dafault
+    $Current = 1 # default
 }
 
 $RDPSettings = [pscustomobject]@{
@@ -34,44 +32,43 @@ if ($RDPSettings.fDenyTSConnections)
     Write-Host ("`nWARN | Deny RDP Connections`n   RDP is set to deny connections, current value of 'fDenyTSConnections' is '{0}'`n   Run the following commands to fix this problem: (copy & paste line by line)`n >`n  `$reg='HKLM:\System\ControlSet00$Current\Control\Terminal Server'`n  Set-ItemProperty -Path `$reg -Name 'fDenyTSConnections' -Value 0`n" -f $RDPSettings.fDenyTSConnections) -ForegroundColor Yellow
 }
 
-# if PortNumber is not 3380 then RDP is not using the default port
+# if PortNumber is not 3389 then RDP is not using the default port
 if ($RDPSettings.PortNumber -ne 3389)
 {
-    Write-Host ("`nWARN | RDP is not using default Port`n   Remore Desktop is set use '{0}' Port, the default RDP port is '3389'`n   Run the following commands to fix this problem: (copy & paste line by line)`n >`n  `$reg='HKLM:\SYSTEM\ControlSet00$Current\Control\Terminal Server\WinStations\RDP-Tcp'`n  Set-ItemProperty -Path `$reg -Name 'PortNumber' -Value 3389`n  Restart-Service TermService -Force`n" -f $RDPSettings.PortNumber) -ForegroundColor Yellow
+    Write-Host ("`nWARN | RDP is not using default port`n   Remote Desktop is set use '{0}' port, the default RDP port is '3389'`n   Run the following commands to fix this problem: (copy & paste line by line)`n >`n  `$reg='HKLM:\SYSTEM\ControlSet00$Current\Control\Terminal Server\WinStations\RDP-Tcp'`n  Set-ItemProperty -Path `$reg -Name 'PortNumber' -Value 3389`n  Restart-Service TermService -Force`n" -f $RDPSettings.PortNumber) -ForegroundColor Yellow
 }
 
 # if LanAdapter is not 0 then RDP is accepting connections only for a specific network card (not recommended on Azure)
 if ($RDPSettings.LanAdapter -ne 0)
 {
-    Write-Host ("`nWARN | RDP is listening on a specific NIC `n   Remore Desktop is listening on NIC '{0}', by default RDP listen on all NICs`n   Run the following commands to fix this problem: (copy & paste line by line)`n >`n  `$reg='HKLM:\SYSTEM\ControlSet00$Current\Control\Terminal Server\WinStations\RDP-Tcp'`n  Set-ItemProperty -Path `$reg -Name 'LanAdapter' -Value 0`n  Restart-Service TermService -Force`n" -f $RDPSettings.LanAdapter) -ForegroundColor Yellow
+    Write-Host ("`nWARN | RDP is listening on a specific NIC `n   Remote Desktop is listening on NIC '{0}', by default RDP listen on all NICs`n   Run the following commands to fix this problem: (copy & paste line by line)`n >`n  `$reg='HKLM:\SYSTEM\ControlSet00$Current\Control\Terminal Server\WinStations\RDP-Tcp'`n  Set-ItemProperty -Path `$reg -Name 'LanAdapter' -Value 0`n  Restart-Service TermService -Force`n" -f $RDPSettings.LanAdapter) -ForegroundColor Yellow
 }
-
-# RDP settigns
-#
+<# / RDP settings #>
 
 
 
 
-#
-# Network
-
+<# Network #>
 # Network card - disabled nic
 # https://blogs.technet.microsoft.com/heyscriptingguy/2014/01/15/using-powershell-to-find-connected-network-adapters/
-$nicStatus = @{
-    0 = 'Disconnected'
-    1 = 'Connecting'
-    2 = 'Connected'
-    3 = 'Disconnecting'
-    4 = 'Hardware not present'
-    5 = 'Hardware disabled'
-    6 = 'Hardware malfunction'
-    7 = 'Media disconnected'
-    8 = 'Authenticating'
-    9 = 'Authentication succeeded'
-    10 = 'Authentication failed'
-    11 = 'Invalid address'
-    12 = 'Credentials required'
-}
+Add-Type -TypeDefinition @"
+   public enum nicStatus
+   {
+      Disconnected,
+      Connecting,
+      Connected,
+      Disconnecting,
+      HardwareNotPresent,
+      HardwareDisabled,
+      HardwareMalfunction,
+      MediaDisconnected,
+      Authenticating,
+      AuthenticationSucceeded,
+      AuthenticationFailed,
+      InvalidAddress,
+      CredentialsRequired
+   }
+"@
 $nics = @(Get-CimInstance -ClassName win32_networkadapter -Filter 'PhysicalAdapter=True' | Select-Object DeviceID, netconnectionid, name, InterfaceIndex, netconnectionstatus, AdapterType, AdapterTypeId, MACAddress, netEnabled, PhysicalAdapter)
 if ($nics.Count -eq 0)
 {
@@ -80,10 +77,10 @@ if ($nics.Count -eq 0)
 }
 elseif ($nics.Count -eq 1)
 {
-    # netconnectionstatus = 2 > Connected
-    if ($nics[0].netconnectionstatus -ne 2)
+    # if netconnectionstatus not Connected = Nic is disabled
+    if ($nics[0].netconnectionstatus -ne [nicStatus]::Connected)
     { 
-        Write-Host ("`nWARN | Disabled NIC`n   Network card {0} is not connected, current status is '{1}'`n   Run the following command to fix this problem:`n >`n  Enable-NetAdapter -name `"{0}`"`n" -f $nics[0].netconnectionid, $nicStatus[[int]$nics[0].netconnectionstatus]) -ForegroundColor Yellow
+        Write-Host ("`nWARN | Disabled NIC`n   Network card {0} is not connected, current status is '{1}'`n   Run the following command to fix this problem:`n >`n  Enable-NetAdapter -name `"{0}`"`n" -f $nics[0].netconnectionid, [nicStatus][int]$nics[0].netconnectionstatus) -ForegroundColor Yellow
     }
     else
     {
@@ -102,37 +99,47 @@ elseif ($nics.Count -eq 1)
         }
     }
 }
-# Network
-#
+<# / Network #>
 
 
-#
-# Services
-$services = @('dhcp', 'TermService' )
+<# Services #>
+$services = Get-Service -Name @('dhcp', 'TermService')
 foreach ($service in $services)
 {
-    $srv = Get-CimInstance -ClassName Win32_Service -Filter ("Name='{0}'" -f $service)
-    if ($srv)
+    # get services
+    if ($service)
     {
-        if ($srv.State -ne 'Running')
+        # if service is disable
+        if ($service.StartType -eq 'Disabled')
         {
-            Write-Host ("`nWARN | Service {0} NOT running`n   Service {0} is {1} on this VM`n   Run the following command to start this service:`n >`n  Start-Service -Name '{0}'`n" -f $srv.Name, $srv.State) -ForegroundColor Yellow
+            switch ($service.Name)
+            {
+                'dhcp' {$DefaultStartType = 'Automatic' }
+                'TermService' {$DefaultStartType = 'Manual' }
+                default {$DefaultStartType = 'Manual' }
+            }
+            Write-Host ("`nWARN | Service's start type is disabled`n   The start type of service {0} is disabled on this VM`n   Run the following commands to set the service to {1} and start it:`n   (please, copy & paste line by line)`n >`n  Set-Service -Name {0} -StartupType {1}`n  Start-Service -Name '{0}'`n" -f $service.Name, $DefaultStartType) -ForegroundColor Yellow
+        }
+        else
+        {
+            # if service is not running
+            if ($service.Status -ne 'Running')
+            {
+                Write-Host ("`nWARN | Service {0} NOT running`n   Service {0} is {1} on this VM`n   Run the following command to start this service:`n >`n  Start-Service -Name '{0}'`n" -f $service.Name, $service.State) -ForegroundColor Yellow
+            }
         }
     }
 }
-# Services
-#
+<# / Services #>
 
-#
-## TransparentInstaller.log
+
+<# TransparentInstaller.log #>
 if (Test-Path C:\WindowsAzure\Logs\TransparentInstaller.log)
 {
     $TransparentInstaller = Get-Content C:\WindowsAzure\Logs\TransparentInstaller.log
 
-    #
-    ## TransparentInstaller.log - Proxy preventing WireServer connection
+    <# TransparentInstaller.log - Proxy preventing WireServer connection #>
     # https://blogs.msdn.microsoft.com/mast/2015/05/18/what-is-the-ip-address-168-63-129-16/
-
     $ScenarioProxyWireServer = [pscustomobject]@{
         'Pattern1' = 'Exception while fetching supported versions from HostGAPlugin: System.Net.WebException: Unable to connect to the remote server.* (?<ip>\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}):(?<port>\d*)$'
         'Pattern2' = 'failed with System.Net.WebException: An exception occurred during a WebClient request. ---> System.NotSupportedException: The ServicePointManager does not support proxies with the https scheme.'
@@ -151,12 +158,8 @@ if (Test-Path C:\WindowsAzure\Logs\TransparentInstaller.log)
                 Write-Host ($ScenarioProxyWireServer.Description -f $ProxySettings.ProxyServer, $ScenarioProxyWireServer.Link) -ForegroundColor Yellow
                 continue
             }
-
         }
     } 
-    ## TransparentInstaller.log - Proxy preventing WireServer connection
-    #
+    <# / TransparentInstaller.log - Proxy preventing WireServer connection #>
 }
-
-## TransparentInstaller.log
-#
+<# / TransparentInstaller.log #>
