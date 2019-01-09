@@ -264,7 +264,7 @@ function SnapshotAndCopyOSDisk
 
 function RanfromCloudshell()
 {
-    if (Get-Module -ListAvailable -Name 'Az.Profile')
+    if ($env:ACC_CLOUD)
     {
         Return $true
     }

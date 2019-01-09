@@ -155,7 +155,7 @@ write-log "Log file: $logFile"
 write-log $MyInvocation.Line -logOnly
 
 #Checks to see if AzureRM is available
-if (-not (get-module -ListAvailable -name 'AzureRM.Profile') -and (-not (Get-Module -ListAvailable -Name 'Az.Profile'))) 
+if (-not (get-module -ListAvailable -name 'AzureRM.Profile') -and (-not $env:ACC_CLOUD)) 
 {
     $message = "Azure PowerShell not installed. Either install Azure PowerShell from https://docs.microsoft.com/en-us/powershell/azure/install-azurerm-ps or use Cloud Shell PowerShell at https://shell.azure.com/powershell" 
     write-log $message -color red
