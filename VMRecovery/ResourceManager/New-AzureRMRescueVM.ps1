@@ -345,8 +345,8 @@ if ($managedVM)
     #For ManagedVM SnapshotAndCopyOSDisk returns the snapshotname
     $storageType = 'StandardLRS'
     $AzurePsVersion=Get-Module AzureRM -ListAvailable
-    #checks to See Powershell version, or of its running from Cloudshell using Az.Profile)
-    if (($AzurePsVersion -and $AzurePsVersion.Version.Major -ge 6) -or (Get-Module -ListAvailable -Name Az.Profile))
+    #checks to See Powershell version, or of its running from Cloudshell )
+    if (($AzurePsVersion -and $AzurePsVersion.Version.Major -ge 6) -or (RanfromCloudshell))
     {
         $storageType = 'Standard_LRS'
     }
