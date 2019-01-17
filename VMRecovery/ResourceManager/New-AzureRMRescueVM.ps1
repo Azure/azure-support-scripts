@@ -161,17 +161,6 @@ LogToAppInsight -EventName $EventName -scriptname $MyInvocation.MyCommand.Name -
 write-log "Log file: $logFile"
 write-log $MyInvocation.Line -logOnly
 
-
-#Debug
-<#$script:scriptEndTime = (get-date).AddMinutes(14).ToUniversalTime()
-$script:scriptDuration = new-timespan -Start $script:scriptStartTime -End $script:scriptEndTime
-
-LogToAppInsight -EventName "Debug Completed" -scriptname $MyInvocation.MyCommand.Name -Command $MyInvocation.Line -Scriptversion $scriptVersion -Duration "$('{0:hh}:{0:mm}:{0:ss}.{0:ff}' -f $script:scriptDuration)" -Message "This is a debug post"
-
-return
-#End Debug 
-#>
-
 #Checks to see if AzureRM is available
 if (-not (get-module -ListAvailable -name 'AzureRM.Profile') -and (-not $env:ACC_CLOUD)) 
 {
