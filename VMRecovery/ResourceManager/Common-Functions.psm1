@@ -29,7 +29,8 @@ function Get-ScriptResultObject
     [string]$rescueScriptCommand,
     [string]$cleanupScript,
     [string]$restoreOriginalStateScript,
-    [string]$FailureReason
+    [string]$FailureReason,
+    [string]$scriptVersion
 )
 {
     $scriptResult = [ordered]@{
@@ -41,6 +42,12 @@ function Get-ScriptResultObject
         'restoreOriginalStateScript' = $restoreOriginalStateScript
     }
     $scriptResult = New-Object -TypeName PSObject -Property $scriptResult
+    If ($FailureReason)
+    {
+        $EventName = "Error"
+        LogToAppInsight -EventName $EventName -scriptname $MyInvocation.CommandOrigin  -Command $MyInvocation.InvocationName -Message $FailureReason -Scriptversion $scriptVersion
+    }
+    
     return $scriptResult
 }
 
@@ -689,7 +696,7 @@ function AttachOsDisktoRescueVM
          $returnVal = $false
          write-log "[Error] Unable to attach OS disk - Exception Type: $($_.Exception.GetType().FullName)" -logOnly
          write-log "Exception Message: $($_.Exception.Message)" -logOnly
-         throw
+         return $false
     }
     return $returnVal
 }
@@ -755,6 +762,88 @@ function write-log
     }        
 }
 
+Function Build-PostData
+{
+    Param(
+		[Parameter(Mandatory=$true)]
+		[string]$EventName,
+        [Parameter(Mandatory=$false)]
+        [string]$Scriptname,
+        [Parameter(Mandatory=$false)]
+        [string]$Command,
+        [Parameter(Mandatory=$false)]
+        [string]$Scriptversion,
+        [Parameter(Mandatory=$false)]
+        [string]$Message,
+        [Parameter(Mandatory=$false)]
+        [string]$Duration
+	)
+    $InstrumentKey = "7d48ea58-f6fe-4795-844b-ea580b90be26"
+    if (RanfromCloudshell){$Environment = "CloudShell"} else {$Environment = "Powershell"}
+    $CustomProperties = @{
+	"Script Name" = "$scriptname";
+	"DeveloperMode" = "false"
+    "Time" = [Datetime]::UtcNow.ToString("yyyy-MM-dd HH:mm:ss")
+    "Message" = $Message
+    "Command" = $Command
+    "ScriptVersion" = $Scriptversion
+    "Environment" = $Environment
+    "Duration" = $Duration
+    }
+
+	Try {
+		Return @{
+			name = "Microsoft.ApplicationInsights.Dev.$InstrumentKey.Event";
+			time = [Datetime]::UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
+			iKey = $InstrumentKey;
+			data = @{
+				baseType = "EventData";
+				baseData = @{
+					name = $eventName;
+					properties = $CustomProperties;
+				}
+			};
+		}
+	} Catch {
+		Throw $_
+	}
+}
+
+
+Function LogToAppInsight
+{
+    Param(
+		[Parameter(Mandatory=$true)]
+		[string]$EventName,
+        [Parameter(Mandatory=$false)]
+        [string]$Scriptname,
+        [Parameter(Mandatory=$false)]
+        [string]$Command,
+        [Parameter(Mandatory=$false)]
+        [string]$Scriptversion="1.0.0",
+        [Parameter(Mandatory=$false)]
+        [string]$Message="None",
+        [Parameter(Mandatory=$false)]
+        [string]$Duration
+	)
+
+    Try {
+        
+        $postData = Build-PostData -EventName $EventName  -Scriptname $Scriptname -Command $Command -Scriptversion $Scriptversion -Message $Message -Duration $Duration | ConvertTo-Json -Depth 5   
+	    Try {
+            write-log "[Running] Posting Telemetry data to AppInsights" 
+		    $Response = Invoke-RestMethod -Method POST -Uri "https://dc.services.visualstudio.com/v2/track" -ContentType "application/json" -Body $postData
+		    Write-log $Response -logOnly
+            write-log "[Success] Request was successfully logged to AppInsights." -color green
+	    } Catch {
+		    Write-log "[Error] Request fail, Failed to log Telemetry Data to AppInsights" -color Red
+		    Write-log $_
+	    }
+    } Catch {
+	    Throw $_
+    }
+}
+
 Export-ModuleMember -Function write-log
 Export-ModuleMember -Function SnapshotAndCopyOSDisk
 Export-ModuleMember -Function CreateRescueVM
@@ -767,3 +856,4 @@ Export-ModuleMember -Function DeleteSnapShotAndVhd
 Export-ModuleMember -Function Get-ScriptResultObject
 Export-ModuleMember -Function CreateRemoveRescueRgScript
 Export-ModuleMember -Function RanfromCloudshell
+Export-ModuleMember -Function LogToAppInsight
