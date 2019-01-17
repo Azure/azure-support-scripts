@@ -30,7 +30,8 @@ function Get-ScriptResultObject
     [string]$cleanupScript,
     [string]$restoreOriginalStateScript,
     [string]$FailureReason,
-    [string]$scriptVersion
+    [string]$scriptVersion,
+    [string]$RunId
 )
 {
     $scriptResult = [ordered]@{
@@ -45,7 +46,7 @@ function Get-ScriptResultObject
     If ($FailureReason)
     {
         $EventName = "Error"
-        LogToAppInsight -EventName $EventName -scriptname $MyInvocation.CommandOrigin  -Command $MyInvocation.InvocationName -Message $FailureReason -Scriptversion $scriptVersion
+        LogToAppInsight -EventName $EventName -scriptname $MyInvocation.CommandOrigin  -Command $MyInvocation.InvocationName -Message $FailureReason -Scriptversion $scriptVersion -RunID $RunId
     }
     
     return $scriptResult
@@ -776,7 +777,9 @@ Function Build-PostData
         [Parameter(Mandatory=$false)]
         [string]$Message,
         [Parameter(Mandatory=$false)]
-        [string]$Duration
+        [string]$Duration,
+        [Parameter(Mandatory=$true)]
+        [string]$RunId
 	)
     $InstrumentKey = "7d48ea58-f6fe-4795-844b-ea580b90be26"
     if (RanfromCloudshell){$Environment = "CloudShell"} else {$Environment = "Powershell"}
@@ -789,6 +792,7 @@ Function Build-PostData
     "ScriptVersion" = $Scriptversion
     "Environment" = $Environment
     "Duration" = $Duration
+    "RunID" = $RunId
     }
 
 	Try {
@@ -824,12 +828,13 @@ Function LogToAppInsight
         [Parameter(Mandatory=$false)]
         [string]$Message="None",
         [Parameter(Mandatory=$false)]
-        [string]$Duration
+        [string]$Duration,
+        [string]$RunID
 	)
 
     Try {
         
-        $postData = Build-PostData -EventName $EventName  -Scriptname $Scriptname -Command $Command -Scriptversion $Scriptversion -Message $Message -Duration $Duration | ConvertTo-Json -Depth 5   
+        $postData = Build-PostData -EventName $EventName  -Scriptname $Scriptname -Command $Command -Scriptversion $Scriptversion -Message $Message -Duration $Duration -RunId $RunID| ConvertTo-Json -Depth 5   
 	    Try {
             write-log "[Running] Posting Telemetry data to AppInsights" 
 		    $Response = Invoke-RestMethod -Method POST -Uri "https://dc.services.visualstudio.com/v2/track" -ContentType "application/json" -Body $postData
