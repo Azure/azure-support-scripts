@@ -838,7 +838,6 @@ Function LogToAppInsight
 	    Try {
             write-log "[Running] Posting Telemetry data to AppInsights" 
 		    $Response = Invoke-RestMethod -Method POST -Uri "https://dc.services.visualstudio.com/v2/track" -ContentType "application/json" -Body $postData
-		    Write-log $Response -logOnly
             write-log "[Success] Request was successfully logged to AppInsights." -color green
 	    } Catch {
 		    Write-log "[Error] Request fail, Failed to log Telemetry Data to AppInsights" -color Red
