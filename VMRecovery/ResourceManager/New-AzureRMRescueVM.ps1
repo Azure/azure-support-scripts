@@ -64,7 +64,7 @@
 .EXAMPLE
     Example for managed disk VM:
 
-    $scriptResult =  .\New-AzureRMRescueVM.ps1 -resourceGroupName sujasrg -VmName sujunmanagedP -subscriptionId xx-xx-xx -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex0011" 
+    $scriptResult =  .\New-AzureRMRescueVM.ps1 -resourceGroupName sujasrg -VmName sujunmanagedP -subscriptionId xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex0011" 
 
 .EXAMPLE
     Example for managed disk VM

@@ -736,7 +736,7 @@ function write-log
         [string]$color = 'White',
         [switch]$logOnly,
         [switch]$noTimeStamp
-    )    
+        )    
 
     $timestamp = ('[' + (get-date (get-date).ToUniversalTime() -format "yyyy-MM-dd HH:mm:ssZ") + '] ')
 
@@ -780,7 +780,7 @@ Function Build-PostData
         [string]$Duration,
         [Parameter(Mandatory=$true)]
         [string]$RunId
-	)
+	    )
     $InstrumentKey = "7d48ea58-f6fe-4795-844b-ea580b90be26"
     if (RanfromCloudshell){$Environment = "CloudShell"} else {$Environment = "Powershell"}
     $CustomProperties = @{
@@ -830,7 +830,7 @@ Function LogToAppInsight
         [Parameter(Mandatory=$false)]
         [string]$Duration,
         [string]$RunID
-	)
+	    )
 
     Try {
         
