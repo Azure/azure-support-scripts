@@ -99,12 +99,19 @@ if (Get-Module Common-Functions)
 }
 import-module -Name $commonFunctionsModule -ArgumentList $logFile -ErrorAction Stop
 
+$EventName = "Started"
+$scriptVersion = "1.0.0"
+$scriptRunId = [System.Guid]::NewGuid()
+
+LogToAppInsight -EventName $EventName -scriptname $MyInvocation.MyCommand.Name -Command $MyInvocation.Line -Scriptversion $scriptVersion -RunID $scriptRunId 
+
 if (-not (Get-AzureRmContext).Account)
 {
     Login-AzureRmAccount
 }
 write-log "Log file: $logFile"
 write-log $MyInvocation.Line -logOnly
+
 #Set the context to the correct subscription ID
 write-log "[Running] Setting authentication context to subscriptionId $subscriptionId"
 $authContext = Set-AzureRmContext -Subscription $subscriptionId
@@ -112,7 +119,7 @@ if (-not $authContext.Subscription.Id)
 {
     $message = "[Error] Unable to set context to subscriptionId $subscriptionId. Run Login-AzureRMAccount and then run the script again."
     write-log $message -color red
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -Scriptversion $scriptVersion -RunID $scriptRunId 
     return $scriptResult
 }
 else
@@ -147,7 +154,7 @@ if (-not $vm)
 {
     $message = "[Error] Unable to find VM $vmName. Verify the vmName, resourceGroupName, and subscriptionId and run the script again."
     write-log $message -color red
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -Scriptversion $scriptVersion -RunID $scriptRunId 
     return $scriptResult
 }
 write-log "[Success] Found problem VM $($vm.Name)" -color green
@@ -170,7 +177,7 @@ if (-not $rescuevm)
 {
     $message = "[Error] Rescue VM $rescueVMName not found. Verify the VM name and resource group name."
     write-log $message -color red
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -Scriptversion $scriptVersion -RunID $scriptRunId 
     return $scriptResult
 }
 write-log "[Success] Found rescue VM $rescueVMName" -color green
@@ -204,7 +211,7 @@ else
 {
     $message = "[Error] Unable to find the data disk on rescue VM $rescueVMName."
     write-log $message -color red
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -Scriptversion $scriptVersion -RunID $scriptRunId 
     return $scriptResult
 }
 write-log "[Running] Removing data disk from rescue VM $rescueVMName"
@@ -220,7 +227,7 @@ catch
     write-log $message -color red
     write-log "$message - $($_.Exception.GetType().FullName)" -logOnly
     write-log "Exception Message: $($_.Exception.Message)" -logOnly
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason "$message. To delete the resource group you may delete that by executing the PowerShell script .\$removeRescueRgScript " -cleanupscript $removeRescueRgScript
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason "$message. To delete the resource group you may delete that by executing the PowerShell script .\$removeRescueRgScript " -cleanupscript $removeRescueRgScript -Scriptversion $scriptVersion -RunID $scriptRunId 
     return $scriptResult
 }
 
@@ -231,7 +238,7 @@ if (-not $stopped)
 {
     $message = "[Error] Unable to stop problem VM $vmName. Try stopping the VM from the Azure portal."
     write-log $message -color red
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -Scriptversion $scriptVersion
     return $scriptResult
 }
 
@@ -266,7 +273,7 @@ else
 {
     $message = "[Error] Unable to start VM $vmName. Try starting it in the Azure portal."
     write-log $message -color red
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -Scriptversion $scriptVersion
     return $scriptResult
 }
 
@@ -301,14 +308,15 @@ if (-not $managedVM)
     DeleteSnapShotAndVhd -osDiskVhdUri $OriginalosDiskVhdUri -resourceGroupName $resourceGroupName
 }
 
-write-log "`n[Information] If you need to switch back to the problem VM in its original state, you may do so by executing the script $restoreOriginalStateScriptPath" -noTimeStamp -color cyan
-write-log "`n $restoreOriginalStateFile`n"  -noTimeStamp
 $script:scriptEndTime = (get-date).ToUniversalTime()
 $script:scriptDuration = new-timespan -Start $script:scriptStartTime -End $script:scriptEndTime
 write-log "Script duration: $('{0:hh}:{0:mm}:{0:ss}.{0:ff}' -f $script:scriptDuration)"
 write-log "Log file: $logFile"
 
-$scriptResult = Get-ScriptResultObject -scriptSucceeded $true -rescueScriptCommand $MyInvocation.Line -cleanupScript $removeRescueRgScript -restoreOriginalStateScript $restoreOriginalStateFile
+$scriptResult = Get-ScriptResultObject -scriptSucceeded $true -rescueScriptCommand $MyInvocation.Line -cleanupScript $removeRescueRgScript -restoreOriginalStateScript $restoreOriginalStateFile -Scriptversion $scriptVersion
+LogToAppInsight -EventName "Completed" -scriptname $MyInvocation.MyCommand.Name -Command $MyInvocation.Line -Scriptversion $scriptVersion -Duration "$('{0:hh}:{0:mm}:{0:ss}.{0:ff}' -f $script:scriptDuration)" -Message "Completed the Execution." -RunID $scriptRunId 
 
-#invoke-item $logFile
-#return $scriptResult
+write-log "`n[Information] If you need to switch back to the problem VM in its original state, you may do so by executing the script $restoreOriginalStateScriptPath" -noTimeStamp -color cyan
+write-log "`n $restoreOriginalStateFile`n"  -noTimeStamp
+
+return $scriptResult

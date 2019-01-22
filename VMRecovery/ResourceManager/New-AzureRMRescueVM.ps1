@@ -64,7 +64,7 @@
 .EXAMPLE
     Example for managed disk VM:
 
-    $scriptResult =  .\New-AzureRMRescueVM.ps1 -resourceGroupName recoveryVMRg -VmName recovmtestmg -subscriptionId xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex1" 
+    $scriptResult =  .\New-AzureRMRescueVM.ps1 -resourceGroupName sujasrg -VmName sujunmanagedP -subscriptionId xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx -UserName "sujasd" -Password "XPa55w0rrd12345" -prefix "rescuex0011" 
 
 .EXAMPLE
     Example for managed disk VM
@@ -151,15 +151,23 @@ if (get-module Common-Functions)
     remove-module -name Common-Functions
 }   
 import-module -Name $commonFunctionsModule -ArgumentList $logFile -ErrorAction Stop 
+
+$EventName = "Started"
+$scriptVersion = "1.0.0"
+$scriptRunId = [System.Guid]::NewGuid()
+$Message = "Started execution of the script"
+LogToAppInsight -EventName $EventName -scriptname $MyInvocation.MyCommand.Name -Command $MyInvocation.Line -Scriptversion $scriptVersion -Message $Message -RunID $scriptRunId 
+
+
 write-log "Log file: $logFile"
 write-log $MyInvocation.Line -logOnly
 
 #Checks to see if AzureRM is available
 if (-not (get-module -ListAvailable -name 'AzureRM.Profile') -and (-not $env:ACC_CLOUD)) 
 {
-    $message = "Azure PowerShell not installed. Either install Azure PowerShell from https://docs.microsoft.com/en-us/powershell/azure/install-azurerm-ps or use Cloud Shell PowerShell at https://shell.azure.com/powershell" 
+    $message = "[Error] Azure PowerShell not installed. Either install Azure PowerShell from https://docs.microsoft.com/en-us/powershell/azure/install-azurerm-ps or use Cloud Shell PowerShell at https://shell.azure.com/powershell" 
     write-log $message -color red
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -Scriptversion $scriptVersion -RunID $scriptRunId 
     return $scriptResult
 }
 
@@ -176,7 +184,7 @@ if (-not $subscriptionId)
     {        
         $message = "[Error] Unable to determine subscription ID. Run the script again using -SubscriptionID to specify the subscription ID." 
         write-log $message -color red
-        $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
+        $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -Scriptversion $scriptVersion -RunID $scriptRunId 
         return $scriptResult
     }
 }
@@ -190,7 +198,7 @@ else
     {
         $message = "[Error] Unable to set context to subscription ID $subscriptionId. Run Login-AzureRMAccount and then try the script again." 
         write-log $message -color red
-        $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
+        $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -Scriptversion $scriptVersion -RunID $scriptRunId 
         return $scriptResult
     }
 }
@@ -218,7 +226,7 @@ catch
     write-log $message -color red
     write-log "Exception Type: $($_.Exception.GetType().FullName)" -logOnly
     write-log "Exception Message: $($_.Exception.Message)" -logOnly
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -Scriptversion $scriptVersion -RunID $scriptRunId 
     return $scriptResult
 }
 write-log "`$vm: $vm" -logOnly
@@ -227,7 +235,7 @@ if (-not (SupportedVM -vm $vm -AllowManagedVM $AllowManagedVM))
 {  
     $message = "[Error] Problem VM $($vm.name) is not supported."
     write-log $message -color red
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -Scriptversion $scriptVersion -RunID $scriptRunId 
     return $scriptResult
 }
 
@@ -278,7 +286,7 @@ if (-not $stopped)
 {
     $message = "[Error] Unable to stop problem VM $vmName"
     write-log $message -color red
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -Scriptversion $scriptVersion -RunID $scriptRunId 
     return $scriptResult
 }
 
@@ -299,7 +307,7 @@ if (-not $osDiskVHDToBeRepaired)
 {
     $message = "[Error] Unable to snapshot and copy the problem VM's OS disk." 
     write-log $message -color red
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -Scriptversion $scriptVersion -RunID $scriptRunId 
     return $scriptResult
 }
 $osDiskVHDToBeRepaired = $osDiskVHDToBeRepaired.Replace("`r`n","")
@@ -318,7 +326,7 @@ if (-not $rescueVM)
     $message = "[Error] Unable to create the Rescue VM, cannot proceed. You can use the following command to remove the rescue Resourcegroup $($rescueResourceGroupName) that was created as part of running this script OR execute the PowerShell script .\$($removeRescueRgScript) :`n" 
     write-log $message -color red
     CreateRemoveRescueRgScript -rescueResourceGroupName $rescueResourceGroupName -removeRescueRgScript $removeRescueRgScript -commandOnly -subscriptionId $subscriptionId
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -cleanupScript $removeRescueRgScript
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -cleanupScript $removeRescueRgScript -Scriptversion $scriptVersion -RunID $scriptRunId 
     return $scriptResult
 }
 
@@ -329,7 +337,7 @@ if (-not $rescueVM)
 {
     $message = "[Error] Rescue VM $rescueVMName not found." 
     write-log $message -color red
-    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -cleanupScript $removeRescueRgScript
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -cleanupScript $removeRescueRgScript -Scriptversion $scriptVersion -RunID $scriptRunId 
     return $scriptResult
 }
 else
@@ -377,8 +385,10 @@ $attached = AttachOsDisktoRescueVM -rescueVMName $rescueVMName -rescueResourceGr
 write-log "`$attached: $attached" -logonly
 if (-not $attached)
 {
-    write-log "[Error] Unable to attach disk $osDiskToBeRepaired as a data disk to rescue VM $rescueVMName" -color red
-    return
+    $message = "[Error] Unable to attach disk $osDiskToBeRepaired as a data disk to rescue VM $rescueVMName" 
+    write-log $message -color red
+    $scriptResult = Get-ScriptResultObject -scriptSucceeded $false -rescueScriptCommand $MyInvocation.Line -FailureReason $message -cleanupScript $removeRescueRgScript -Scriptversion $scriptVersion -RunID $scriptRunId 
+    return $scriptResult
 }
 
 #Step 7 Start the VM
@@ -398,10 +408,6 @@ if ($windowsVM -and -not (RanFromCloudShell))
     Get-AzureRmRemoteDesktopFile -resourceGroupName $rescueResourceGroupName -Name $rescuevm.Name -Launch 
 }
 
-$script:scriptEndTime = (get-date).ToUniversalTime()
-$script:scriptDuration = new-timespan -Start $script:scriptStartTime -End $script:scriptEndTime
-write-log "Script duration: $('{0:hh}:{0:mm}:{0:ss}.{0:ff}' -f $script:scriptDuration)"
-write-log "Log file: $logFile"
 
 # Log summary information
 write-log "`nRescue VM name: $($rescueVm.Name)" -notimestamp
@@ -428,6 +434,17 @@ $restoreScriptCommand | set-content $restoreCommandFile
 $restoreScriptCommand = ".\" + $restoreCommandFile.Split('\')[-1]
 $restoreScriptPath = (get-childitem $restoreScriptCommand).FullName
 
+$script:scriptEndTime = (get-date).ToUniversalTime()
+$script:scriptDuration = new-timespan -Start $script:scriptStartTime -End $script:scriptEndTime
+
+
+write-log "Script duration: $('{0:hh}:{0:mm}:{0:ss}.{0:ff}' -f $script:scriptDuration)"
+write-log "Log file: $logFile"
+
+
+$scriptResult = Get-ScriptResultObject -scriptSucceeded $true -restoreScriptCommand $restoreScriptCommand -rescueScriptCommand $MyInvocation.Line -cleanupScript $removeRescueRgScript -Scriptversion $scriptVersion -RunID $scriptRunId 
+LogToAppInsight -EventName "Completed" -scriptname $MyInvocation.MyCommand.Name -Command $MyInvocation.Line -Scriptversion $scriptVersion -Duration "$('{0:hh}:{0:mm}:{0:ss}.{0:ff}' -f $script:scriptDuration)" -Message "Completed the Execution." -RunID $scriptRunId 
+
 write-log "`nNext Steps:`n" -notimestamp
 write-log "1. RDP to the rescue VM $($rescueVm.Name) to resolve issues with the problem VM's OS disk which is now attached to the rescue VM as a data disk." -notimestamp
 write-log "2. After fixing the problem VM's OS disk, run the following script to swap the disk back to the problem VM:`n" -notimestamp
@@ -436,8 +453,4 @@ write-log "   $restoreScriptPath`n" -notimestamp
 write-log "`n[Information] If you decide not to proceed further and would like to delete all the resources created thus far, you may delete the resource group $rescueResourceGroupName, by executing the script $removeRescueRgScriptPath" -noTimeStamp -color cyan
 write-log "`n $removeRescueRgScript" -notimestamp 
 
-
-$scriptResult = Get-ScriptResultObject -scriptSucceeded $true -restoreScriptCommand $restoreScriptCommand -rescueScriptCommand $MyInvocation.Line -cleanupScript $removeRescueRgScript 
-
-#invoke-item $logFile
-#return $scriptResult
+return $scriptResult
