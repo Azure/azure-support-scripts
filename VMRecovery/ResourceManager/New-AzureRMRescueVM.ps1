@@ -351,12 +351,25 @@ else
 if ($managedVM)
 {
     #For ManagedVM SnapshotAndCopyOSDisk returns the snapshotname
-    $storageType = 'StandardLRS'
+    
+    # Grab broken OS Disk original storage type
+    $OriginalOSDiskStorageType = (Get-AzureRmDisk -ResourceGroupName (($OriginalProblemOSManagedDiskID).Split('/'))[4] -DiskName $OrignalosDiskName).Sku.Name
+    
+    # For Azure PS version 6 and below, DiskSKU object enumerator only allows StandardLRS or PremiumLRS - StandardSSD is unavailable
+    # In this case, Get-AzureRmDisk Sku Name comes out empty
+    if([System.String]::IsNullOrEmpty($OriginalOSDiskStorageType)){
+        $message = "[Warning] This version of PowerShell does not support StandardSSD. $osDiskToBeRepaired will be set to Standard HDD." 
+        write-log $message -color Yellow
+        $storageType = "StandardLRS"
+    }else{ #Assigns the correct storage type
+        $storageType = (Get-AzureRmDisk -ResourceGroupName (($OriginalProblemOSManagedDiskID).Split('/'))[4] -DiskName $OrignalosDiskName).Sku.Name
+    }
+
     $AzurePsVersion=Get-Module AzureRM -ListAvailable
     #checks to See Powershell version, or of its running from Cloudshell )
     if (($AzurePsVersion -and $AzurePsVersion.Version.Major -ge 6) -or (RanfromCloudshell))
     {
-        $storageType = 'Standard_LRS'
+        $storageType = (Get-AzureRmDisk -ResourceGroupName (($OriginalProblemOSManagedDiskID).Split('/'))[4] -DiskName $OrignalosDiskName).Sku.Name
     }
     
     $snapshotName = $osDiskVHDToBeRepaired
