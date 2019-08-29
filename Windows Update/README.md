@@ -1,4 +1,4 @@
-# Scripts to enable or disable Automatic Updates in Windows Update
+# Enable or disable Automatic Updates in Windows Update
 To enable or disable Automatic Windows Updates on a VM, you can run these through via [RunCommand](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/run-command) in the portal or through the Azure PowerShell cmdlet.
 
 ## PowerShell script to Disable Automatic Updates in Windows Update
