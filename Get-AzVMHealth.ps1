@@ -46,8 +46,8 @@ function Get-JsonFromSerialLog ($serialLogFilePath)
 
 if ($resourceGroupName -and $name)
 {
-    $vm = get-azurermvm -ResourceGroupName $resourceGroupName -Name $name -ErrorAction Stop
-    $vmstatus = $vm | get-azurermvm -status -ErrorAction Stop
+    $vm = Get-AzVM -ResourceGroupName $resourceGroupName -Name $name -ErrorAction Stop
+    $vmstatus = $vm | Get-AzVM -status -ErrorAction Stop
 
     if ($vm.DiagnosticsProfile.Bootdiagnostics.Enabled)
     {
@@ -70,9 +70,9 @@ if ($resourceGroupName -and $name)
     $storageAccountName = $consoleScreenshotBlobUri.split('/')[2].split('.')[0]
     $storageContainer = $consoleScreenshotBlobUri.split('/')[3]
     #TODO If boot diag storage account can reside in a different RG than the VM's RG, need a different way to get the RG of the boot diag storage account
-    $storageContext = New-AzureStorageContext -StorageAccountName $storageAccountName -StorageAccountKey (Get-AzureRmStorageAccountKey -ResourceGroupName $resourceGroupName -Name $storageAccountName)[0].Value
+    $storageContext = New-AzureStorageContext -StorageAccountName $storageAccountName -StorageAccountKey (Get-AzStorageAccountKey -ResourceGroupName $resourceGroupName -Name $storageAccountName)[0].Value
     $blobs = get-azurestorageblob -Container $storageContainer -Context $storageContext
-    $log = $blobs | where {$_.Name.EndsWith('.serialconsole.log')} | select -first 1    
+    $log = $blobs | Where-Object {$_.Name.EndsWith('.serialconsole.log')} | Select-Object -first 1    
     $log | Get-AzureStorageBlobContent -Destination $env:TEMP -Force | Out-Null
     $logFilePath = "$env:TEMP\$($log.Name)"
     Get-JsonFromSerialLog $logFilePath

@@ -11,31 +11,31 @@ $extensions = New-Object System.Collections.ArrayList
 
 try 
 {
-  Get-AzureRmSubscription *> null
+  Get-AzSubscription *> null
 }
 catch 
 {
-  Login-AzureRmAccount
+  Connect-AzAccount
 }
 
-$publishers = ( Get-AzureRmVMImagePublisher -Location $location ).PublisherName
+$publishers = ( Get-AzVMImagePublisher -Location $location ).PublisherName
 
-$publishers | foreach {
+$publishers | ForEach-Object {
 	
     $publisher = $_
 
-    $publisherExtensions = Get-AzureRmVMExtensionImageType -Location $location -PublisherName $publisher	
+    $publisherExtensions = Get-AzVMExtensionImageType -Location $location -PublisherName $publisher	
     
-	if (($publisherExtensions | measure ).count -gt 0)
+	if (($publisherExtensions | Measure-Object ).count -gt 0)
 	{
-		$publisherExtensions | foreach {
+		$publisherExtensions | ForEach-Object {
 
 			$publisherExtension = $_.Type
-			$publisherExtensionVersions = Get-AzureRmVMExtensionImage -Location $location -PublisherName $publisher -Type $publisherExtension            
+			$publisherExtensionVersions = Get-AzVMExtensionImage -Location $location -PublisherName $publisher -Type $publisherExtension            
 
-			if (($publisherExtensionVersions | measure ).count -gt 0)
+			if (($publisherExtensionVersions | Measure-Object ).count -gt 0)
 			{
-				$publisherExtensionVersions | foreach {
+				$publisherExtensionVersions | ForEach-Object {
 
 					$publisherExtensionVersion = $_
                     [void]$extensions.Add($publisherExtensionVersion)                    
@@ -48,9 +48,9 @@ $publishers | foreach {
 
 $numExtensionsByPublishers = New-Object System.Collections.ArrayList
 
-$extensions.PublisherName | sort -Unique | foreach {
+$extensions.PublisherName | Sort-Object -Unique | ForEach-Object {
 	$publisher = $_
-	$numPublisherExtensions = ($extensions | where {$_.PublisherName -eq $publisher}).count
+	$numPublisherExtensions = ($extensions | Where-Object {$_.PublisherName -eq $publisher}).count
 	$numExtensionsByPublisher = [pscustomobject]@{
 		PublisherName = $publisher
 		Extensions = $numPublisherExtensions
@@ -64,12 +64,12 @@ $numTotalExtensions = $extensions.count
 "Total Publishers: $numPublishers"	
 "Total Extensions: $numTotalExtensions"	
 
-$numExtensionsByPublishers | sort Extensions -Descending | format-table -AutoSize
+$numExtensionsByPublishers | Sort-Object Extensions -Descending | format-table -AutoSize
 
 if ($csv)
 {
 	$output = '.\extensions.csv'
-	$extensions | select PublisherName,Type,Version,id | Export-Csv -path $output -NoTypeInformation
+	$extensions | Select-Object PublisherName,Type,Version,id | Export-Csv -path $output -NoTypeInformation
     "CSV output: $((get-childitem $output).fullname)`n"
 }
 
@@ -78,7 +78,7 @@ if ($xlsx)
     if (get-command Export-Excel -ErrorAction SilentlyContinue)
     {
 	    $output = '.\extensions.xlsx'
-	    $extensions | select PublisherName,Type,Version,id | Export-Excel $output -AutoSize
+	    $extensions | Select-Object PublisherName,Type,Version,id | Export-Excel $output -AutoSize
         "XLSX output: $((get-childitem $output).fullname)`n"
     }
     else

@@ -42,15 +42,15 @@
     
         if ( $vm.VM.OSVirtualHardDisk.OS -eq 'Windows' )
         {
-            #$RecoveryImage =  Get-AzureVMImage |where ImageFamily -eq 'Windows Server 2012 R2 Datacenter'  | sort PublishedDate -Descending | select  -First 1 
-            $RecoveryImage =  Get-AzureVMImage |where ImageFamily -eq 'Windows Server 2016 Datacenter'  | sort PublishedDate -Descending | select  -First 1
+            #$RecoveryImage =  Get-AzureVMImage |Where-Object ImageFamily -eq 'Windows Server 2012 R2 Datacenter'  | sort PublishedDate -Descending | select  -First 1 
+            $RecoveryImage =  Get-AzureVMImage |Where-Object ImageFamily -eq 'Windows Server 2016 Datacenter'  | Sort-Object PublishedDate -Descending | Select-Object  -First 1
             write-host "Running New-AzureQuickVM -Windows -WaitForBoot -ServiceName `"$ServiceName`" -Name `"$RecoveryVMName`" -InstanceSize $($vm.InstanceSize) -AdminUsername `"$RecoveryAdmin`" -Password `"$RecoveryPW`" -ImageName $($RecoveryImage.ImageName) -EnableWinRMHttp -ErrorAction stop -WarningAction SilentlyContinue"
             $recoveryVM = New-AzureQuickVM -Windows -WaitForBoot -ServiceName $ServiceName -Name $RecoveryVMName -InstanceSize $vm.InstanceSize -AdminUsername $RecoveryAdmin -Password $RecoveryPW -ImageName $RecoveryImage.ImageName -EnableWinRMHttp -ErrorAction stop -WarningAction SilentlyContinue
         }
         else
         {
             #$ImageObj = (get-azurermvmimage -Location $location -PublisherName 'Canonical' -Offer 'UbuntuServer' -Skus '16.04-LTS')[-1]
-            $RecoveryImage =  Get-AzureVMImage |where ImageFamily -eq 'Ubuntu Server 16.04 LTS'  | sort PublishedDate -Descending | select  -First 1
+            $RecoveryImage =  Get-AzureVMImage |Where-Object ImageFamily -eq 'Ubuntu Server 16.04 LTS'  | Sort-Object PublishedDate -Descending | Select-Object  -First 1
             Write-host "Running New-AzureQuickVM -Linux -WaitForBoot -ServiceName `"$ServiceName`" -Name `"$RecoveryVMName`" -InstanceSize $($vm.InstanceSize) -LinuxUser `"$RecoveryAdmin`" -Password `"$RecoveryPW`" -ImageName $($RecoveryImage.ImageName) -ErrorAction stop -WarningAction SilentlyContinue"
             $recoveryVM = New-AzureQuickVM -Linux -WaitForBoot -ServiceName $ServiceName -Name $RecoveryVMName -InstanceSize $vm.InstanceSize -LinuxUser $RecoveryAdmin -Password $RecoveryPW -ImageName $RecoveryImage.ImageName -ErrorAction stop -WarningAction SilentlyContinue
         }
@@ -82,7 +82,7 @@
     do
     {
         Start-Sleep -Seconds 15 | Out-Null
-    }while ( (get-azuredisk $vm.VM.OSVirtualHardDisk.DiskName | select -ExpandProperty AttachedTo ) -ne $null)
+    }while ( $null -ne (get-azuredisk $vm.VM.OSVirtualHardDisk.DiskName | Select-Object -ExpandProperty AttachedTo ) )
 
     #than we try to add the, if it fails we provide suggestion as to how to restore back to its original state. 
     $recoveryVM = Get-AzureVM -ServiceName $ServiceName -Name $RecoveryVMName
