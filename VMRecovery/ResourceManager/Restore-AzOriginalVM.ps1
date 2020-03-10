@@ -218,7 +218,7 @@ write-log "[Running] Removing data disk from rescue VM $rescueVMName"
 try
 {
     $null = Remove-AzVMDataDisk -VM $rescuevm -DataDiskNames $diskName -ErrorAction Stop -WarningAction SilentlyContinue
-    $null = Update-VM -ResourceGroupName $rescueResourceGroupName -VM $rescuevm -ErrorAction stop
+    $null = Update-AzVM -ResourceGroupName $rescueResourceGroupName -VM $rescuevm -ErrorAction stop
     write-log "[Success] Removing data disk from rescue VM $rescueVMName" -color green
 }
 catch
