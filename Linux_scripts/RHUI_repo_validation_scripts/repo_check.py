@@ -1,4 +1,8 @@
 import os
+import sys
+import logging
+from logging.handlers import RotatingFileHandler
+from logging import handlers
 import subprocess
 import platform
 from threading import Timer
@@ -6,35 +10,44 @@ import socket
 import time
 from scenarios import *
 
+
 ########### Function for RHEL VMs ##############
 def redhat():
       ##### checking connectivity of RHEL Repo server IPs #####
 
    def ip_tables_check():
-      reject_rule = subprocess.Popen("iptables -L OUTPUT -v -n | grep -i reject", stdout=subprocess.PIPE, shell=True)
+      reject_rule = subprocess.Popen("iptables -L OUTPUT -v -n | egrep -i 'reject|drop'", stdout=subprocess.PIPE, shell=True)
       rej_rule = str(reject_rule.communicate()[0])
-      if "tcp dpt:443 reject-with icmp-port-unreachable" in rej_rule or "tcp dpt:https reject-with icmp-port-unreachable" in rej_rule or "   reject-with icmp-port-unreachable" in rej_rule:
-         print(rej_rule)
+      if "tcp dpt:443 reject-with icmp-port-unreachable" in rej_rule or "tcp dpt:https reject-with icmp-port-unreachable" in rej_rule or "   reject-with icmp-port-unreachable" in rej_rule or "tcp dpt:443" in rej_rule:
+         logging.info(rej_rule)
          msg_ip_tables_check()
 
-   def isOpen(ip,port):
+   def isOpen(servers,port):
       s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       try:
          s.settimeout(2)
-         s.connect((ip, int(port)))
+         s.connect((servers, int(port)))
          s.shutdown(2)
       except:
-         msg_rhui_ip_connectivity_error(ip)
+         msg_rhui_ip_connectivity_error(servers)
          ip_tables_check()
          msg_virtual_appliance()
+ 
+   def isresolving(servers):
+      resolution_check = subprocess.Popen("dig servers", stdout=subprocess.PIPE, shell=True)
+      reslov_check = str(resolution_check.communicate()[0])
+      if "connection timed out; no servers could be reached" in reslov_check:
+         msg_dns_resolution_error()
+           
 
-   ##### rhui-ip connectivity check ########
+   ##### rhui connectivity check ########
 
    def rhui_ip_conn_check():
-      print ("\nchecking connectivity of RHUI repo server IPs")
-      ip = ["13.91.47.76", "40.85.190.91", "52.187.75.218", "52.174.163.213", "52.237.203.198"]
+      logging.info("checking connectivity of RHUI repo server IPs \n")
+      servers = ["rhui-1.microsoft.com", "rhui-2.microsoft.com", "rhui-3.microsoft.com"]
       port = "443"
-      for var in ip:
+      for var in servers:
+         isresolving(var)
          isOpen(var,port)
       msg_rhui_ip_connectivity_success()
    rhui_ip_conn_check()
@@ -75,10 +88,10 @@ def redhat():
   
 
    def yum_repo_check():
-      print ("\nCleaning up yum")
+      logging.info("Cleaning up yum")
       yum_clean_up()
       time.sleep(5)
-      print  ("yum check-update is being executed at the backend. This might take around 30 - 180 seconds to complete. Please wait .......")
+      logging.info("yum check-update is being executed at the backend. This might take around 30 - 180 seconds to complete. Please wait .......")
       cmd = ['yum', 'check-update']
       yum = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
       kill = lambda process: process.kill()
@@ -114,9 +127,6 @@ def redhat():
       elif "SSL peer rejected your certificate as expired" in status or "Certificate has expired" in status:
          msg_cert_expiry_error()
 
-      elif "Could not resolve host" in status:
-         msg_dns_resolution_error()
-      
       elif "Error: Failed to synchronize cache for repo" in status:  
          msg_rhel8_possible_causes()
 
@@ -131,6 +141,36 @@ def redhat():
          msg_new_scenario()
    error_check() 
 
+
+def disclaimer():
+   logging.info("\n\n Disclaimer : This script helps in detecting RHUI server connectivity issues only for Redhat Pay as you go images deployed from Azure market place.Upon execution this script does not modify anything on the VM instead it will provide suggestion for fix based on the error. Always, Please download the latest version of the script from git hub page which will help in effective troubleshooting and also have bugs addressed.\n")
+   logging.info("\n Please record your consent for script execution (yes/no):")
+   val=sys.stdin.readline()
+   option=val.rstrip()
+   logging.debug(option)
+   if ( option == "no" ):
+      logging.info("Aborting the execution")
+      exit()
+   elif ( option == "yes" ):
+      logging.info("consent recorded,starting the execution ...")
+   else:
+      logging.error("invalid input, Please try again")
+      exit()
+
+
+def log_func():
+   LOGFILE = "/var/log/azure/rhui_script.log"
+   log = logging.getLogger('')
+   log.setLevel(logging.DEBUG)
+   format = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+   ch = logging.StreamHandler(sys.stdout)
+   ch.setFormatter(format)
+   log.addHandler(ch)
+   fh = logging.FileHandler(LOGFILE)
+   fh.setFormatter(format)
+   log.addHandler(fh)
+
+
 def os_distro():
   os_distro = platform.linux_distribution()
   os_ver = (os_distro[0])
@@ -142,6 +182,8 @@ def os_distro():
 def main():
    uid = int(os.getuid())
    if uid == 0:
+      log_func()
+      disclaimer()
       os_distro()
    else:
      msg_uid_error()
