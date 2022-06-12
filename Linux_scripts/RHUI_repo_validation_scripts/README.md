@@ -15,5 +15,5 @@ Execute the below commands on Redhat VM for script execution.<br>
     **`#wget https://github.com/Azure/azure-support-scripts/archive/refs/heads/master.zip && unzip master.zip 'azure-support-scripts-master/Linux_scripts/RHUI_repo_validation_scripts/*' && rm -f master.zip && cd azure-support-scripts-master/Linux_scripts/RHUI_repo_validation_scripts`**<br>
     **`#python repo_check.py`** or **`#python3 repo_check.py`** based on python version available on the VM.
 
-<pre><code class="lang-azurecli" data-interactive="azurecli">az extension add -n vm-repair
+<pre><code class="lang-azurecli" data-interactive="azurecli">#mkdir /tmp/rhui && cd /tmp/rhui<br>#`#wget https://github.com/Azure/azure-support-scripts/archive/refs/heads/master.zip && unzip master.zip 'azure-support-scripts-master/Linux_scripts/RHUI_repo_validation_scripts/*' && rm -f master.zip && cd azure-support-scripts-master/Linux_scripts/RHUI_repo_validation_scripts<br>#python repo_check.py or #python3 repo_check.py based on python version available on the VM.
 </code></pre>
