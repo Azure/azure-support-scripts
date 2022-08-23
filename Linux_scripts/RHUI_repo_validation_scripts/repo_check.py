@@ -10,6 +10,9 @@ import socket
 import time
 from scenarios import *
 
+VERSION = "1.0.0"
+SCRIPT_NAME = "repo_check.py"
+
 
 ########### Function for RHEL VMs ##############
 def redhat():
@@ -18,9 +21,11 @@ def redhat():
    def ip_tables_check():
       reject_rule = subprocess.Popen("iptables -L OUTPUT -v -n | egrep -i 'reject|drop'", stdout=subprocess.PIPE, shell=True)
       rej_rule = str(reject_rule.communicate()[0])
-      if "tcp dpt:443 reject-with icmp-port-unreachable" in rej_rule or "tcp dpt:https reject-with icmp-port-unreachable" in rej_rule or "   reject-with icmp-port-unreachable" in rej_rule or "tcp dpt:443" in rej_rule:
-         logging.info(rej_rule)
-         msg_ip_tables_check()
+      error_list = ["tcp dpt:443 reject-with icmp-port-unreachable", "tcp dpt:https reject-with icmp-port-unreachable", "   reject-with icmp-port-unreachable", "tcp dpt:443"]
+      for var in error_list:
+         if var in rej_rule:
+            logging.info(rej_rule)
+            msg_ip_tables_check()
 
    def isOpen(servers,port):
       s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -80,6 +85,8 @@ def redhat():
         stdout, stderr = yum_clean.communicate()
         if "Another app is currently holding the yum lock" in stderr.decode() or "Waiting for process with" in stderr.decode():
            msg_multiple_yum_process()
+     except:
+         logging.error("Issue happened while executing yum clean all command or while gathering yum processes list. Fix the issue and rerun the script")
      finally:
         my_timer.cancel()
 
@@ -100,6 +107,8 @@ def redhat():
          my_timer.start()
          stdout, stderr = yum.communicate()
          return stderr
+      except:
+         logging.error("There seems to be some issue while processing yum check-update command output, rerun the script after fixing the issue")
       finally:
          my_timer.cancel()
 
@@ -143,7 +152,7 @@ def redhat():
 
 
 def disclaimer():
-   logging.info("\n\n Disclaimer : This script helps in detecting RHUI server connectivity issues only for Redhat Pay as you go images deployed from Azure market place.Upon execution this script does not modify anything on the VM instead it will provide suggestion for fix based on the error. Always, Please download the latest version of the script from git hub page which will help in effective troubleshooting and also have bugs addressed.\n")
+   logging.info("\n\n Disclaimer : This script helps in detecting RHUI server connectivity issues only for Redhat-6,7 and 8 Pay as you go images deployed from Azure market place.Upon execution this script does not modify anything on the VM instead it will provide suggestion for fix based on the error. Always, Please download the latest version of the script from git hub page which will help in effective troubleshooting and also have bugs addressed.\n")
    logging.info("\n Please record your consent for script execution (yes/no):")
    val=sys.stdin.readline()
    option=val.rstrip()
@@ -170,6 +179,8 @@ def log_func():
    fh.setFormatter(format)
    log.addHandler(fh)
 
+def script_version():
+   logging.info(SCRIPT_NAME + " " + VERSION)
 
 def os_distro():
   os_distro = platform.linux_distribution()
@@ -179,14 +190,14 @@ def os_distro():
   else:
      msg_os_dist_error()
 
-def main():
+def __init__():
    uid = int(os.getuid())
    if uid == 0:
       log_func()
+      script_version()
       disclaimer()
       os_distro()
    else:
      msg_uid_error()
 
-if __name__=="__main__":
-    main()
+__init__()

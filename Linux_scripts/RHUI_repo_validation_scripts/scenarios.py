@@ -32,7 +32,7 @@ def msg_rhui_package_check_error():
 
 
 def msg_ip_tables_check():
-   logging.error(colors.RED + "Validate the Reject rules in OUTPUT chain which is listed above and please make sure connectivity to RHUI IPs over 443 is not blocked" + colors.ENDC)
+   logging.error(colors.RED + "Validate the Reject rules in OUTPUT chain which is listed above and please make sure the connectivity to below mentioned RHUI IPs based on your region over 443 is not blocked\n\n  # Azure Global\n   13.91.47.76\n   40.85.190.91\n   52.187.75.218\n   52.174.163.213\n   52.237.203.198\n\n  # Azure US Government\n   13.72.186.193\n   13.72.14.155\n   52.244.249.194\n" + colors.ENDC)
    exit()
 
 def msg_rhui_ip_connectivity_success():
@@ -47,16 +47,16 @@ def msg_yum_repolist_success():
    exit()
 
 def msg_new_scenario():
-   logging.info(colors.RED + "This seems to be a new issue and not the regular one, please engage Azure Linux escalation team for further troubleshooting" + colors.ENDC)
+   logging.error(colors.RED + "This seems to be a new issue and not the regular one. We suggest you to log a case with Microsoft Support team for further troubleshooting. Thank you!!" + colors.ENDC)
 
 def msg_https_404_error_non_eus():
    logging.error(colors.RED + "It seems repo is NON-EUS and /etc/yum/vars/releasever file is available." + colors.ENDC)
-   logging.info(colors.GREEN +  "RESOLUTION : Try executing #rm /etc/yum/vars/releasever and see whether it fixes the issue" + colors.ENDC)
+   logging.info(colors.GREEN +  "RESOLUTION : Try removing releasever file using the below command and check whether it fixes the issue\n\n    #rm /etc/yum/vars/releasever" + colors.ENDC)
 
 
 def msg_https_404_error_eus():
     logging.error(colors.RED + "It seems repo is EUS and file /etc/yum/vars/releasever is either not available or have incorrect content" + colors.ENDC)
-    logging.info(colors.GREEN + "RESOLUTION : Try executing #echo $(. /etc/os-release && echo $VERSION_ID) > /etc/yum/vars/releasever and see whether it fixes the issue" + colors.ENDC)
+    logging.info(colors.GREEN + "RESOLUTION : Try updating releasever file using the below command and check whether it fixes the issue\n\n    #echo $(. /etc/os-release && echo $VERSION_ID) > /etc/yum/vars/releasever" + colors.ENDC)
 
 def msg_https_404_possible_cause():
     logging.info(colors.GREEN + "RESOLUTION : if repo is non-eus try executing #rm /etc/yum/vars/releasever and see whether it fixes the issue. if repo is eus Try executing #echo $(. /etc/os-release && echo $VERSION_ID) > /etc/yum/vars/releasever and see whether it fixes the issue" +colors.ENDC)
@@ -78,7 +78,7 @@ def msg_dns_resolution_error():
 
 def msg_https_403_error():
    logging.error (colors.RED + "\nSeems to be some internal error which is causing the connectivity issue to RHUI server.Please apply the temporary workaround which is mentioned below and see whether it fixes the issue, till our engineering team provides permanent fix" + colors.ENDC)
-   logging.info ("WORkAROUND : Add the below entries in /etc/hosts\n 13.91.47.76  rhui-1.micosoft.com\n 13.91.47.76  rhui-2.micosoft.com\n 13.91.47.76  rhui-3.micosoft.com")
+   logging.info ("\nWORKAROUND:\n#########For Azure Global add the below entries in /etc/hosts file#######\n 13.91.47.76  rhui-1.micosoft.com rhui-2.micosoft.com rhui-3.micosoft.com\n 40.85.190.91  rhui-1.micosoft.com rhui-2.micosoft.com rhui-3.micosoft.com\n 52.187.75.218  rhui-1.micosoft.com rhui-2.micosoft.com rhui-3.micosoft.com\n 52.174.163.213  rhui-1.micosoft.com rhui-2.micosoft.com rhui-3.micosoft.com\n 52.237.203.198  rhui-1.micosoft.com rhui-2.micosoft.com rhui-3.micosoft.com\n\n######### For Azure Azure US Government add the below entries in /etc/hosts file#######\n 13.72.186.193  rhui-1.micosoft.com rhui-2.micosoft.com rhui-3.micosoft.com\n 13.72.14.155  rhui-1.micosoft.com rhui-2.micosoft.com rhui-3.micosoft.com\n 52.244.249.194  rhui-1.micosoft.com rhui-2.micosoft.com rhui-3.micosoft.com")
 
 def msg_cert_expiry_error():
    logging.error(colors.RED + "\nSeems RHUI client certificate is expired. rhui-azure package requires an update" + colors.ENDC)
@@ -93,4 +93,4 @@ def msg_rhel8_possible_causes():
    msg_cert_expiry_error()
 
 def msg_python_config_issue():
-  logging.error(colors.RED + "seems to be configuration issue with python.Fix python config issues and re-run this script" + colors.ENDC)
+  logging.error(colors.RED + "seems to be configuration issue with python. Fix python config issues and re-run this script" + colors.ENDC)
