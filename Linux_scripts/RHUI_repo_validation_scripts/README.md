@@ -18,3 +18,4 @@ This version of the script currently supports only Redhat VMs for now(both rhel7
 
 3. **`python repo_check.py`** or **`python3 repo_check.py`** based on python version available on the VM.
 4. Issues - Testing line added by chenthil
+5. Test commit by chenthil on Readme
