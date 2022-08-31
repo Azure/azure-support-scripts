@@ -22,8 +22,8 @@ def redhat():
       reject_rule = subprocess.Popen("iptables -L OUTPUT -v -n | egrep -i 'reject|drop'", stdout=subprocess.PIPE, shell=True)
       rej_rule = str(reject_rule.communicate()[0])
       error_list = ["tcp dpt:443 reject-with icmp-port-unreachable", "tcp dpt:https reject-with icmp-port-unreachable", "   reject-with icmp-port-unreachable", "tcp dpt:443"]
-      for var in error_list:
-         if var in rej_rule:
+      for error in error_list:
+         if error in rej_rule:
             logging.info(rej_rule)
             msg_ip_tables_check()
 
@@ -51,9 +51,9 @@ def redhat():
       logging.info("checking connectivity of RHUI repo server IPs \n")
       servers = ["rhui-1.microsoft.com", "rhui-2.microsoft.com", "rhui-3.microsoft.com"]
       port = "443"
-      for var in servers:
-         isresolving(var)
-         isOpen(var,port)
+      for server in servers:
+         isresolving(server)
+         isOpen(server,port)
       msg_rhui_ip_connectivity_success()
    rhui_ip_conn_check()
 
@@ -152,7 +152,7 @@ def redhat():
 
 
 def disclaimer():
-   logging.info("\n\n Disclaimer : This script helps in detecting RHUI server connectivity issues only for Redhat-6,7 and 8 Pay as you go images deployed from Azure market place.Upon execution this script does not modify anything on the VM instead it will provide suggestion for fix based on the error. Always, Please download the latest version of the script from git hub page which will help in effective troubleshooting and also have bugs addressed.\n")
+   logging.info("\n\n Disclaimer : This script helps in detecting RHUI server connectivity issues only for Redhat-6,7 and 8 Pay as you go images deployed from Azure market place. Upon execution this script does not modify anything on the VM instead it will provide suggestion for fix based on the error. Always, download the latest version of the script from git hub url 'https://github.com/Azure/azure-support-scripts/tree/master/Linux_scripts/RHUI_repo_validation_scripts' which will help in effective troubleshooting and also have bugs addressed.\n")
    logging.info("\n Please record your consent for script execution (yes/no):")
    val=sys.stdin.readline()
    option=val.rstrip()
