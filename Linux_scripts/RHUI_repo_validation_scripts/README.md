@@ -1,5 +1,3 @@
-<<<<<<< HEAD
-
 # Overview
 This script validates the repo servers connectivity and provides recommendation for the fix based on the error message.
 
@@ -10,10 +8,9 @@ This script validates the repo servers connectivity and provides recommendation 
 
 # Supported OS Images
 
-This version of the script currently supports only Redhat VMs for now(both rhel7 and 8). 
+This version of the script currently supports only Redhat VMs for now(rhe6, rhel7 and 8 non-byos VMs which are deployed from Azure market place image).
 ## Usage
-1. **`cd /tmp`** on the Redhat VM
-
-2. Download the zip file using **`wget https://github.com/dibaskar/repo_validation_scripts/archive/refs/heads/main.zip`** on VM or paste the URL directly in browser which downloads the zip file to your local machine and then zip file can be manually copied to VM for execution.
-
-3. **`python repo_check.py`** or **`python3 repo_check.py`** based on python version available on the VM.
+Execute the below commands on Redhat VM for script execution.<br>
+<pre><code class="lang-azurecli" data-interactive="azurecli">mkdir /tmp/rhui && cd /tmp/rhui </code></pre>
+<pre><code class="lang-azurecli" data-interactive="azurecli">wget https://github.com/Azure/azure-support-scripts/archive/refs/heads/master.zip && unzip master.zip 'azure-support-scripts-master/Linux_scripts/RHUI_repo_validation_scripts/*' && rm -f master.zip && cd azure-support-scripts-master/Linux_scripts/RHUI_repo_validation_scripts </code></pre> 
+<pre><code class="lang-azurecli" data-interactive="azurecli">python repo_check.py or python3 repo_check.py </code></pre>

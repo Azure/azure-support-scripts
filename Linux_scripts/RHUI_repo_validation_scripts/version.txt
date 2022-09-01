@@ -1,0 +1,12 @@
+###################################################################################
+#                                                                                 #
+# Script      : repo_check                                                        #
+#                                                                                 #
+# Version     : 1.0.0                                                             # 
+#                                                                                 #
+# Description : repo connectivity check for Redhat 6,7 and 8 PAYG VMs for Azure   #
+#                                                                                 #
+# Author      : Azure Linux escalation team                                       #
+#                                                                                 #
+# Dev Version : 1.0.1                                                             #
+###################################################################################
