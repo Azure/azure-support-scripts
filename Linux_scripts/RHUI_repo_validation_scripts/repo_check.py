@@ -108,7 +108,7 @@ def redhat():
          stdout, stderr = yum.communicate()
          return stderr
       except:
-         logging.error("There seems to be some issue while processing yum check-update command output, rerun the script after fixing the issue")
+         logging.error("There seems to be some issue while processing yum check-update command output, Manually execute yum check-update command to check the error, if yum check-update command completes, then rerun this script for identifying RHUI issue.")
       finally:
          my_timer.cancel()
 
