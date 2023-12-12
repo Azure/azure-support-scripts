@@ -1,0 +1,1 @@
+echo "$(basename $0) $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
