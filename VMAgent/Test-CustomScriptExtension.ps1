@@ -1,0 +1,1 @@
+Write-Output "$($MyInvocation.MyCommand) $(Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ')"
