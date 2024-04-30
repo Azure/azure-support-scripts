@@ -54,7 +54,7 @@
         $DataDiskNames = $null #'vm-disk-data-1'. 'vm-disk-data-1' #leave empty if not required
         #try to re-extract vm name from disk name flowing convention svcname-vm-name-os-date (need 2nd item of "-"split or 1st if custom)
         $DiskNameParts = $OSDisk.DiskName.Split("-")
-        if ( $DiskNameParts.Count > 1 )
+        if ( $DiskNameParts.Count -gt 1 )
         {
             $VMName = $DiskNameParts[1]
         }

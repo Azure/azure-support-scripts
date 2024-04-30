@@ -16,7 +16,7 @@
         }
         #As per PR taking a snapshot of the OS disk first.
         $Ctx = New-AzureStorageContext -StorageAccountName $storageAccountName -StorageAccountKey $StorageAccountKey 
-        $VMblob = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | Where {$_.Name -eq $osDiskvhd -and $_.ICloudBlob.IsSnapshot -ne $true} -ErrorAction Stop
+        $VMblob = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | Where-Object {$_.Name -eq $osDiskvhd -and $_.ICloudBlob.IsSnapshot -ne $true} -ErrorAction Stop
 
         #Create a snapshot of the OS Disk
         Write-host "Running CreateSnapshot operation" 
@@ -28,7 +28,7 @@
 
         Write-host "Initiating Copy proccess of Snapshot" 
         #Save array of all snapshots
-        $VMsnaps = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | sort @{expression="SnapshotTime";Descending=$true} | Where-Object {$_.Name -eq $osDiskvhd -and $_.ICloudBlob.IsSnapshot -and $_.SnapshotTime -ne $null } 
+        $VMsnaps = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | Sort-Object @{expression="SnapshotTime";Descending=$true} | Where-Object {$_.Name -eq $osDiskvhd -and $_.ICloudBlob.IsSnapshot -and $null -ne $_.SnapshotTime } 
 
         #Copies the LatestSnapshot of the OS Disk as a backup prior to making any changes to the OS Disk to the same storage account and prefixing with Backup
         if ($VMsnaps.Count -gt 0)
@@ -37,7 +37,7 @@
             $status = Start-AzureStorageBlobCopy -CloudBlob $VMsnaps[0].ICloudBlob -Context $Ctx -DestContext $Ctx -DestContainer $ContainerName -DestBlob $backupOSDiskVhd -ConcurrentTaskCount 10 -Force -ErrorAction Stop
             #$status | Get-AzureStorageBlobCopyState            
             $osFixDiskblob = Get-AzureStorageAccount -StorageAccountName $storageAccountName | 
-            Get-AzureStorageContainer | where {$_.Name -eq $ContainerName} | Get-AzureStorageBlob | where {$_.Name -eq $backupOSDiskVhd -and $_.ICloudBlob.IsSnapshot -ne $true} -ErrorAction Stop
+            Get-AzureStorageContainer | Where-Object {$_.Name -eq $ContainerName} | Get-AzureStorageBlob | Where-Object {$_.Name -eq $backupOSDiskVhd -and $_.ICloudBlob.IsSnapshot -ne $true} -ErrorAction Stop
             $copiedOSDiskUri =$osFixDiskblob.ICloudBlob.Uri.AbsoluteUri
             Write-host "Took a snapshot of the OS Disk and copied it to  to $copiedOSDiskUri" -ForegroundColor Green
             return $copiedOSDiskUri
@@ -67,7 +67,7 @@ function DeleteSnapShotAndVhd
     {
         $StorageAccountKey = (Get-AzureStorageKey -StorageAccountName $storageAccountName).Secondary 
         $Ctx = New-AzureStorageContext -StorageAccountName $storageAccountName -StorageAccountKey $StorageAccountKey -ErrorAction Stop
-        $VMsnaps = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | Where-Object {$_.ICloudBlob.IsSnapshot -and $_.SnapshotTime -ne $null -and $_.Name -eq $osDiskvhd }  -ErrorAction Stop
+        $VMsnaps = Get-AzureStorageBlob –Context $Ctx -Container $ContainerName | Where-Object {$_.ICloudBlob.IsSnapshot -and $null -ne $_.SnapshotTime -and $_.Name -eq $osDiskvhd }  -ErrorAction Stop
         #Deleting the snapshot
         if ($VMsnaps.Count -gt 0)
         {
@@ -81,7 +81,7 @@ function DeleteSnapShotAndVhd
         #Deleting the backedupovhd
         $backupOSDiskVhd = "backup$osDiskvhd" 
         $osFixDiskblob = Get-AzureStorageAccount -StorageAccountName $storageAccountName | 
-            Get-AzureStorageContainer | where {$_.Name -eq $ContainerName} | Get-AzureStorageBlob | where {$_.Name -eq $backupOSDiskVhd -and $_.ICloudBlob.IsSnapshot -ne $true} -ErrorAction Stop
+            Get-AzureStorageContainer | Where-Object {$_.Name -eq $ContainerName} | Get-AzureStorageBlob | Where-Object {$_.Name -eq $backupOSDiskVhd -and $_.ICloudBlob.IsSnapshot -ne $true} -ErrorAction Stop
         if ($osFixDiskblob)
         {
             Write-Host "`nWould you like to delete the backed up VHD ==> $($backupOSDiskVhd) (Y/N) ?" 
