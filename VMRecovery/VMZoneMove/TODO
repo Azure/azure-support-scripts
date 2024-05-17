@@ -1,0 +1,5 @@
+Implement validation to check zone validations of disks
+Public IP detach is currently not working during zone down. Uncomment related code once networking fixes the behavior.
+Integrate with AnyZone
+Move print statements to logger
+Make command line richer (Show names of the cmd args instead of taking positional args)
