@@ -54,7 +54,9 @@ The VM recovery script is most applicable when a VM is not booting, as seen on t
 
 9. RDP to the rescue VM to resolve the issue with the OS disk of the problem VM.
 
-10. To swap the problem VM's OS disk back to the problem VM, run the Restore_<problemVmName>.ps1 script located in the same folder as the recovery scripts.
+10. You will need to attach the new disk from within the OS using either [diskmgmt.msc](https://docs.microsoft.com/en-us/azure/virtual-machines/windows/attach-managed-disk-portal#initialize-a-new-data-disk) for Windows or [fdisk](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/attach-disk-portal#connect-to-the-linux-vm-to-mount-the-new-disk) in Linux. 
+
+11. To swap the problem VM's OS disk back to the problem VM, run the Restore_<problemVmName>.ps1 script located in the same folder as the recovery scripts.
 
 ### Local PowerShell
 1. To download the recovery scripts you can download the zip file or use the Git client. 
