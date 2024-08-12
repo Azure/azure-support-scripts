@@ -15,8 +15,7 @@ to the RHUI servers. Among other things, here are some of the individual tests t
 
 ## Supported Environments
 
-The script was built to successfully run on plain vanilla RHEL7.9 and later PAYG images but it should run on images with the Azure Hybrid Benefit enabled as well.
-
+The script was built to successfully run on plain vanilla RHEL7.9 and later PAYG images, but it will work on custom images with the Azure Hybrid Benefit enabled as well.
 
 ## Usage
 
