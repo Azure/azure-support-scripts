@@ -48,3 +48,6 @@ Then run:
 ```
 sudo python3 ./rhui-check.py 
 ```
+
+>[!NOTE]
+>**Replace python3 with /usr/libexec/platform-python if the python3 command is not found.**
