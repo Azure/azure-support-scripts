@@ -22,7 +22,7 @@ The script was built to successfully run on plain vanilla RHEL7.9 and later PAYG
 ### RHEL 7.x
 
 ```
-python2 <(curl https://raw.githubusercontent.com/Azure/azure-support-scripts/master/Linux-scripts/rhui-check/rhui-check.py)
+sudo python2 <(curl https://raw.githubusercontent.com/Azure/azure-support-scripts/master/Linux-scripts/rhui-check/rhui-check.py)
 ```
 
 Or download and transfer the script to the instance:
@@ -34,10 +34,10 @@ Then run:
 sudo python ./rhui-check.py 
 ```
 
-### RHEL 8.x and above
+### RHEL 8.x, RHEL 9.x and above
 
 ```
-python3 <(curl https://raw.githubusercontent.com/Azure/azure-support-scripts/master/Linux-scripts/rhui-check/rhui-check.py)
+sudo python3 <(curl https://raw.githubusercontent.com/Azure/azure-support-scripts/master/Linux-scripts/rhui-check/rhui-check.py)
 ```
 
 Or download and transfer the script to the instance:
@@ -46,5 +46,5 @@ https://raw.githubusercontent.com/Azure/azure-support-scripts/master/Linux_scrip
 Then run:
 
 ```
-python3 ./rhui-check.py 
+sudo python3 ./rhui-check.py 
 ```
