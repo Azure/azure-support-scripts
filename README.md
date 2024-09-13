@@ -1,11 +1,11 @@
 # Azure Support Scripts
 This repository contains scripts that are used by Microsoft Customer Service and Support (CSS) to aid in gaining better insight into, or troubleshooting issues with, deployments in Microsoft Azure.  A goal of this repository is provide transparency to Azure customers who want to better understand the scripts being used and to make these scripts accessible for self-help scenarios outside of Microsoft support.
 
-These scripts are generally intended to address a particular scenario and are not published as samples of best practices for inclusion in applications.  
+These scripts are generally intended to address a particular scenario and are not published as samples of best practices for inclusion in applications.
 
-- For code and scripting examples of best practice see [OneCode](http://aka.ms/onecodesamples), [OneScript](http://aka.ms/onescriptsamples), and the [Microsoft Azure Script Center](https://azure.microsoft.com/en-us/documentation/scripts/).  
-- For documentation on how to build and deploy applications to Microsoft Azure, please see the [Microsoft Azure Documentation Center](https://azure.microsoft.com/en-us/documentation/).
--	For more information about support in Microsoft Azure see http://azure.microsoft.com/support 
+- For code and scripting examples of best practice see [OneCode](http://aka.ms/onecodesamples), [OneScript](http://aka.ms/onescriptsamples), and the [Microsoft Azure Script Center](https://azure.microsoft.com/en-us/documentation/scripts/).
+- For documentation on building and deploying applications for Microsoft Azure, please see the [Microsoft Azure Documentation Center](https://azure.microsoft.com/en-us/documentation/).
+-	For more information about support in Microsoft Azure see http://azure.microsoft.com/support
 
 # Requirements
 Each script will describe its own dependencies for execution.  Generally, you will need an [Azure subscription](https://azure.microsoft.com/en-us/pricing/) as well as the script environments and any tools used by the script you wish to execute.  This may include:
