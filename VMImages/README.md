@@ -46,9 +46,9 @@ ws19          RG ScheduledForDeprecation 2024-12-10T00:00:00Z     microsoftwindo
 
 Writing output to /home/craig
 
- CSV: /home/craig\Get-AzVMImageDeprecationStatus-17d31887-d488-46fd-a00c-248a027067d4.csv
-JSON: /home/craig\Get-AzVMImageDeprecationStatus-17d31887-d488-46fd-a00c-248a027067d4.json
- TXT: /home/craig\Get-AzVMImageDeprecationStatus-17d31887-d488-46fd-a00c-248a027067d4.txt
+ CSV: /home/craig\Get-AzVMImageDeprecationStatus-351d4bb3-5fd0-40ef-88fe-3ca10c783275.csv
+JSON: /home/craig\Get-AzVMImageDeprecationStatus-351d4bb3-5fd0-40ef-88fe-3ca10c783275.json
+ TXT: /home/craig\Get-AzVMImageDeprecationStatus-351d4bb3-5fd0-40ef-88fe-3ca10c783275.txt
 
  ZIP: /home/craig\imagestate.zip
 
