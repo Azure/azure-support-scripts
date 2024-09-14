@@ -8,7 +8,7 @@ To run **Get-AzVMImageDeprecationStatus.ps1** in Azure Cloud Shell:
 2. Click **Switch to PowerShell** at the top left. If it says **Switch to Bash** you're already in PowerShell.
 3. Run the following command to download **Get-AzVMImageDeprecationStatus.ps1** into cloud shell:
 ```
-Invoke-WebRequest https://raw.githubusercontent.com/craiglandis/ps/master/Get-AzVMImageDeprecationStatus.ps1 -OutFile Get-AzVMImageDeprecationStatus.ps1
+Invoke-WebRequest https://raw.githubusercontent.com/Azure/azure-support-scripts/master/VMImages/Get-AzVMImageDeprecationStatus.ps1
 ```
 4. To check all VMs in the subscription, run **Get-AzVMImageDeprecationStatus.ps1** with no parameters:
 ```
