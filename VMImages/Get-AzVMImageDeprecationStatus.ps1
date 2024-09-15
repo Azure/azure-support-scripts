@@ -2,8 +2,9 @@
 param(
     [string]$resourceGroupName = '*',
     [string]$name = '*',
-    [switch]$txt,
-    [switch]$all
+    [switch]$all,
+    [Int16]$displayLimit = 20
+
 )
 
 $scriptStartTime = Get-Date
@@ -58,13 +59,27 @@ else
     Write-Output "`n$vmsFromImagesScheduledForDeprecationCount of $totalVMCount VMs were created from images scheduled for deprecation"
     if ($all)
     {
-        Write-Output "`nShowing all VMs:"
-        $table = $vms | Format-Table VM,RG,ScheduledDeprecationTime,ImageUrn -AutoSize | Out-String -Width 4096
+        if ($totalVMCount -gt $displayLimit)
+        {
+            Write-Output "`nShowing $displayLimit of $totalVMCount VMs regardless of image deprecation status (use -displayLimit to show more):"
+        }
+        else
+        {
+            Write-Output "`nShowing all VMs regardless of image deprecation status:"
+        }
+        $table = $vms | Select-Object -First $displayLimit | Format-Table VM,RG,ScheduledDeprecationTime,ImageUrn -AutoSize | Out-String -Width 4096
     }
     else
     {
-        Write-Output "`nShowing VMs from images scheduled for deprecation (use -all to show all VMs):"
-        $table = $vmsFromImagesScheduledForDeprecation | Format-Table VM,RG,ScheduledDeprecationTime,ImageUrn -AutoSize | Out-String -Width 4096
+        if ($vmsFromImagesScheduledForDeprecationCount -gt $displayLimit)
+        {
+            Write-Output "`nShowing $displayLimit of $vmsFromImagesScheduledForDeprecationCount VMs created from images scheduled for deprecation (use -displayLimit to show more, use -all to show all VMs regardless of image deprecation status):"
+        }
+        else
+        {
+            Write-Output "`nShowing VMs created from images scheduled for deprecation (use -all to show all VMs regardless of image deprecation status):"
+        }
+        $table = $vmsFromImagesScheduledForDeprecation | Select-Object -First $displayLimit | Format-Table VM,RG,ScheduledDeprecationTime,ImageUrn -AutoSize | Out-String -Width 4096
     }
     $table = "`n$($table.Trim())`n"
     Write-Output $table
