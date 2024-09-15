@@ -1,4 +1,4 @@
-You can run **Get-AzVMImageDeprecationStatus.ps1** to show if any VMs in a subscription were created from VM images that are scheduled for deprecation.
+You can run **Get-AzVMImageDeprecationStatus.ps1** to show if any VMs in a subscription were created from VM images that are scheduled for deprecation. This script does not support VMSS.
 
 See [https://aka.ms/DeprecatedImagesFAQ](https://aka.ms/DeprecatedImagesFAQ) for more information about VM image deprecation.
 
