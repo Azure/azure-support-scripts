@@ -3,8 +3,7 @@ param(
     [string]$resourceGroupName = '*',
     [string]$name = '*',
     [switch]$txt,
-    [switch]$all,
-    [switch]$show
+    [switch]$all
 )
 
 $scriptStartTime = Get-Date
@@ -60,12 +59,12 @@ else
     if ($all)
     {
         Write-Output "`nShowing all VMs:"
-        $table = $vms | Format-Table -AutoSize | Out-String -Width 4096
+        $table = $vms | Format-Table VM,RG,ScheduledDeprecationTime,ImageUrn -AutoSize | Out-String -Width 4096
     }
     else
     {
         Write-Output "`nShowing VMs from images scheduled for deprecation (use -all to show all VMs):"
-        $table = $vmsFromImagesScheduledForDeprecation | Format-Table -AutoSize | Out-String -Width 4096
+        $table = $vmsFromImagesScheduledForDeprecation | Format-Table VM,RG,ScheduledDeprecationTime,ImageUrn -AutoSize | Out-String -Width 4096
     }
     $table = "`n$($table.Trim())`n"
     Write-Output $table
