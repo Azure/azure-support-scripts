@@ -70,7 +70,7 @@ def start_logging(debug_level = False):
         plain_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         file_handler.setFormatter(plain_formatter)    
     except:
-        logger.critical("Unable to create log file in /var/log/rhuicheck.log, make sure the script is running with root privileges, the filesystem has enough space and it is not in Read-Only mode")
+        logger.critical("Unable to create log file in /var/log/rhuicheck.log, make sure the script is running with root privileges, the filesystem has enough space and it's not in Read-Only mode")
         exit(1)
     else:
         file_handler.setLevel(logging.DEBUG)
@@ -89,7 +89,7 @@ logger = start_logging(args.debug)
 try:
     import requests
 except ImportError:
-    logger.critical("'requests' python module not found but it is required for this test script, review your python instalation")
+    logger.critical("'requests' python module not found, but it's required for this test script, review your python installation.")
     exit(1) 
 
 rhui3 = ['13.91.47.76', '40.85.190.91', '52.187.75.218']
@@ -132,13 +132,13 @@ def validate_ca_certificates():
     try:
         result = subprocess.call('/usr/bin/rpm -V ca-certificates', shell=True)
     except:
-        logger.error('Unable to check server side certificates installed on the server')
+        logger.error('Unable to check server side certificates installed in the server')
         logger.error('Use {} to reinstall the ca-certificates'.format(reinstall_ca_bundle_link))
         
         exit(1)
    
     if result:
-        logger.error('The ca-certificate package is invalid, you can reinstall follow {} to reinstall it manually'.format(reinstall_ca_bundle_link))
+        logger.error('The ca-certificate package is invalid, you can reinstall it. Follow {} to reinstall it manually'.format(reinstall_ca_bundle_link))
         exit(1)
     else:
         return True
@@ -148,7 +148,7 @@ def connect_to_host(url, selection, mysection):
     try:
         uname = os.uname()
     except:
-        logger.critical('Unable to identify OS version')
+        logger.critical('Unable to identify OS version.')
         exit(1)    
 
     try:
@@ -198,7 +198,7 @@ def connect_to_host(url, selection, mysection):
         logger.warning('PROBLEM: Unable to use the proxy gateway when connecting to RHUI server {}'.format(url))
         return False
     except requests.exceptions.ConnectionError as e:
-        logger.warning('PROBLEM: Unable establish connectivity to RHUI server {}'.format(url))
+        logger.warning('PROBLEM: Unable to establish connectivity to RHUI server {}'.format(url))
         logger.error('{}'.format(e))
         return False
     except OSError:
@@ -214,7 +214,7 @@ def connect_to_host(url, selection, mysection):
             return True
         elif r.status_code == 404:
             logger.error("Unable to find the contents for repo {}, make sure to use the correct version lock if you're using EUS repositories".format(mysection))
-            logger.error("for more detailed information and valid levels consult: https://access.redhat.com/support/policy/updates/errata#RHEL8_and_9_Life_Cycle")
+            logger.error("For more detailed information and valid levels consult: https://access.redhat.com/support/policy/updates/errata#RHEL8_and_9_Life_Cycle")
             return False
         else:
             logger.warning('The RC for this {} link is {}'.format(url, r.status_code))
@@ -233,7 +233,7 @@ def rpm_names():
             logger.debug('Server has this RHUI pkg: {}'.format(rpm))
         return(rpm_names)
     else:
-        logger.critical('could not find a specific RHUI package installed, please refer to the documentation and install the apropriate one ')
+        logger.critical('Could not find a specific RHUI package installed, please refer to the documentation and install the apropriate one. ')
         logger.critical('Consider using the following document to install RHUI support https://learn.microsoft.com/troubleshoot/azure/virtual-machines/troubleshoot-linux-rhui-certificate-issues#cause-3-rhui-package-is-missing')
         exit(1) 
 
@@ -255,7 +255,7 @@ def get_pkg_info(package_name):
                     hash_info[key] = data
                     break
     except:
-        logger.critical('Failed to grab RHUI RPM details, rebuild RPM database')
+        logger.critical('Failed to grab RHUI RPM details, rebuild RPM database.')
         exit(1)
     else:
         return hash_info
@@ -267,11 +267,11 @@ def verify_pkg_info(package_name, rpm_info):
     errors = 0
     for keyname in pattern.keys():
         if keyname not in rpm_info.keys():
-            logger.critical('{} file definition not found in RPM metadata, {} rpm needs to be reinstalled'.format(keyname, package_name))
+            logger.critical('{} file definition not found in RPM metadata, {} rpm needs to be reinstalled.'.format(keyname, package_name))
             errors += 1
         else: 
             if not os.path.exists(rpm_info[keyname]):
-                logger.critical('{} file not found in server, {} rpm needs to be reinstalled'.format(keyname, package_name))
+                logger.critical('{} file not found in server, {} rpm needs to be reinstalled.'.format(keyname, package_name))
                 errors += 1
 
     if errors:
@@ -286,7 +286,7 @@ def default_policy():
     try:
         uname = os.uname()
     except:
-        logger.critical('Unable to identify OS version')
+        logger.critical('Unable to identify OS version.')
         exit(1)    
 
     try:
@@ -315,17 +315,17 @@ def expiration_time(cert_path):
     Checks whether client certificate stored at cert_path has expired or not.
     """
     logger.debug('Entering expiration_time()')
-    logger.debug('Checking certificate expiration time')
+    logger.debug('Checking certificate expiration time.')
     try:
         result = subprocess.check_call('openssl x509 -in {} -checkend 0 > /dev/null 2>&1 '.format(cert_path),shell=True)
 
     except subprocess.CalledProcessError:
-        logger.critical('Client RHUI Certificate has expired, please update the RHUI rpm')
+        logger.critical('Client RHUI Certificate has expired, please update the RHUI rpm.')
         logger.critical('Refer to: https://learn.microsoft.com/troubleshoot/azure/virtual-machines/troubleshoot-linux-rhui-certificate-issues#cause-1-rhui-client-certificate-is-expired')
         exit(1)
 
     if not default_policy():
-        logger.critical('Client crypto policies not set to DEFAULT')
+        logger.critical('Client crypto policies not set to DEFAULT.')
         logger.critical('Refer to: https://learn.microsoft.com/troubleshoot/azure/virtual-machines/linux/troubleshoot-linux-rhui-certificate-issues?tabs=rhel7-eus%2Crhel7-noneus%2Crhel7-rhel-sap-apps%2Crhel8-rhel-sap-apps%2Crhel9-rhel-sap-apps#cause-5-verification-error-in-rhel-version-8-or-9-ca-certificate-key-too-weak')
         exit(1) 
 
@@ -346,7 +346,7 @@ def read_yum_dnf_conf():
         yumdnfdotconf.add_section('[default]')
         yumdnfdotconf.read(file)
     except Exception as e:
-        logger.error('Problems reading /etc/yum.conf, on RHEL8+ it is a symbolic link to /etc/dnf/dnf.conf')
+        logger.error('Problems reading /etc/yum.conf, on RHEL8+ it is a symbolic link to /etc/dnf/dnf.conf.')
         raise
 
     return yumdnfdotconf
@@ -366,7 +366,7 @@ def get_proxies(parser_object, mysection):
         except configparser.NoOptionError: 
             continue
         except Exception as e:
-            logger.error('Problems handling the parser object')
+            logger.error('Problems handling the parser object.')
             raise
         else:
             proxy_info[key] = value
@@ -382,7 +382,7 @@ def get_proxies(parser_object, mysection):
                 # proxy_info['scheme'] = scheme
                 proxy_info['scheme'] = 'https'
             else:
-                logger.critical('Invalid proxy configuration, please make sure it is a valid one')
+                logger.critical('Invalid proxy configuration, please make sure you are using a valid proxy in your settings.')
                 exit(1)
         else:
             return system_proxy
@@ -390,13 +390,13 @@ def get_proxies(parser_object, mysection):
         return system_proxy
 
     if proxy_match.group(4) and ('proxy_user' in proxy_info.keys()):
-        logger.warning('proxy definition already has a username defined and proxy_user is also defined, there might be conflicts using the proxy, repair')
+        logger.warning('proxy definition already has a username defined and proxy_user is also defined, there might be conflicts using the proxy, repair.')
 
     if proxy_match.group(6) and ('proxy_password' in proxy_info.keys()):
-        logger.warning('proxy definition already has a username and password defined and proxy_password is also defined, there might be conflicts using the proxy, repair')
+        logger.warning('proxy definition already has a username and password defined and proxy_password is also defined, there might be conflicts using the proxy, repair.')
 
     if ('proxy_password' in proxy_info.keys() and proxy_info['proxy_password'])  and ('proxy_user' not in proxy_info.keys()):
-        logger.warning('proxy_password defined but there is no proxy user, this could be causing problems')
+        logger.warning('proxy_password defined, but there is no proxy user, this could be causing problems.')
         logger.warning('ignoring proxy_password')
 
     if ('proxy_user' in proxy_info.keys() and proxy_info['proxy_user']) and not proxy_match.group(4):
@@ -409,7 +409,7 @@ def get_proxies(parser_object, mysection):
         else:
             myproxy = '{}{}@{}'.format(proxy_prefix, proxy_info['proxy_user'], proxy_suffix)
 
-    logger.critical('Found proxy information in the config files, make sure connectivity works thru the proxy')
+    logger.critical('Found proxy information in the config files, make sure connectivity works through the proxy.')
     return {proxy_info['scheme']: myproxy}
     
 
@@ -435,7 +435,7 @@ def check_rhui_repo_file(path):
         return reposconfig
 
     except configparser.ParsingError:
-        logger.critical('{} does not follow standard REPO config format, reconsider reinstall RHUI rpm and try again'.format(path))
+        logger.critical('{} does not follow standard REPO config format, reinstall the RHUI rpm and try again.'.format(path))
         exit(1)
 
 
@@ -464,7 +464,7 @@ def check_repos(reposconfig):
             if enabled:
                 logger.info('Using Microsoft RHUI repository {}'.format(repo_name))
             else:
-                logger.critical('Microsoft RHUI repository not enabled, please enable it with the following command')
+                logger.critical('Microsoft RHUI repository not enabled, please enable it with the following command.')
                 logger.critical('yum-config-manager --enable {}'.format(repo_name))
                 exit(1)
 
@@ -484,7 +484,7 @@ def check_repos(reposconfig):
        
     if eus:
         if not os.path.exists('/etc/yum/vars/releasever'):
-            logger.critical('Server is using EUS repostories but /etc/yum/vars/releasever file not found, please correct and test again')
+            logger.critical('Server is using EUS repostories but /etc/yum/vars/releasever file not found, please correct and test again.')
             logger.critical('Refer to: https://learn.microsoft.com/azure/virtual-machines/workloads/redhat/redhat-rhui?tabs=rhel7#rhel-eus-and-version-locking-rhel-vms, to select the appropriate RHUI repo')
             exit(1)
 
@@ -503,14 +503,14 @@ def ip_address_check(host):
     try:
         import socket
     except ImportError:
-        logger.critical("'socket' python module not found but it is required for this test script, review your python instalation")
+        logger.critical("'socket' python module not found, but it is required for this test script, review your python installation.")
         exit(1) 
 
     try:
         rhui_ip_address = socket.gethostbyname(host)
 
         if rhui_ip_address  in rhui4:
-            logger.debug('RHUI host {} points to RHUI4 infrastructure'.format(host))
+            logger.debug('RHUI host {} points to RHUI4 infrastructure.'.format(host))
             return True
         elif rhui_ip_address in rhui3 + rhuius:
             reinstall_link = 'https://learn.microsoft.com/troubleshoot/azure/virtual-machines/linux/troubleshoot-linux-rhui-certificate-issues?tabs=rhel7-eus%2Crhel7-noneus%2Crhel7-rhel-sap-apps%2Crhel8-rhel-sap-apps%2Crhel9-rhel-sap-apps#solution-2-reinstall-the-eus-non-eus-or-sap-rhui-package'
@@ -520,14 +520,14 @@ def ip_address_check(host):
             warnings = warnings + 1
             return False
         else:
-            logger.critical('RHUI server {} points to an invalid destination, validate /etc/hosts file for any invalid static RHUI IPs or reinstall the RHUI package'.format(host))
+            logger.critical('RHUI server {} points to an invalid destination, validate /etc/hosts file for any invalid static RHUI IPs or reinstall the RHUI package.'.format(host))
             logger.warning('Please make sure your server is able to resolve {} to one of the ip addresses'.format(host))
             rhui_link = 'https://learn.microsoft.com/azure/virtual-machines/workloads/redhat/redhat-rhui?tabs=rhel7#the-ips-for-the-rhui-content-delivery-servers'
             logger.warning('listed in this document {}'.format(rhui_link))
             return False
     except Exception as e:
-         logger.warning('Unable to resolve IP address for host {}'.format(host))
-         logger.warning('Please make sure your server is able to resolve {} to one of the ip addresses'.format(host))
+         logger.warning('Unable to resolve IP address for host {}.'.format(host))
+         logger.warning('Please make sure your server is able to resolve {} to one of the IP addresses.'.format(host))
          rhui_link = 'https://learn.microsoft.com/azure/virtual-machines/workloads/redhat/redhat-rhui?tabs=rhel7#the-ips-for-the-rhui-content-delivery-servers'
          logger.warning('listed in this document {}'.format(rhui_link ))
          logger.warning(e)
@@ -549,7 +549,7 @@ def connect_to_repos(reposconfig, check_repos):
             baseurl_info = reposconfig.get(repo_name, 'baseurl').strip().split('\n')
         except configparser.NoOptionError:
             reinstall_link = 'https://learn.microsoft.com/troubleshoot/azure/virtual-machines/linux/troubleshoot-linux-rhui-certificate-issues?source=recommendations&tabs=rhel7-eus%2Crhel7-noneus%2Crhel7-rhel-sap-apps%2Crhel8-rhel-sap-apps%2Crhel9-rhel-sap-apps#solution-2-reinstall-the-eus-non-eus-or-sap-rhui-package'
-            logger.critical('The baseurl is a critical component of the repository stanza and it is not found for repo {}'.format(repo_name))
+            logger.critical('The baseurl is a critical component of the repository stanza, and it is not found for repo {}'.format(repo_name))
             logger.critical('Follow this link to reinstall the Microsoft RHUI repo {}'.format(reinstall_link))
             exit(1)
 
@@ -566,8 +566,8 @@ def connect_to_repos(reposconfig, check_repos):
         if successes == 0:
             error_link = 'https://learn.microsoft.com/azure/virtual-machines/workloads/redhat/redhat-rhui?tabs=rhel9#the-ips-for-the-rhui-content-delivery-servers'
             logger.critical('PROBLEM: Unable to successfully download repository metadata from the any of the configured RHUI server(s).')
-            logger.critical('         please ensure the server is able to resolve to a valid IP address, communication is allowed to the addresses listed in the public document {}'.format(error_link))
-            logger.critical('         and, if using EUS repositories, have a valid EUS value in /etc/dnf/vars/releasever file')
+            logger.critical('         please ensure the server is able to resolve to a valid IP address, communication is allowed to the IP addresses listed in the public document {}'.format(error_link))
+            logger.critical('         and, if you are using EUS repositories, make sure you have a valid EUS version value in /etc/dnf/vars/releasever file.')
             sys.exit(1)
 
 
@@ -588,5 +588,5 @@ for package_name in rpm_names():
         connect_to_repos(reposconfig, check_repos)
 
 
-logger.info('All communication tests to the RHUI infrastructure have passed, if problems persisit, remove third party repositories and test again')
-logger.info('The RHUI repository configuration file is {}, move any other configuration file to a temporary location and test again'.format(data['repofile']))
+logger.info('All communication tests to the RHUI infrastructure have passed, if problems persist, remove third party repositories and test again.')
+logger.info('The RHUI repository configuration file is {}, move any other configuration file to a temporary location and test again.'.format(data['repofile']))
