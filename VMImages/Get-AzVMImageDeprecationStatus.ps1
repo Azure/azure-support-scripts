@@ -72,8 +72,7 @@ foreach ($instance in $instances)
         $imageUrn = "$($publisher):$($offer):$($sku):$($exactVersion)"
         $imageUrn = $imageUrn.ToLower()
         $instance.ImageReference | Add-Member -MemberType NoteProperty -Name ImageUrn -Value $imageUrn -Force -ErrorAction SilentlyContinue
-        #Write-Output "Publisher: $cyan$publisher$reset Offer: $cyan$offer$reset Sku: $cyan$sku$reset ExactVersion: $cyan$exactVersion$reset"
-        Write-Output "$($instance.Name.PadRight(15,'.')) $cyan$($instance.ImageReference.ImageUrn)$reset"
+        Write-Output "$($instance.Name.PadRight(15,'.')) $($instance.ImageReference.ImageUrn)"
         Remove-Variable -Name image,imageState,getAzVmImageError -Force -ErrorAction SilentlyContinue
         $image = Get-AzVMImage -Location $location -PublisherName $publisher -Offer $offer -Skus $sku -Version $exactVersion -ErrorVariable getAzVmImageError -ErrorAction SilentlyContinue
         if ($image -and $image.ImageDeprecationStatus)
