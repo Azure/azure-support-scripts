@@ -1,0 +1,24 @@
+---
+- name: copy rhui_test.py to all hosts that require it.
+  hosts: all
+  become: false
+  gather_facts: no
+  tasks:
+  - name: transer file across the board.
+    ansible.builtin.copy:
+        src:  rhui_test.py
+        dest: rhui_test.py
+        mode: '0755'
+
+
+
+- name: execute rhui_test.py across the board
+  hosts: all
+  become: true
+  gather_facts: yes
+  remote_user: azureuser
+  tasks:
+  - name: execute the rhui_test.py script across the board.
+    ansible.builtin.shell:
+      cmd: "{{ ansible_python.executable }} /home/azureuser/rhui_test.py"
+
