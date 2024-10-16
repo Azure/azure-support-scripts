@@ -1,0 +1,4 @@
+azure-identity==1.15.0
+azure-mgmt-compute==30.6.0
+azure-mgmt-network==25.3.0
+dataclasses-json==0.6.4
