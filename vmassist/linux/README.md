@@ -15,12 +15,12 @@ The VM assist scripts must be run as root.  Either enter a root shell using a co
 
 ### automatic download and run
 - run\
-   `bash <(curl -sL https://raw.githubusercontent.com/Azure/azure-support-scripts/master/VMAssist/Linux//bootstrap-vmassist.sh)`
+   `bash <(curl -sL https://raw.githubusercontent.com/Azure/azure-support-scripts/master/vmassist/linux//bootstrap-vmassist.sh)`
 
 ### manual download
 - download the two scripts individually to the current directory\
-   `wget https://raw.githubusercontent.com/Azure/azure-support-scripts/master/VMAssist/Linux/vmassist.sh`\
-   `wget https://raw.githubusercontent.com/Azure/azure-support-scripts/master/VMAssist/Linux/vmassist.py`
+   `wget https://raw.githubusercontent.com/Azure/azure-support-scripts/master/vmassist/linux/vmassist.sh`\
+   `wget https://raw.githubusercontent.com/Azure/azure-support-scripts/master/vmassist/linux/vmassist.py`
 
 - add executable permissions\
 `chmod vmassist.sh`
