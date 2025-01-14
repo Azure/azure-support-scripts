@@ -846,7 +846,7 @@ else:
 
 # START OUTPUT
 print("------ vmassist.py results ------")
-print("Please see https://aka.ms/vmassistlinux for information about any issues in the above output")
+print("Please see https://aka.ms/vmassistlinux for guidance on the information in the above output")
 print(f"OS family        : {osrID}")
 # things we will always report on:
 ## WAA service
