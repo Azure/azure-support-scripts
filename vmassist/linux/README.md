@@ -1,4 +1,4 @@
-# Health check script for Azure Agent on Linux - waagent
+# VM assist - agent health check tool
 VM assist is a combination of bash and python scripts intended to be used to diagnose issues with the Azure agent in a Linux VM, and some limited related issues with the general health of the VM.
 
 Output is intended to be viewed in the serial console and provide pointers to solve some well-known issues, as well as certain deviations from best practice which can affect VM availability.
@@ -43,7 +43,7 @@ The output from the script should be a serial console friendly report of well kn
 
 Log output is created in `/var/log/azure`, using filenames staring with `vmassist`
 
-### Issues running VMassist
+### Issues running VM assist
 #### Seems to hang forever
 There are conditions where the scripts may not produce output at all and seem to hang without causing system load.  This may be due to the underlying package manager expecting interaction from a prompt, specifically on newer VMs.  If this is encountered, run a package manager command from the command line and watch for prompts.  Examples:
 - dnf repolist
