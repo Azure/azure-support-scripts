@@ -59,9 +59,9 @@ if [ "$CONTINUE" = 'y' -o "$CONTINUE" = 'Y' ] ; then
   fi
 
   echo "downloading script(s)"
-  wget --no-verbose --directory-prefix=$DLPATH https://raw.githubusercontent.com/Azure/azure-support-scripts/tree/master/VMAssist/Linux/main/vmassist.sh
+  wget --no-verbose --directory-prefix=$DLPATH https://raw.githubusercontent.com/Azure/azure-support-scripts/tree/master/vmassist/linux/main/vmassist.sh
   chmod +x $DLPATH/vmassist.sh
-  wget --no-verbose --directory-prefix=$DLPATH https://raw.githubusercontent.com/Azure/azure-support-scripts/tree/master/VMAssist/Linux/main/vmassist.py
+  wget --no-verbose --directory-prefix=$DLPATH https://raw.githubusercontent.com/Azure/azure-support-scripts/tree/master/vmassist/linux/main/vmassist.py
 
   SCRIPTTORUN="$DLPATH/vmassist.sh"
   if [ $EUID -gt 0 ] ; then
