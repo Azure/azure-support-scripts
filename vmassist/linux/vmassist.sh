@@ -593,7 +593,7 @@ if [[ $DEBUG ]] || [[ $BASHREPORT ]] || [[ $PYSTAT -gt 0 ]] ; then
   echo -e "AutoUpgrade:     "$(printColorCondition $AUTOUP "$AUTOUPMSG" "true")
   # System checks
   echo -e "Volumes >$FSFULLPCENT%:   "$(printColorCondition "$FULLFS" "$FULLFS" "none")
-  echo -e "Please see https://aka.ms/vmassistlinux for information about any issues in the above output"
+  echo -e "Please see https://aka.ms/vmassistlinux for guidance on the information in the above output"
 fi
 
 ### This is where we diverge into the python sub-script.  Many checks can be moved into Python code once we have validated that the python is workable
