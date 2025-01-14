@@ -1,5 +1,5 @@
 # Health check script for Azure Agent on Linux - waagent
-VMassist is a combination of bash and python scripts intended to be used to diagnose issues with the Azure agent in a Linux VM, and some limited related issues with the general health of the VM.
+VM assist is a combination of bash and python scripts intended to be used to diagnose issues with the Azure agent in a Linux VM, and some limited related issues with the general health of the VM.
 
 Output is intended to be viewed in the serial console and provide pointers to solve some well-known issues, as well as certain deviations from best practice which can affect VM availability.
 
@@ -11,16 +11,16 @@ There are two components of the script
 - A python script which will perform some of the same checks as the bash script, but also will do more complex checks and reporting.
 
 ## Usage
-The vmassist scripts must be run as root.  Either enter a root shell using a command such as `sudo -i` or prepend `sudo` to each command listed in this readme.  Downloads can be run as any user however the "bootstrap" script runs the script and as such requires root permissions.
+The VM assist scripts must be run as root.  Either enter a root shell using a command such as `sudo -i` or prepend `sudo` to each command listed in this readme.  Downloads can be run as any user however the "bootstrap" script runs the script and as such requires root permissions.
 
 ### automatic download and run
 - run\
-   `bash <(curl -sL https://raw.githubusercontent.com/pagienge/walinuxagenthealth/main/bootstrap-vmassist.sh)`
+   `bash <(curl -sL https://raw.githubusercontent.com/Azure/azure-support-scripts/master/VMAssist/Linux//bootstrap-vmassist.sh)`
 
 ### manual download
 - download the two scripts individually to the current directory\
-   `wget https://github.com/Azure/azure-support-scripts/blob/pagienge-devel/VMAssist/Linux/raw/main/vmassist.sh`\
-   `wget https://github.com/Azure/azure-support-scripts/blob/pagienge-devel/VMAssist/Linux/raw/main/vmassist.py`
+   `wget https://raw.githubusercontent.com/Azure/azure-support-scripts/master/VMAssist/Linux/vmassist.sh`\
+   `wget https://raw.githubusercontent.com/Azure/azure-support-scripts/master/VMAssist/Linux/vmassist.py`
 
 - add executable permissions\
 `chmod vmassist.sh`
