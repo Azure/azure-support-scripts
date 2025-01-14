@@ -19,8 +19,8 @@ The vmassist scripts must be run as root.  Either enter a root shell using a com
 
 ### manual download
 - download the two scripts individually to the current directory\
-   `wget https://github.com/pagienge/VMassist/raw/main/vmassist.sh`\
-   `wget https://github.com/pagienge/VMassist/raw/main/vmassist.py`
+   `wget https://github.com/Azure/azure-support-scripts/blob/pagienge-devel/VMAssist/Linux/raw/main/vmassist.sh`\
+   `wget https://github.com/Azure/azure-support-scripts/blob/pagienge-devel/VMAssist/Linux/raw/main/vmassist.py`
 
 - add executable permissions\
 `chmod vmassist.sh`
