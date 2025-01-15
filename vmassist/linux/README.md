@@ -39,9 +39,9 @@ Syntax: vmassist.sh [-h|v|b]
    -r     Always output the bash summary before spawning the python script
 
 ### Analyzing output
-The output from the script should be a serial console friendly report of well known issues, along with a link to current documentation on both interpreting the output and references for fixing identified issues.
+The output from the script should be a serial console friendly report of well known issues, along with a link to current documentation on both interpreting the output and references for fixing identified issues.  For detailed information on the information output directly from the script reference the URL [https://aka.ms/vmassistlinux](https://aka.ms/vmassistlinux)
 
-Log output is created in `/var/log/azure`, using filenames staring with `vmassist`
+Additionally, detailed log output is created in `/var/log/azure`, using filenames staring with `vmassist`
 
 ### Issues running VM assist
 #### Seems to hang forever
