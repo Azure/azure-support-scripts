@@ -1,4 +1,4 @@
-# Health check script for Azure Agent on Linux - waagent
+# VM assist - agent health check tool
 VM assist is a combination of bash and python scripts intended to be used to diagnose issues with the Azure agent in a Linux VM, and some limited related issues with the general health of the VM.
 
 Output is intended to be viewed in the serial console and provide pointers to solve some well-known issues, as well as certain deviations from best practice which can affect VM availability.
@@ -11,7 +11,7 @@ There are two components of the script
 - A python script which will perform some of the same checks as the bash script, but also will do more complex checks and reporting.
 
 ## Usage
-The VM assist scripts must be run as root.  Either enter a root shell using a command such as `sudo -i` or prepend `sudo` to each command listed in this readme.  Downloads can be run as any user however the "bootstrap" script runs the script and as such requires root permissions.
+The VM assist scripts must be run as root.  Either enter a root shell using a command such as `sudo -i` or prepend `sudo` to each command listed in this readme.  Downloads can be run as any user; however, the "bootstrap" script runs the script and, as such, requires root permissions.
 
 ### automatic download and run
 - run\
@@ -27,7 +27,7 @@ The VM assist scripts must be run as root.  Either enter a root shell using a co
 - Run the script\
 `./vmassist.sh`
 
-### Running VMassist
+### Running VM assist
 - Running `bootstrap-vmassist.sh` as above will download and run the diagnostic script from `/tmp/vmassist`
 - After downloading by any method, run the `vmassist.sh` from the path reported in the output of `bootstrap-vmassist.sh` as root, or through sudo.  The script can be run as many times as necessary without downloading again
 
@@ -39,11 +39,11 @@ Syntax: vmassist.sh [-h|v|b]
    -r     Always output the bash summary before spawning the python script
 
 ### Analyzing output
-The output from the script should be a serial console friendly report of well known issues, along with a link to current documentation on both interpreting the output and references for fixing identified issues.
+The output from the script should be a serial console friendly report of well known issues, along with a link to current documentation on both interpreting the output and references for fixing identified issues.  For detailed information on the information output directly from the script reference the URL [https://aka.ms/vmassistlinux](https://aka.ms/vmassistlinux)
 
-Log output is created in `/var/log/azure`, using filenames staring with `vmassist`
+Additionally, detailed log output is created in `/var/log/azure`, using filenames staring with `vmassist`
 
-### Issues running VMassist
+### Issues running VM assist
 #### Seems to hang forever
 There are conditions where the scripts may not produce output at all and seem to hang without causing system load.  This may be due to the underlying package manager expecting interaction from a prompt, specifically on newer VMs.  If this is encountered, run a package manager command from the command line and watch for prompts.  Examples:
 - dnf repolist
