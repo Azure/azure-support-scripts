@@ -11,7 +11,7 @@ There are two components of the script
 - A python script which will perform some of the same checks as the bash script, but also will do more complex checks and reporting.
 
 ## Usage
-The VM assist scripts must be run as root.  Either enter a root shell using a command such as `sudo -i` or prepend `sudo` to each command listed in this readme.  Downloads can be run as any user however the "bootstrap" script runs the script and as such requires root permissions.
+The VM assist scripts must be run as root.  Either enter a root shell using a command such as `sudo -i` or prepend `sudo` to each command listed in this readme.  Downloads can be run as any user; however, the "bootstrap" script runs the script and, as such, requires root permissions.
 
 ### automatic download and run
 - run\
@@ -27,7 +27,7 @@ The VM assist scripts must be run as root.  Either enter a root shell using a co
 - Run the script\
 `./vmassist.sh`
 
-### Running VMassist
+### Running VM assist
 - Running `bootstrap-vmassist.sh` as above will download and run the diagnostic script from `/tmp/vmassist`
 - After downloading by any method, run the `vmassist.sh` from the path reported in the output of `bootstrap-vmassist.sh` as root, or through sudo.  The script can be run as many times as necessary without downloading again
 
