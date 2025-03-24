@@ -13,7 +13,7 @@
     RDP to Azure VM
     Launch an elevated PowerShell prompt
     Download and run vmassist.ps1 with the following command:
-    (Invoke-WebRequest -Uri https://raw.githubusercontent.com/kegregoi/vmassist/refs/heads/main/vmassist.ps1 -OutFile vmassist.ps1) | .\vmassist.ps1
+    (Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/azure-support-scripts/master/vmassist/windows/vmassist.ps1 -OutFile vmassist.ps1) | .\vmassist.ps1
 #>
 #Requires -Version 4
 [CmdletBinding(SupportsShouldProcess = $true)]
