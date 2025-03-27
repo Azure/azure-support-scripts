@@ -8,7 +8,7 @@
     Supported in Windows PowerShell 4.0+ and PowerShell 6.0+.
     Not supported on Linux.
 .LINK
-    https://github.com/kegregoi/vmassist
+    https://github.com/Azure/azure-support-scripts/blob/master/vmassist/windows/README.md
 .EXAMPLE
     RDP to Azure VM
     Launch an elevated PowerShell prompt
@@ -1993,7 +1993,7 @@ if ($imdsReachable.Succeeded)
     {
         $imdReturnedExpectedResult = $true
         Out-Log $imdReturnedExpectedResult -color Green -endLine
-        New-Check -name 'IMDS endpoint http://169.254.169.254/metadata/versions' -result 'OK' -details "http://169.254.169.254/metadata/instance?api-version=$apiVersion returned expected result"
+        New-Check -name 'IMDS endpoint http://169.254.169.254/metadata/instance' -result 'OK' -details "http://169.254.169.254/metadata/instance?api-version=$apiVersion returned expected result"
 
         $global:dbgMetadata = $metadata
 
