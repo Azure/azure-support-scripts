@@ -1556,7 +1556,7 @@ if ($productName.Contains("2008") -or $productName.Contains("2012") -or $product
         {
             $stdRegProvQuerySuccess = $true
             Out-Log $stdRegProvQuerySuccess -color Green -endLine
-            New-Check -name 'StdRegProv WMI class' -result 'OK' -details ''
+            New-Check -name 'StdRegProv WMI class' -result 'OK' -details 'StdRegProv WMI class query succeeded'
         }
         else
         {
@@ -1850,7 +1850,7 @@ if ($proxyConfigured)
 }
 else
 {
-    New-Check -name 'Proxy configured' -result 'OK' -details 'No proxy configured'
+    New-Check -name 'Proxy configured' -result 'OK' -details 'No proxy detected'
     Out-Log $proxyConfigured -color Green -endLine
 }
 
@@ -1977,7 +1977,7 @@ else
 #Gathers VM data from IMDS
 if ($imdsReachable.Succeeded)
 {
-    Out-Log 'IMDS endpoint 169.254.169.254:80 returned expected result:' -startLine
+    Out-Log "IMDS endpoint http://169.254.169.254/metadata/instance returned expected result:" -startLine
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072
     # Below three lines have it use a null proxy, bypassing any configured proxy
     # See also https://github.com/microsoft/azureimds/blob/master/IMDSSample.ps1
@@ -1993,7 +1993,7 @@ if ($imdsReachable.Succeeded)
     {
         $imdReturnedExpectedResult = $true
         Out-Log $imdReturnedExpectedResult -color Green -endLine
-        New-Check -name 'IMDS endpoint 169.254.169.254:80 returned expected result' -result 'OK' -details ''
+        New-Check -name 'IMDS endpoint http://169.254.169.254/metadata/versions' -result 'OK' -details "http://169.254.169.254/metadata/instance?api-version=$apiVersion returned expected result"
 
         $global:dbgMetadata = $metadata
 
