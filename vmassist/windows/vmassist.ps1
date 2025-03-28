@@ -1301,7 +1301,7 @@ if(!$acceptEula)
     {
         if ($acceptance.ToLower() -in @('y', 'yes')) 
         {
-            Out-Log "You have accepted the EULA." -color Yellow
+            Out-Log "You have agreed to the EULA." -color Yellow
             break
         } elseif ($acceptance.ToLower() -in @('n', 'no')) 
         {
@@ -1309,8 +1309,8 @@ if(!$acceptEula)
             exit
         } else 
         {
-            Out-Log "Invalid input. Please enter 'y' or 'n'."
-            Out-Log "Do you agree to the above End User License Agreement (EULA)? Enter y to agree or n to decline:" -color Yellow
+            Out-Log "Invalid input." -color Yellow
+            Out-Log "Do you agree to the above End User License Agreement (EULA)? Enter 'y' or 'yes' to agree or 'n' or 'no' to decline:" -color Yellow
             $acceptance = Read-Host
         }
     }
