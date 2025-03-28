@@ -1294,7 +1294,7 @@ if ($skipPSVersionCheck -ne $true -and ($psVersion -lt [version]'4.0' -or $psVer
 if(!$acceptEula)
 {
     Out-Log $eula
-    Out-Log "Enter 'y' to accept or 'n' to decline the EULA" -color Yellow
+    Out-Log "Do you agree to the above End User License Agreement (EULA)? Enter 'y' or 'yes' to agree or 'n' or 'no' to decline:" -color Yellow
     $acceptance = Read-Host
 
     while ($true) 
@@ -1310,7 +1310,7 @@ if(!$acceptEula)
         } else 
         {
             Out-Log "Invalid input. Please enter 'y' or 'n'."
-            Out-Log "Enter 'y' to accept or 'n' to decline the EULA" -color Yellow
+            Out-Log "Do you agree to the above End User License Agreement (EULA)? Enter y to agree or n to decline:" -color Yellow
             $acceptance = Read-Host
         }
     }
