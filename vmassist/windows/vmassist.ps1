@@ -1291,6 +1291,31 @@ if ($skipPSVersionCheck -ne $true -and ($psVersion -lt [version]'4.0' -or $psVer
     }
 }
 
+if(!$acceptEula)
+{
+    Out-Log $eula
+    Out-Log "Enter 'y' to accept or 'n' to decline the EULA" -color Yellow
+    $acceptance = Read-Host
+
+    while ($true) 
+    {
+        if ($acceptance.ToLower() -in @('y', 'yes')) 
+        {
+            Out-Log "You have accepted the EULA." -color Yellow
+            break
+        } elseif ($acceptance.ToLower() -in @('n', 'no')) 
+        {
+            Out-Log "You have declined the EULA. Exiting..." -color Yellow
+            exit
+        } else 
+        {
+            Out-Log "Invalid input. Please enter 'y' or 'n'."
+            Out-Log "Enter 'y' to accept or 'n' to decline the EULA" -color Yellow
+            $acceptance = Read-Host
+        }
+    }
+}
+
 if ($listChecks)
 {
     $scriptFullName = 'C:\src\vmassist\vmassist.ps1'
