@@ -86,6 +86,7 @@ def colorPrint(color, strIn):
 def cRed(strIn): return colorPrint("\033[91m", strIn)
 def cGreen(strIn): return colorPrint("\033[92m", strIn)
 def cYellow(strIn): return colorPrint("\033[93m", strIn)
+def cBlue(strIn): return colorPrint("\033[94m", strIn)
 def cBlack(strIn): return colorPrint("\033[98m", strIn)
 def colorString(strIn, redVal="dead", greenVal="active", yellowVal="inactive"):
   # force these into strs
@@ -846,7 +847,7 @@ else:
 
 # START OUTPUT
 print("------ vmassist.py results ------")
-print("Please see https://aka.ms/vmassistlinux for guidance on the information in the above output")
+print(f"Please see {cBlue('https://aka.ms/vmassistlinux')} for guidance on the information in the above output")
 print(f"OS family        : {osrID}")
 # things we will always report on:
 ## WAA service
