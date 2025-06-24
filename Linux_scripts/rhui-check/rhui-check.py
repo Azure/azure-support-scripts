@@ -1,4 +1,4 @@
-#!/bin/env bash
+#!/bin/env python
 
 import argparse
 import logging
@@ -45,11 +45,6 @@ class CustomFormatter(logging.Formatter):
 
 
 
-if os.geteuid() != 0:
-   logger.critical('This script needs to execute with root privileges')
-   logger.critical('You could leverage the sudo tool to gain administrative privileges')
-   exit(1)
-
 def start_logging(debug_level = False):
     """This function sets up the logging configuration for the script and writes the log to /var/log/rhuicheck.log"""
 
@@ -86,6 +81,11 @@ parser.add_argument(  '--debug','-d',
 args = parser.parse_args()
 logger = start_logging(args.debug)
 
+if os.geteuid() != 0:
+   logger.critical('This script needs to execute with root privileges')
+   logger.critical('You could leverage the sudo tool to gain administrative privileges')
+   exit(1)
+
 try:
     import requests
 except ImportError:
@@ -118,7 +118,7 @@ class localParser(configparser.ConfigParser):
         return d
 
 def get_host(url):
-    urlregex = '[^:]*://([^/]*)/.*'
+    urlregex = r'[^:]*://([^/]*)/.*'
     host_match = re.match(urlregex, url)
     return host_match.group(1)
 
@@ -172,6 +172,7 @@ def connect_to_host(url, selection, mysection):
     url = url+"/repodata/repomd.xml"
     url = url.replace('$releasever',releasever)
     url = url.replace('$basearch',basearch)
+    url = url.replace('$arch',basearch)
     logger.debug('baseurl for repo {} is {}'.format(mysection, url))
 
     headers = {'content-type': 'application/json'}
@@ -357,7 +358,7 @@ def get_proxies(parser_object, mysection):
     proxy_info = dict()
 
     # proxy_regex = '(^[^:]*)(:(//)(([^:]*)(:([^@]*)){0,1}@){0,1}.*)?'
-    proxy_regex = '(^[^:]*):(//)(([^:]*)(:([^@]*)){0,1}@){0,1}.*'
+    proxy_regex = r'(^[^:]*):(//)(([^:]*)(:([^@]*)){0,1}@){0,1}.*'
 
     for key in ['proxy', 'proxy_user', 'proxy_password']:
         try:
@@ -444,13 +445,13 @@ def check_repos(reposconfig):
     global eus 
 
     logger.debug('Entering microsoft_repo()')
-    rhuirepo = '^(rhui-)?microsoft.*'
-    eusrepo  = '.*-(eus|e4s)-.*'
+    rhuirepo = r'^(rhui-)?microsoft.*'
+    eusrepo  = r'.*-(eus|e4s)-.*'
     microsoft_reponame = ''
     enabled_repos = list()
 
     for repo_name in reposconfig.sections():
-        if re.match('\[*default\]*', repo_name):
+        if re.match(r'\[*default\]*', repo_name):
             continue
 
         try:
@@ -542,7 +543,7 @@ def connect_to_repos(reposconfig, check_repos):
 
     for repo_name in check_repos:
 
-        if re.match('\[*default\]*', repo_name):
+        if re.match(r'\[*default\]*', repo_name):
             continue
 
         try:
