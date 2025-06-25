@@ -507,9 +507,8 @@ def connect_to_repos(reposconfig, check_repos, issues):
     """Downloads repomd.xml from each enabled repository."""
 
     logger.debug('Entering connect_to_repos()')
-    # rhuirepo = '^rhui-microsoft.*'
-    rhuirepo = '^(rhui-)?microsoft.*'
-    eusrepo  = '.*-(eus|e4s)-.*'
+    rhuirepo = r'^(rhui-)?microsoft.*'
+    eusrepo  = r'.*-(eus|e4s)-.*'
 
     warnings = 0
 
