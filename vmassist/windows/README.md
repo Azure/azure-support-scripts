@@ -16,15 +16,23 @@ RDP into the VM and from an elevated PowerShell window run the following to down
 ```powershell
 Set-ExecutionPolicy Bypass -Force
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+(Invoke-WebRequest -Uri https://aka.ms/vmassist -OutFile vmassist.ps1) | .\vmassist.ps1
+```
+Or you can specify the full URL instead of the aka.ms short link - 
+```powershell
 (Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/azure-support-scripts/master/vmassist/windows/vmassist.ps1 -OutFile vmassist.ps1) | .\vmassist.ps1
 ```
-
 ## Manual download and run
 Download:
 ```powershell
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Invoke-WebRequest -Uri https://aka.ms/vmassist -OutFile vmassist.ps1
+```
+Or you can specify the full URL instead of the aka.ms short link - 
+```powershell
 Invoke-WebRequest -Uri https://raw.githubusercontent.com/Azure/azure-support-scripts/master/vmassist/windows/vmassist.ps1 -OutFile vmassist.ps1
 ```
+
 Run the script:
 ```powershell
 Set-ExecutionPolicy Bypass -Force
