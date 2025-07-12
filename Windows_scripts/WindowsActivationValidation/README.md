@@ -2,12 +2,28 @@
 
 This PowerShell script is designed to assist with diagnosing Windows licensing and connectivity issues on Azure virtual machines (VMs). It performs a series of checks to verify:
 
-- Whether the system is running an Azure-specific Windows edition
-- Connectivity to the Azure Instance Metadata Service (IMDS)
-- Presence and validity of attested certificates
-- The configured Key Management Service (KMS) endpoint
-- TCP connectivity to the KMS server
-- Windows activation status
+
+## 🔧 What It Does
+
+1. **WinRM Service Check**  
+   - Ensures the `WinRM` service is running.
+   - Attempts to start the service if it's not already running.
+
+2. **Azure Edition Detection**  
+   - Detects if the machine is using an **Azure edition** of Windows.
+   - Verifies connectivity to the **Azure Instance Metadata Service (IMDS)**.
+   - Checks for any missing root certificates in the attestation document.
+
+3. **KMS Endpoint Validation**  
+   - Retrieves the configured KMS endpoint from the Windows registry.
+   - Falls back to the default Azure KMS endpoint if none is found.
+   - Tests TCP connectivity to the KMS endpoint on port `1688`.
+
+4. **Windows Activation Check & Attempt**  
+   - Checks current activation status.
+   - If not activated, attempts to activate using `slmgr.vbs`.
+   - Parses and displays activation error codes with direct links to Microsoft troubleshooting documentation.
+
 
 # Prerequisites
 
