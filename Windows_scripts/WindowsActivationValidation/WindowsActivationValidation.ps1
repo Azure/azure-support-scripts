@@ -1,4 +1,15 @@
 try {
+    # Ensure WinRM service is running
+    $winrmService = Get-Service -Name WinRM -ErrorAction SilentlyContinue
+    if ($winrmService -and $winrmService.Status -ne 'Running') {
+        Write-Host "WinRM service is not running. Attempting to start WinRM..." -ForegroundColor Yellow
+        try {
+            Start-Service -Name WinRM
+            Write-Host "WinRM service started successfully." -ForegroundColor Green
+        } catch {
+            Write-Host "Failed to start WinRM service: $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
     # Check if the VM is using an Azure edition image
     $WindowsEdition = (Get-ComputerInfo).OsName
     $isAzureEdition = $WindowsEdition -match "Azure"
@@ -41,14 +52,57 @@ try {
     }
 
     # Check Windows Activation Status
-    $licenseStatus = (Get-CimInstance SoftwareLicensingProduct -ComputerName $env:computername | Where-Object { $_.Name -like "*Windows*" }).LicenseStatus
+    $licenseStatus = (Get-CimInstance SoftwareLicensingProduct -ComputerName $env:computername | Where-Object { $_.Name -like "*Windows*" -and $_.PartialProductKey })[0].LicenseStatus
 
-    if ($licenseStatus -eq 0) {
+    if ($licenseStatus -eq 1) {
         Write-Host "Windows is Activated." -ForegroundColor Green
-    } elseif ($licenseStatus -eq 1) {
-        Write-Host "Windows is Not Activated." -ForegroundColor Red
     } else {
-        Write-Host "Unable to determine Windows activation status." -ForegroundColor Yellow
+        Write-Host "Windows is not activated or activation status is undetermined. Attempting activation..." -ForegroundColor Yellow
+        $activationResult = cscript.exe C:\Windows\System32\slmgr.vbs /ato 2>&1
+        if ($activationResult -match "Product activated successfully") {
+            Write-Host "Product activated successfully." -ForegroundColor Green
+        } elseif ($activationResult -match "Error:") {
+            $errorLine = $activationResult | Select-String -Pattern "Error:" | Select-Object -First 1
+            $errorCode = $errorLine -replace '.*Error:\s*', ''
+            Write-Host ""
+            Write-Host "Activation failed. Error code: $errorCode" -ForegroundColor Red
+            Write-Host ""
+            $errorCodeTrimmed = $errorCode.Trim()
+            $knownError = $false
+            if ($errorCodeTrimmed -like '*0xC004F074*') {
+                Write-Host "Troubleshoot Link: https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/windows-vm-activation-error-0xc004f074" -ForegroundColor Yellow
+                $knownError = $true
+            }
+            if ($errorCodeTrimmed -like '*0xC004FD01*') {
+                Write-Host "Troubleshoot Link: https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/windows-vm-activation-error-0xc004fd01-0xc004fd02" -ForegroundColor Yellow
+                $knownError = $true
+            }
+            if ($errorCodeTrimmed -like '*0xC004FD02*') {
+                Write-Host "Troubleshoot Link: https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/windows-vm-activation-error-0xc004fd01-0xc004fd02" -ForegroundColor Yellow
+                $knownError = $true
+            }
+            if ($errorCodeTrimmed -like '*0xC004F06C*') {
+                Write-Host "Troubleshoot Link: https://learn.microsoft.com/en-us/troubleshoot/windows-server/licensing-and-activation/error-0xc004f06c-activate-windows" -ForegroundColor Yellow
+                $knownError = $true
+            }
+            if ($errorCodeTrimmed -like '*0xC004E015*') {
+                Write-Host "Troubleshoot Link: https://learn.microsoft.com/en-us/troubleshoot/windows-server/installing-updates-features-roles/error-0xc004e015-sl-e-eul-consumption-failed-activate-windows" -ForegroundColor Yellow
+                $knownError = $true
+            }
+            if ($errorCodeTrimmed -like '*0x800705B4*') {
+                Write-Host "Troubleshoot Link: https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/windows-vm-activation-error-0x800705b4" -ForegroundColor Yellow
+                $knownError = $true
+            }
+            if ($errorCodeTrimmed -like '*0x80070005*') {
+                Write-Host "Troubleshoot Link: https://learn.microsoft.com/en-us/troubleshoot/windows-server/installing-updates-features-roles/error-0x80070005-access-denied" -ForegroundColor Yellow
+                $knownError = $true
+            }
+            if (-not $knownError) {
+                Write-Host "Troubleshoot Link: https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/troubleshoot-activation-problems" -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host "Activation command executed. Please verify activation status again." -ForegroundColor Yellow
+        }
     }
 
 } catch {
