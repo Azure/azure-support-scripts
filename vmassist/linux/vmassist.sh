@@ -87,7 +87,7 @@ function loggy {
   if [[ $DEBUG ]]; then
     echo "$1"
   fi
-  echo "$(date +%FT%T%z)  $1" >> $LOGFILE
+  echo "$(date +%FT%T%z) bash: $1" >> $LOGFILE
 }
 
 function testPyMod {
@@ -108,10 +108,10 @@ import importlib
 def check_module(module_name):
   try:
     importlib.import_module(module_name)
-    print(f"The module '{module_name}' exists.")
+    print("The module '%s' exists." % module_name)
     return 0
-  except ModuleNotFoundError:
-    print(f"Cannot load '{module_name}'")
+  except ImportError:
+    print("Cannot load '%s'" % module_name)
     return 1
 exit (check_module("$2"))
 EOF
@@ -348,7 +348,14 @@ fi
 #  this could be done with --version, but then you get other fluff
 loggy "Checking $PY version"
 PYVERSION=$($PY -c 'import sys; print(str(sys.version_info.major)+"."+str(sys.version_info.minor)+"."+str(sys.version_info.micro))')
+IFS='.' read PYMAJ PYMIN PYPATCH <<< "$PYVERSION"
 loggy "Python=$PYVERSION"
+
+if [ "$PYMAJ" = "2" ]; then
+  # Nothing good will happen if we're calling python2 - distro may be old or python is wrongly pointed
+  PYSTAT=$((PYSTAT+16))
+  loggy "The referenced python is v2 - either EoL distribution or a misdirected python link"
+fi
 
 # now that we should definitively have a python path, find out who owns it.  If this is still empty, just fail, since waagent
 # didn't eval out, maybe waagent doesn't even exist??
@@ -393,6 +400,7 @@ else
   if testPyMod $PYPATH "requests" ; then
     PYREQ="loaded"
   else
+    loggy "Failing to load 'requests' module"
     PYREQ="failed"
     PYSTAT=$((PYSTAT+1)) # if we can't load 'requests' then a lot of things are going to break - also this may be an illegitimate python
   fi
@@ -401,6 +409,7 @@ else
   if  testPyMod $PYPATH  "azurelinuxagent.agent" ; then
     PYALA="loaded"
   else
+    loggy "Failing to load 'azurelinuxagent' module"
     PYALA="failed"
     PYSTAT=$((PYSTAT+2)) # if we can't load the agent module then either waagent will fail entirely, or this could be an illegitimate python
   fi
@@ -408,6 +417,7 @@ else
   if  testPyMod $PYPATH  "argparse" ; then
     PYARG="loaded"
   else
+    loggy "Failing to load 'argparse' module - this is not an issue for waagent, but will keep vmassist from working - and likely means python is not consistent"
     PYARG="failed"
     PYSTAT=$((PYSTAT+4)) # if we can't load argparse then we won't be able to spawn the subscript successfully - maybe python is <3.2
   fi

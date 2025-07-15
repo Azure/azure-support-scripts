@@ -66,7 +66,7 @@ bashArgs = dict(inStr.split('=') for inStr in args.bash.split("|"))
 ### UTILS
 #### UTIL VARs and OBJs
 logger = logging.getLogger(__name__)
-logging.basicConfig(format='%(asctime)s %(message)s', filename=args.log, level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s py %(levelname)s %(message)s', filename=args.log, level=logging.DEBUG)
 # start logging as soon as possible
 logger.info("Python script started:"+os.path.basename(__file__))
 # add the 'to the console' flag to the logger
