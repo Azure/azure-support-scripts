@@ -132,6 +132,7 @@ function help()
    echo "options:"
    echo "-h     Print this Help."
    echo "-v     Verbose mode."
+   echo "-r     Always show the 'bash' report"
    echo
 }
 
@@ -196,7 +197,7 @@ fi
 # Set this from sourcing os-release.  We'll have to be able to distill down all the different 'flavors' and how
 #  they refer to themselves, into classes we will evaluate later
 case "$ID_LIKE" in
-  fedora)
+  *fedora*|*centos*)
     DISTRO="redhat"
     if (( $(echo "$VERSION_ID < 8" | bc -l) )); then
       DNF="yum"
@@ -257,13 +258,10 @@ if [[ $UNITFILE ]]; then
   elif [[ $DISTRO == "suse" ]]; then
     OWNER=$($PKG -q --whatprovides $UNITFILE 2> /dev/null | cut -d: -f1)
     REPO=$(zypper --quiet -s 11 se -i -t package -s $OWNER | grep "^i" | awk '{print $6}')
-  elif [[ $DISTRO == "azurelinux" ]]; then
-    OWNER=$($PKG -q --whatprovides $UNITFILE | cut -d: -f1)
-    REPO=$($DNF info  $OWNER 2>/dev/null | grep -i "Repository" | tr -d '[:blank:]'| cut -d: -f2)
   else
-    # Mariner does something different for the 'from repo' part
+    # default to distros that use (t)DNF
     OWNER=$($PKG -q --whatprovides $UNITFILE | cut -d: -f1)
-    REPO=$($DNF info  $OWNER 2>/dev/null | grep -i "From repo" | tr -d '[:blank:]'| cut -d: -f2)
+    REPO=$($DNF info  $OWNER 2>/dev/null | grep -iE "^(From repo|Repository)" | tr -d '[:blank:]'| cut -d: -f2)
   fi
   loggy "Agent owned by $OWNER and installed from $REPO"
 

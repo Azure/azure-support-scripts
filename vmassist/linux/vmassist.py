@@ -44,7 +44,7 @@ parser = argparse.ArgumentParser(
     description="stuff"
 )
 parser.add_argument('-b', '--bash', required=True, type=str)
-parser.add_argument('-r', '--report', action='store_true') # this is just to 'catch' a bash-side parameter, we don't use it
+parser.add_argument('-r', '--report', action='store_true') # this is just to 'catch' the bash 'reporting' parameter, we don't use it
 parser.add_argument('-d', '--debug', action='store_true')
 parser.add_argument('-v', '--verbose', action='count', default=0)
 parser.add_argument('-l', '--log', type=str, required=False, default='/var/log/azure/'+os.path.basename(__file__)+'.log')
