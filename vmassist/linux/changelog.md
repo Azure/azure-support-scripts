@@ -14,6 +14,7 @@ Formatting changes and error handling improvements
 
 - Added more logging to bash
 - Added python2 detection and an override to not call .py in v2
+- Added version flags/outputs
  
 ### Changed
 
@@ -22,6 +23,7 @@ Formatting changes and error handling improvements
 ### Fixed
  
 - Better python2 handling and safer embedded code in bash script.  The python script should not be called in python2 environments
+- Now handles new oddities with RHEL10 better
  
 ## [1.0.0] - 2025-01-14
 
