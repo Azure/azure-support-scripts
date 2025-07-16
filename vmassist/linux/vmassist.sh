@@ -261,7 +261,12 @@ if [[ $UNITFILE ]]; then
   else
     # default to distros that use (t)DNF
     OWNER=$($PKG -q --whatprovides $UNITFILE | cut -d: -f1)
-    REPO=$($DNF info  $OWNER 2>/dev/null | grep -iE "^(From repo|Repository)" | tr -d '[:blank:]'| cut -d: -f2)
+    # store in a tmp so we only run dnf once
+    REPOTMP=$($DNF info  $OWNER 2>/dev/null)
+    REPO=$(echo "$REPOTMP" | grep -iE "^From repo" | tr -d '[:blank:]'| cut -d: -f2)
+    if [[ -z $REPO ]]; then
+      REPO=$(echo "$REPOTMP" | grep -iE "^Repository" | tr -d '[:blank:]'| cut -d: -f2)
+    fi
   fi
   loggy "Agent owned by $OWNER and installed from $REPO"
 
@@ -373,7 +378,12 @@ if [[ $PYPATH ]]; then
   else
     # default to distros that use (t)DNF
     PYOWNER=$($PKG -q --whatprovides $PYPATH | cut -d: -f1)
-    PYREPO=$($DNF info  $PYOWNER 2>/dev/null | grep -iE "^(From repo|Repository)" | tr -d '[:blank:]'| cut -d: -f2)
+    # store in a tmp so we only run dnf once
+    PYREPOTMP=$($DNF info  $PYOWNER 2>/dev/null)
+    PYREPO=$(echo "$PYREPOTMP" | grep -iE "^From repo" | tr -d '[:blank:]'| cut -d: -f2)
+    if [[ -z $PYREPO ]]; then
+      PYREPO=$(echo "$PYREPOTMP" | grep -iE "^Repository" | tr -d '[:blank:]'| cut -d: -f2)
+    fi
   fi
 else
   PYOWNER="python defintion undef or defaulted - is waagent here?"
