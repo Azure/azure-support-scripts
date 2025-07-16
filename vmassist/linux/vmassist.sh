@@ -370,13 +370,10 @@ if [[ $PYPATH ]]; then
   elif [[ $DISTRO == "suse" ]]; then
     PYOWNER=$($PKG -q --whatprovides $PYPATH | cut -d: -f1)
     PYREPO=$(zypper --quiet -s 11 se -i -t package -s $PYOWNER | grep "^i" | awk '{print $6}')
-  elif [[ $DISTRO == "azurelinux" ]]; then
-    PYOWNER=$($PKG -q --whatprovides $PYPATH | cut -d: -f1)
-    PYREPO=$($DNF info  $PYOWNER 2>/dev/null | grep -i "Repository" | tr -d '[:blank:]'| cut -d: -f2)
   else
-    # Maybe everything else is RHEL(like)
+    # default to distros that use (t)DNF
     PYOWNER=$($PKG -q --whatprovides $PYPATH | cut -d: -f1)
-    PYREPO=$($DNF info  $PYOWNER 2>/dev/null | grep -i "From repo" | tr -d '[:blank:]'| cut -d: -f2)
+    PYREPO=$($DNF info  $PYOWNER 2>/dev/null | grep -iE "^(From repo|Repository)" | tr -d '[:blank:]'| cut -d: -f2)
   fi
 else
   PYOWNER="python defintion undef or defaulted - is waagent here?"
