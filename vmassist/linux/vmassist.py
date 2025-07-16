@@ -65,10 +65,12 @@ bashArgs = dict(inStr.split('=') for inStr in args.bash.split("|"))
 ### END COMMAND LINE ARGUMENT HANDLING
 ### UTILS
 #### UTIL VARs and OBJs
+vmaPyVersion="1.0.1"
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(format='%(asctime)s py %(levelname)s %(message)s', filename=args.log, level=logging.DEBUG)
 # start logging as soon as possible
-logger.info("Python script started:"+os.path.basename(__file__))
+logger.info("Python script version "+vmaPyVersion+" started:"+os.path.basename(__file__))
 # add the 'to the console' flag to the logger
 if ( args.verbose > 0 ):
   logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))

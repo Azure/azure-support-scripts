@@ -34,6 +34,8 @@
 # - eula - in bootstrap
 # - any other legalease
 
+# Version
+VMASHVER="1.0.1"
 # defaults for the script structure
 DEBUG=""
 BASHREPORT=""  # should we show the report from this script, even if it would normally be suppressed?
@@ -181,7 +183,7 @@ else
   echo "Not running as root, logging may fail and some checks will not run"
 fi
 
-loggy "$0 started by $USER at $STARTTIME"
+loggy "$0 version $VMASHVER started by $USER at $STARTTIME"
 
 # do this in the main code body because it doesn't work inside a called function - the function wrapper makes it always false
 if [ -t 1 ] ; then

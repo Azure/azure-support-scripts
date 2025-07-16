@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 and this project adheres to [Semantic Versioning](http://semver.org/)
 -->
  
-## [1.0.1] - 2017-03-15
+## [1.0.1] - 2017-07-15
   
 Formatting changes and error handling improvements
  
