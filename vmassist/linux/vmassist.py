@@ -182,7 +182,8 @@ def validateBin(binPathIn):
       # binary not found or may be source installed (no pkg)
       thisBin["pkg"]=f"no file or owning pkg for {binPathIn}"
       thisBin["repo"]="n/a"
-  elif ( osrID == "fedora"):
+  # catch more options for ID in os-release since RHEL10 adds some variabilty
+  elif ( "fedora" in osrID or "centos" in osrID ):
     try:
       rpm=subprocess.check_output("rpm -q --whatprovides " + binPath, shell=True, stderr=subprocess.DEVNULL).decode().strip()
       thisBin["pkg"]=rpm
@@ -196,7 +197,10 @@ def validateBin(binPathIn):
       else:
         dnfOut=result.stdout.decode().strip()
         # Repo line should look like "From repo   : [reponame]" so clean it up
-        thisBin["repo"]=re.search("From repo.*",dnfOut).group().strip().split(":")[1].strip()
+        m = re.search(r"(From repo.*|Repository.*)",dnfOut).group().strip().split(":")[1].strip()
+        if ( not m ):
+          m = f"No repo found for {binPath}"
+        thisBin["repo"]=m
     except subprocess.CalledProcessError as e:
       thisBin["pkg"]=f"no file or owning pkg: {e.output}"
       thisBin["repo"]="n/a"
