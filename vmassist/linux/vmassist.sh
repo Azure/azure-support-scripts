@@ -589,6 +589,7 @@ loggy $LOGSTRING
 ## output our report to the 'console' if in debug, we 'asked' for it by arg, 
 #  or if python is bad and we won't be running the python script
 if [[ $DEBUG ]] || [[ $BASHREPORT ]] || [[ $PYSTAT -gt 0 ]] ; then
+  echo -e "----- vmassist.sh report -- v$VMASHVER "-----"
   echo -e "Distro Family:   $DISTRO"
   echo -e "Agent Service:   $SERVICE"
   echo -e "- status:        $(printColorCondition $UNITSTATRC $UNITSTAT)"
@@ -611,6 +612,7 @@ if [[ $DEBUG ]] || [[ $BASHREPORT ]] || [[ $PYSTAT -gt 0 ]] ; then
   # System checks
   echo -e "Volumes >$FSFULLPCENT%:   "$(printColorCondition "$FULLFS" "$FULLFS" "none")
   echo -e "Please see https://aka.ms/vmassistlinux for guidance on the information in the above output"
+  echo -e "----- end vmassist.sh report "-----"
 fi
 
 ### This is where we diverge into the python sub-script.  Many checks can be moved into Python code once we have validated that the python is workable

@@ -852,8 +852,8 @@ else:
 # END ALL CHECKS
 
 # START OUTPUT
-print("------ vmassist.py results ------")
-print(f"Please see {cBlue('https://aka.ms/vmassistlinux')} for guidance on the information in the above output")
+print(f"------ vmassist.py results -- v{vmaPyVersion}------")
+print(f"Please see {cBlue('https://aka.ms/vmassistlinux')} for guidance on the information in the report output below")
 print(f"OS family        : {osrID}")
 # things we will always report on:
 ## WAA service
