@@ -58,7 +58,7 @@ This PowerShell script is designed to assess the readiness of a Windows machine 
 2. Run the script:
 
    ```powershell
-   .\UpgradeAssessment.ps1
+   .\WindowsUpgradeAssessmentValidation.ps1
    ```
 
 3. Review the output for upgrade recommendations and any potential blockers.
