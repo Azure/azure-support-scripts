@@ -35,7 +35,7 @@ Disclaimer:
 
 .EXAMPLE
     Run as administrator:
-    PS> .\DetectGhostedNICsWithMessaging.ps1
+    PS> .\Windows_GhostedNIC_Check_Time_warning.ps1
 #>
 
 # Ensure script runs with administrator privileges
