@@ -123,3 +123,5 @@ Write-Host " - ~30 mins for ~600 ghosted NICs" -ForegroundColor Yellow
 Write-Host " - ~60+ mins for >1000 ghosted NICs`r`n" -ForegroundColor Yellow
 
 Write-Host "Script completed successfully." -ForegroundColor Cyan
+
+Write-Host "`r`nGhosted NIC Removal script on GitHub:`r`nhttps://github.com/Azure/azure-support-scripts/tree/master/Windows_scripts/Windows_GhostedNIC_Removal_time" -ForegroundColor Cyan
