@@ -16,6 +16,10 @@ This PowerShell script is used to detect if there are 'ghosted nic' inside of th
 
 ## Usage
 
+<h3 style="color:red;">⚠️ IMPORTANT: It is strongly recommended to back up your VM before running this script.
+Removing ghosted NICs modifies registry entries and device configurations.
+Ensure you have a recovery point or snapshot in case rollback is needed.</h3>
+
 Run the script in PowerShell **within an Azure VM**:
 
 ```powershell
