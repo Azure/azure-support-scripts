@@ -1890,14 +1890,14 @@ Out-Log "$machinePoliciesInternetSettingsKeyPath\ProxySettingsPerUser: $proxySet
 
 if ($proxyConfigured)
 {
-    New-Check -name 'Proxy configured' -result 'Info' -details $proxyServers
+    New-Check -name 'Netsh Proxy configured' -result 'Info' -details $proxyServers
     Out-Log $proxyConfigured -color Cyan -endLine
     $mitigation = '<a href="https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows-azure-guest-agent#solution-3-enable-dhcp-and-make-sure-that-the-server-isnt-blocked-by-firewalls-proxies-or-other-sources">Ensure the proxy is not blocking connectivity to 168.63.129.16 on ports 80 or 32526</a>'
     New-Finding -type Information -name 'Proxy configured' -description $proxyServers -mitigation $mitigation
 }
 else
 {
-    New-Check -name 'Proxy configured' -result 'OK' -details 'No proxy detected'
+    New-Check -name 'Netsh Proxy configured' -result 'OK' -details 'No netsh proxy detected'
     Out-Log $proxyConfigured -color Green -endLine
 }
 
