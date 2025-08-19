@@ -41,3 +41,11 @@ Visit the provided Microsoft documentation to download and install the necessary
 
 - [Azure Instance Metadata Service](https://learn.microsoft.com/en-us/azure/virtual-machines/windows/instance-metadata-service)
 - [Azure Certificate Authority Details](https://learn.microsoft.com/azure/security/fundamentals/azure-ca-details)
+
+## Liability
+As described in the [MIT license](..\..\..\LICENSE.txt), these scripts are provided as-is with no warranty or liability associated with their use.
+
+## Provide Feedback
+We value your input. If you encounter problems with the scripts or ideas on how they can be improved please file an issue in the [Issues](https://github.com/Azure/azure-support-scripts/issues) section of the project.
+
+## Known Issues

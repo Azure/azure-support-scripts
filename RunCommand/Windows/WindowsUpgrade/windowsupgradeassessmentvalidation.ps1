@@ -45,7 +45,7 @@ if ($isServer) {
         if ($windowsProductName -like "$serverVersion*") {
             $messages += "The VM is running $serverVersion. The supported upgrade options are: $($serverUpgradeMatrix[$serverVersion])."
             $messages += ""
-            $messages += "Please refer to the official documentation for more details: https://learn.microsoft.com/en-us/azure/virtual-machines/windows-in-place-upgrade"
+            $messages += "Please refer to the official documentation for more details: https://learn.microsoft.com/azure/virtual-machines/windows-in-place-upgrade"
             break
         }
     }
@@ -88,11 +88,13 @@ if ($isServer) {
                     $messages += "The VM is running Windows 10 Gen2. you may upgrade it to Windows 11 via feature update, or using Windows 11 Installation Assistant. Confirm the upgrade eligibility using the PC Health Check App."
                 }
             } catch {
-                $messages += 'Error retrieving Azure metadata. Ensure the script is running on an Azure VM with access to instance metadata.'
+                $messages += 'Error retrieving Azure metadata. Ensure the script is running on an Azure VM with access to instance metadata:$($_.Exception.Message)'
+                $messages += 'Please refer to the following link for details about IMDS endpoint connection:'
+                $messages += 'https://learn.microsoft.com/azure/virtual-machines/instance-metadata-service'
             }
             $messages += ""
-            $messages += 'PC Health Check App: https://support.microsoft.com/en-us/windows/how-to-use-the-pc-health-check-app-9c8abd9b-03ba-4e67-81ef-36f37caa7844'
-            $messages += 'Windows 11 Installation Assistant: https://www.microsoft.com/en-us/software-download/windows11'
+            $messages += 'PC Health Check App: https://support.microsoft.com/windows/how-to-use-the-pc-health-check-app-9c8abd9b-03ba-4e67-81ef-36f37caa7844'
+            $messages += 'Windows 11 Installation Assistant: https://www.microsoft.com/software-download/windows11'
         } else {
             $messages += 'FAILED: The VM is running Windows 10 Gen1. Upgrade to Windows 11 is only supported for Gen2 VMs'
         }
@@ -112,7 +114,9 @@ if ($isServer) {
                     $messages += 'FAILED: Upgrading Windows 11 to 22H2 and above requires Trusted Launch to be enabled.'
                 }
             } catch {
-                $messages += 'Error retrieving Azure metadata. Ensure the script is running on an Azure VM with access to instance metadata.'
+                $messages += 'Error retrieving Azure metadata. Ensure the script is running on an Azure VM with access to instance metadata:$($_.Exception.Message)'
+                $messages += 'Please refer to the following link for details about IMDS endpoint connection:'
+                $messages += 'https://learn.microsoft.com/azure/virtual-machines/instance-metadata-service'
             }
         } else {
             $messages += 'The system is already running Windows 11 22H2 or above.'

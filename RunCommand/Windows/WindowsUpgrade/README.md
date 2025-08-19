@@ -9,16 +9,16 @@ This PowerShell script is designed to assess the readiness of a Windows machine 
 
 ## Key Features
 
-- ✅ Detects Windows version and distinguishes between desktop and server editions.
-- ✅ Evaluates supported upgrade paths based on current Windows Server version.
-- ✅ Checks system drive for required free space (minimum 64 GB).
-- ✅ For Windows 10:
-  - Identifies generation (Gen1 or Gen2).
-  - Recommends upgrade options to Windows 11.
-  - Checks Azure security features if run on a VM.
-- ✅ For Windows 11:
+- Detects Windows version and distinguishes between desktop and server editions.
+- Evaluates supported upgrade paths based on current Windows Server version.
+- Checks system drive for required free space (minimum 64 GB).
+- For Windows 10:
+- Identifies generation (Gen1 or Gen2).
+- Recommends upgrade options to Windows 11.
+- Checks Azure security features if run on a VM.
+- For Windows 11:
   - Validates whether it's eligible for upgrades like 22H2 or newer based on **Trusted Launch**.
-- ✅ Fetches Azure VM metadata to assess upgrade-blocking conditions (when applicable).
+- Fetches Azure VM metadata to assess upgrade-blocking conditions (when applicable).
 
 ---
 
@@ -99,3 +99,13 @@ Windows 11 Installation Assistant: https://www.microsoft.com/en-us/software-down
 
 - [PC Health Check App](https://support.microsoft.com/en-us/windows/how-to-use-the-pc-health-check-app-9c8abd9b-03ba-4e67-81ef-36f37caa7844)  
 - [Windows 11 Installation Assistant](https://www.microsoft.com/en-us/software-download/windows11)
+
+
+## Liability
+As described in the [MIT license](..\..\..\LICENSE.txt), these scripts are provided as-is with no warranty or liability associated with their use.
+
+## Provide Feedback
+We value your input. If you encounter problems with the scripts or ideas on how they can be improved please file an issue in the [Issues](https://github.com/Azure/azure-support-scripts/issues) section of the project.
+
+## Known Issues
+
