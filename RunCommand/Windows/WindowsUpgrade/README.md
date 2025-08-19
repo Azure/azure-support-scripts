@@ -9,16 +9,21 @@ This PowerShell script is designed to assess the readiness of a Windows machine 
 
 ## Key Features
 
-- Detects Windows version and distinguishes between desktop and server editions.
-- Evaluates supported upgrade paths based on current Windows Server version.
-- Checks system drive for required free space (minimum 64 GB).
-- For Windows 10:
-- Identifies generation (Gen1 or Gen2).
-- Recommends upgrade options to Windows 11.
-- Checks Azure security features if run on a VM.
-- For Windows 11:
-  - Validates whether it's eligible for upgrades like 22H2 or newer based on **Trusted Launch**.
-- Fetches Azure VM metadata to assess upgrade-blocking conditions (when applicable).
+- **OS Version Detection**
+  - Identifies whether the system is Windows 10, 11, or a Windows Server edition.
+- **Server Upgrade Path Check**
+  - Matches current server version to supported upgrade targets.
+- **Hardware Validation**
+  - Disk space (≥ 64 GB)
+  - Physical memory (≥ 4 GB)
+- **Azure VM Security Feature Verification**
+  - Trusted Launch
+  - Secure Boot
+  - Virtual TPM
+- **Azure Virtual Desktop (AVD) Detection**
+  - Flags unsupported pooled host pool configurations.
+- **Upgrade Recommendations**
+  - Outputs supported upgrade paths or relevant upgrade guidance.
 
 ---
 
@@ -30,6 +35,7 @@ This PowerShell script is designed to assess the readiness of a Windows machine 
 
 ---
 ## Upgrade Matrix
+**Windows Server**
 | Current Version                              | Supported Upgrade Targets                                        |
 | -------------------------------------------- | ---------------------------------------------------------------- |
 | Windows Server 2008                          | Windows Server 2012                                              |
@@ -39,18 +45,20 @@ This PowerShell script is designed to assess the readiness of a Windows machine 
 | Windows Server 2016                          | Windows Server 2019, Windows Server 2022, or Windows Server 2025 |
 | Windows Server 2019                          | Windows Server 2022 or Windows Server 2025                       |
 | Windows Server 2022                          | Windows Server 2025                                              |
+| Windows Server 2025                          | ❌ No direct upgrade path – redeploy a new VM                     |
 | Windows Server 2022 Datacenter Azure Edition | ❌ No direct upgrade path – redeploy a new VM                     |
 | Windows Server 2025 Datacenter Azure Edition | ❌ No direct upgrade path – redeploy a new VM                     |
 
-
+**Windows Client**
 | OS Version            | VM Generation | Trusted Launch | Secure Boot | vTPM  | Upgrade Possibility                                                                                                                 |
 | --------------------- | ------------- | -------------- | ----------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | **Windows 10**        | Gen1          | N/A            | N/A         | N/A   | ❌ Not supported for upgrade to Windows 11                                                                                           |
 | **Windows 10**        | Gen2          | ❌              | ❌ / ✅       | ❌ / ✅ | ⚠️ Limited upgrade support; requirements missing                                                                                    |
 | **Windows 10**        | Gen2          | ✅              | ✅           | ✅     | ✅ Upgrade to Windows 11 via feature update or [Installation Assistant](https://www.microsoft.com/en-us/software-download/windows11) |
-| **Windows 11 ≤ 21H2** | N/A           | ❌              | N/A         | N/A   | ⚠️ Upgrade to 22H2+ requires Trusted Launch                                                                                         |
-| **Windows 11 ≤ 21H2** | N/A           | ✅              | N/A         | N/A   | ✅ Eligible for upgrade to 22H2 and above                                                                                            |
-| **Windows 11 ≥ 22H2** | N/A           | N/A            | N/A         | N/A   | ✅ Already up to date                                                                                                                |
+| **Windows 10(AVD Pooled Host Pool)**        | Any         | N/A             | N/A          | N/A     | ❌ Not supported for In-place-upgrade |
+| **Windows 11 ≤ 21H2** | Gen2           | ❌              | N/A         | N/A   | ⚠️ Upgrade to 22H2+ requires Trusted Launch                                                                                         |
+| **Windows 11 ≤ 21H2** | Gen2           | ✅              | N/A         | N/A   | ✅ Eligible for upgrade to 22H2 and above                                                                                            |
+| **Windows 11 ≥ 22H2** | Gen2           | N/A            | N/A         | N/A   | ✅ Already up to date                                                                                                                |
 
 ## Usage
 
@@ -70,42 +78,38 @@ This PowerShell script is designed to assess the readiness of a Windows machine 
 Example output on a Windows Server 2016 VM:
 
 ```
-The VM is running Windows Server 2016. The supported upgrade options are: Windows Server 2019, Windows Server 2022, or Windows Server 2025.
+Windows Version: Windows Server 2019 Datacenter
 
-Please refer to the official documentation for more details: https://learn.microsoft.com/en-us/azure/virtual-machines/windows-in-place-upgrade
+[Passed] Disk Space (Free: 128 GB)
+[Passed] Physical Memory (Total: 8 GB)
+[Passed] VM Generation: Gen2
+[Passed] Trusted Launch
+[Passed] Secure Boot
+[Passed] TPM Enabled
+
+The VM is running Windows Server 2019 Datacenter. 
+The supported upgrade options are: Windows Server 2022 or Windows Server 2025.
+Please refer to the official documentation for more details: 
+https://learn.microsoft.com/en-us/azure/virtual-machines/windows-in-place-upgrade
 ```
 
-Example output on an Azure Gen2 Windows 10 VM:
+Example output on an Azure Gen1 Windows 10 VM:
 
 ```
-The VM is running Windows 10 Gen2. you may upgrade it to Windows 11 via feature update, or using Windows 11 Installation Assistant. Confirm the upgrade eligibility using the PC Health Check App.
-The VM has Trusted Launch, Secure Boot and Virtual TPM enabled. OK
-PC Health Check App: https://support.microsoft.com/en-us/windows/how-to-use-the-pc-health-check-app-9c8abd9b-03ba-4e67-81ef-36f37caa7844
-Windows 11 Installation Assistant: https://www.microsoft.com/en-us/software-download/windows11
+Windows Version: Windows 10 Pro
+
+[Passed] Disk Space (Free: 105.71 GB)
+[Passed] Physical Memory (Total: 8 GB)
+[Failed] VM Generation: Gen2 required for upgrade
+[Failed] Unable to retrieve Azure metadata. Ensure the script is running on an Azure VM with access to instance metadata.
+IMDS Errors and debugging: https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service?tabs=windows#errors-and-debugging
+
+FAILED: The VM is running Windows 10 Gen1. Upgrade to Windows 11 is only supported for Gen2 VMs
+
 ```
----
-
-## Troubleshooting
-
-- **Azure Metadata Retrieval Errors:**  
-  Ensure the script runs **within an Azure VM** and has access to `http://169.254.169.254`.
-
-- **No output or partial output:**  
-  Make sure all required registry keys and system information are accessible (no policy restrictions).
-
 ---
 
 ## Resources
 
 - [PC Health Check App](https://support.microsoft.com/en-us/windows/how-to-use-the-pc-health-check-app-9c8abd9b-03ba-4e67-81ef-36f37caa7844)  
 - [Windows 11 Installation Assistant](https://www.microsoft.com/en-us/software-download/windows11)
-
-
-## Liability
-As described in the [MIT license](..\..\..\LICENSE.txt), these scripts are provided as-is with no warranty or liability associated with their use.
-
-## Provide Feedback
-We value your input. If you encounter problems with the scripts or ideas on how they can be improved please file an issue in the [Issues](https://github.com/Azure/azure-support-scripts/issues) section of the project.
-
-## Known Issues
-
