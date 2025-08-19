@@ -1793,7 +1793,7 @@ if ($isVMAgentInstalled)
 # If you are using a proxy, you will get its value under the ProxyServer key.
 # This gets the same settings as running "netsh winhttp show proxy"
 $proxyConfigured = $false
-Out-Log 'Netsh Proxy configured:' -startLine
+Out-Log 'Netsh proxy configured:' -startLine
 $netshWinhttpShowProxyOutput = netsh winhttp show proxy
 Out-Log "`$netshWinhttpShowProxyOutput: $netshWinhttpShowProxyOutput" -verboseOnly
 $proxyServers = $netshWinhttpShowProxyOutput | Select-String -SimpleMatch 'Proxy Server(s)' | Select-Object -ExpandProperty Line
