@@ -1,0 +1,15 @@
+﻿{
+  "$schema": "http://schema.management.azure.com/schemas/2016-11-17/runcommands.json",
+  "id": "ifconfig",
+  "osType": "Linux",
+  "label": "List network configuration",
+  "description": "Get the configuration of all network interfaces.",
+  "script": [ "ifconfig \"$@\"" ],
+  "parameters": [
+    {
+      "name": "arguments",
+      "type": "string",
+      "defaultValue": ""
+    }
+  ]
+}

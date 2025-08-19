@@ -15,10 +15,13 @@ try {
        Write-Host "Certificate not found: '$($cert.Issuer)'" -ForegroundColor Red
        Write-Host "Please refer to the following link to download missing certificates:" -ForegroundColor Yellow
        Write-Host "https://learn.microsoft.com/azure/security/fundamentals/azure-ca-details?tabs=certificate-authority-chains" -ForegroundColor Yellow
+       Write-Host "https://learn.microsoft.com/azure/virtual-machines/instance-metadata-service" -ForegroundColor Yellow
     } else {
        # Output a confirmation message if no certificates are missing
        Write-Host "No missing certificate has been found." -ForegroundColor Green
     }
 } catch {
     Write-Host "Unable to connect to the metadata server: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "Please refer to the following link for details about IMDS endpoint connection:" -ForegroundColor Yellow
+    Write-Host "https://learn.microsoft.com/azure/virtual-machines/instance-metadata-service" -ForegroundColor Yellow
 }

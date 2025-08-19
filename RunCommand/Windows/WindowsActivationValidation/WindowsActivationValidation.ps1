@@ -70,35 +70,35 @@ try {
             $errorCodeTrimmed = $errorCode.Trim()
             $knownError = $false
             if ($errorCodeTrimmed -like '*0xC004F074*') {
-                Write-Host "Troubleshoot Link: https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/windows-vm-activation-error-0xc004f074" -ForegroundColor Yellow
+                Write-Host "Troubleshoot Link: https://learn.microsoft.com/troubleshoot/azure/virtual-machines/windows/windows-vm-activation-error-0xc004f074" -ForegroundColor Yellow
                 $knownError = $true
             }
             if ($errorCodeTrimmed -like '*0xC004FD01*') {
-                Write-Host "Troubleshoot Link: https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/windows-vm-activation-error-0xc004fd01-0xc004fd02" -ForegroundColor Yellow
+                Write-Host "Troubleshoot Link: https://learn.microsoft.com/troubleshoot/azure/virtual-machines/windows/windows-vm-activation-error-0xc004fd01-0xc004fd02" -ForegroundColor Yellow
                 $knownError = $true
             }
             if ($errorCodeTrimmed -like '*0xC004FD02*') {
-                Write-Host "Troubleshoot Link: https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/windows-vm-activation-error-0xc004fd01-0xc004fd02" -ForegroundColor Yellow
+                Write-Host "Troubleshoot Link: https://learn.microsoft.com/troubleshoot/azure/virtual-machines/windows/windows-vm-activation-error-0xc004fd01-0xc004fd02" -ForegroundColor Yellow
                 $knownError = $true
             }
             if ($errorCodeTrimmed -like '*0xC004F06C*') {
-                Write-Host "Troubleshoot Link: https://learn.microsoft.com/en-us/troubleshoot/windows-server/licensing-and-activation/error-0xc004f06c-activate-windows" -ForegroundColor Yellow
+                Write-Host "Troubleshoot Link: https://learn.microsoft.com/troubleshoot/windows-server/licensing-and-activation/error-0xc004f06c-activate-windows" -ForegroundColor Yellow
                 $knownError = $true
             }
             if ($errorCodeTrimmed -like '*0xC004E015*') {
-                Write-Host "Troubleshoot Link: https://learn.microsoft.com/en-us/troubleshoot/windows-server/installing-updates-features-roles/error-0xc004e015-sl-e-eul-consumption-failed-activate-windows" -ForegroundColor Yellow
+                Write-Host "Troubleshoot Link: https://learn.microsoft.com/troubleshoot/windows-server/installing-updates-features-roles/error-0xc004e015-sl-e-eul-consumption-failed-activate-windows" -ForegroundColor Yellow
                 $knownError = $true
             }
             if ($errorCodeTrimmed -like '*0x800705B4*') {
-                Write-Host "Troubleshoot Link: https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/windows-vm-activation-error-0x800705b4" -ForegroundColor Yellow
+                Write-Host "Troubleshoot Link: https://learn.microsoft.com/troubleshoot/azure/virtual-machines/windows/windows-vm-activation-error-0x800705b4" -ForegroundColor Yellow
                 $knownError = $true
             }
             if ($errorCodeTrimmed -like '*0x80070005*') {
-                Write-Host "Troubleshoot Link: https://learn.microsoft.com/en-us/troubleshoot/windows-server/installing-updates-features-roles/error-0x80070005-access-denied" -ForegroundColor Yellow
+                Write-Host "Troubleshoot Link: https://learn.microsoft.com/troubleshoot/windows-server/installing-updates-features-roles/error-0x80070005-access-denied" -ForegroundColor Yellow
                 $knownError = $true
             }
             if (-not $knownError) {
-                Write-Host "Troubleshoot Link: https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/troubleshoot-activation-problems" -ForegroundColor Yellow
+                Write-Host "Troubleshoot Link: https://learn.microsoft.com/troubleshoot/azure/virtual-machines/windows/troubleshoot-activation-problems" -ForegroundColor Yellow
             }
         } else {
             Write-Host "Activation command executed. Please verify activation status again." -ForegroundColor Yellow
