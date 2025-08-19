@@ -2194,27 +2194,33 @@ if ($showFilters -eq $true)
 }
 
 #Validates permissions on the MachineKeys folder
+$machineKeysDefaultSddl = 'O:SYG:SYD:PAI(A;;0x12019f;;;WD)(A;;FA;;;BA)'
 Out-Log 'MachineKeys folder has default permissions:' -startLine
 $machineKeysPath = 'C:\ProgramData\Microsoft\Crypto\RSA\MachineKeys'
+$machineKeysAcl = Get-Acl -Path $machineKeysPath
+$machineKeysSddl = $machineKeysAcl | Select-Object -ExpandProperty Sddl
+$machineKeysAccess = $machineKeysAcl | Select-Object -ExpandProperty Access
+$machineKeysAccessString = $machineKeysAccess | ForEach-Object {"$($_.IdentityReference) $($_.AccessControlType) $($_.FileSystemRights)"}
+$machineKeysAccessString = $machineKeysAccessString -join '<br>'
 
-$machineKeysAllowsSystemFullAccess = Test-SystemFullAccess($machineKeysPath)
-
-if ($machineKeysAllowsSystemFullAccess)
+if ($machineKeysSddl -eq $machineKeysDefaultSddl)
 {
-    Out-Log $machineKeysAllowsSystemFullAccess -color Green -endLine
-    $details = "The System account has full access to $machineKeysPath" 
-    New-Check -name '$machineKeysPath permissions' -result 'OK' -details $details
+    $machineKeysHasDefaultPermissions = $true
+    Out-Log $machineKeysHasDefaultPermissions -color Green -endLine
+    $details = "$machineKeysPath folder has default NTFS permissions" # <br>SDDL: $machineKeysSddl<br>$machineKeysAccessString"
+    New-Check -name 'MachineKeys folder permissions' -result 'OK' -details $details
 }
 else
 {
-    Out-Log $machineKeysAllowsSystemFullAccess -color Cyan -endLine
-    $details = "The System account does not have full access to $machineKeysPath"
+    $machineKeysHasDefaultPermissions = $false
+    Out-Log $machineKeysHasDefaultPermissions -color Cyan -endLine
+    $details = "$machineKeysPath folder does not have default NTFS permissions<br>SDDL: $machineKeysSddl<br>$machineKeysAccessString"
     New-Check -name 'MachineKeys folder permissions' -result 'Info' -details $details
     $mitigation = '<a href="https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/troubleshoot-extension-certificates-issues-windows-vm#solution-2-fix-the-access-control-list-acl-in-the-machinekeys-or-systemkeys-folders">Troubleshoot extension certificates</a>'
     New-Finding -type Information -name 'Non-default MachineKeys permissions' -description $details -mitigation $mitigation
 }
 
-# Permissions on $env:SystemDriveand $env:SystemDrive\Packages folder during startup.
+# Permissions on $env:SystemDrive\WindowsAzure and $env:SystemDrive\Packages folder during startup.
 # It first removes all user/groups and then sets the following permission
 # (Read & Execute: Everyone, Full Control: SYSTEM & Local Administrators only) to these folders.
 # If GA fails to remove/set the permission, it can't proceed further.
