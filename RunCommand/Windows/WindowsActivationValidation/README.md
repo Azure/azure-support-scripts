@@ -3,7 +3,7 @@
 This PowerShell script is designed to assist with diagnosing Windows licensing and connectivity issues on Azure virtual machines (VMs). It performs a series of checks to verify:
 
 
-## 🔧 What It Does
+## What It Does
 
 1. **WinRM Service Check**  
    - Ensures the `WinRM` service is running.
@@ -63,3 +63,12 @@ The script provides detailed output using color-coded messages in the PowerShell
 
 
 If you open a support request, please include both of the above files to aid your support representative in helping you.
+
+## Liability
+As described in the [MIT license](..\..\..\LICENSE.txt), these scripts are provided as-is with no warranty or liability associated with their use.
+
+## Provide Feedback
+We value your input. If you encounter problems with the scripts or ideas on how they can be improved please file an issue in the [Issues](https://github.com/Azure/azure-support-scripts/issues) section of the project.
+
+## Known Issues
+
