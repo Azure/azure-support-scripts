@@ -1173,12 +1173,14 @@ function Test-SystemFullAccess {
 
     try {
         $acl = Get-Acl -Path $Path
+        $fullControl = [System.Security.AccessControl.FileSystemRights]::FullControl
+
         $systemAccess = $acl.Access | Where-Object {
             $_.IdentityReference -eq 'NT AUTHORITY\SYSTEM' -and
-            $_.FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::FullControl -and
+            ($_.FileSystemRights -band $fullControl) -eq $fullControl -and
             $_.AccessControlType -eq 'Allow' -and
-            $_.InheritanceFlags -band ([System.Security.AccessControl.InheritanceFlags]::ContainerInherit) -and
-            $_.InheritanceFlags -band ([System.Security.AccessControl.InheritanceFlags]::ObjectInherit) -and
+            ($_.InheritanceFlags -band [System.Security.AccessControl.InheritanceFlags]::ContainerInherit) -ne 0 -and
+            ($_.InheritanceFlags -band [System.Security.AccessControl.InheritanceFlags]::ObjectInherit) -ne 0 -and
             $_.PropagationFlags -eq [System.Security.AccessControl.PropagationFlags]::None
         }
 
