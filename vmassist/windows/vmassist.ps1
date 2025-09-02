@@ -200,7 +200,7 @@ function Get-WCFConfig
         $global:dbgMachineConfigStrings = $machineConfigStrings
         $description = "$machineConfigx64FilePath shows WCF debugging is enabled:<p>$matchesString<p>"
         $global:dbgDescription = $description
-        New-Finding -type Critical -name 'WCF debugging enabled' -description $description -mitigation 'We recommend only enabling WCF debugging while debugging a WCF issue. Please disable WCF debugging'
+        New-Finding -type Critical -name 'WCF debugging enabled' -description $description -mitigation 'We recommend only enabling WCF debugging while debugging a WCF issue. Please disable WCF debugging. Please see the following <a href="https://learn.microsoft.com/en-us/azure/virtual-machines/extensions/agent-windows#manual-installation">article for more steps.</a>'
     }
     else
     {
@@ -1611,7 +1611,7 @@ if ($winmgmt.Status -eq 'Running')
         Out-Log $stdRegProvQuerySuccess -color Red -endLine
         New-Check -name 'StdRegProv WMI class' -result 'FAILED' -details 'StdRegProv WMI class query failed'
         $description = "StdRegProv WMI class query failed with error code $stdRegProvReturnValue"
-        New-Finding -type Critical -name 'StdRegProv WMI class query failed' -description $description -mitigation ''
+        New-Finding -type Critical -name 'StdRegProv WMI class query failed' -description $description -mitigation 'The VM agent .msi file uses WMI StdRegProv to access the registry. If this is not working properly then installing the VM Guest Agent via MSI will fail. See this <a href="https://learn.microsoft.com/en-us/azure/virtual-machines/extensions/agent-windows#manual-installation">article for steps on how to fix it</a>'
     }
 }
 else
