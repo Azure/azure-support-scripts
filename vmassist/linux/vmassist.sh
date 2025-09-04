@@ -34,6 +34,8 @@
 # - eula - in bootstrap
 # - any other legalease
 
+# Version
+VMASHVER="1.0.1"
 # defaults for the script structure
 DEBUG=""
 BASHREPORT=""  # should we show the report from this script, even if it would normally be suppressed?
@@ -87,7 +89,7 @@ function loggy {
   if [[ $DEBUG ]]; then
     echo "$1"
   fi
-  echo "$(date +%FT%T%z)  $1" >> $LOGFILE
+  echo "$(date +%FT%T%z) bash: $1" >> $LOGFILE
 }
 
 function testPyMod {
@@ -108,10 +110,10 @@ import importlib
 def check_module(module_name):
   try:
     importlib.import_module(module_name)
-    print(f"The module '{module_name}' exists.")
+    print("The module '%s' exists." % module_name)
     return 0
-  except ModuleNotFoundError:
-    print(f"Cannot load '{module_name}'")
+  except ImportError:
+    print("Cannot load '%s'" % module_name)
     return 1
 exit (check_module("$2"))
 EOF
@@ -130,6 +132,7 @@ function help()
    echo "options:"
    echo "-h     Print this Help."
    echo "-v     Verbose mode."
+   echo "-r     Always show the 'bash' report"
    echo
 }
 
@@ -181,7 +184,7 @@ else
   echo "Not running as root, logging may fail and some checks will not run"
 fi
 
-loggy "$0 started by $USER at $STARTTIME"
+loggy "$0 version $VMASHVER started by $USER at $STARTTIME"
 
 # do this in the main code body because it doesn't work inside a called function - the function wrapper makes it always false
 if [ -t 1 ] ; then
@@ -194,7 +197,7 @@ fi
 # Set this from sourcing os-release.  We'll have to be able to distill down all the different 'flavors' and how
 #  they refer to themselves, into classes we will evaluate later
 case "$ID_LIKE" in
-  fedora)
+  *fedora*|*centos*)
     DISTRO="redhat"
     if (( $(echo "$VERSION_ID < 8" | bc -l) )); then
       DNF="yum"
@@ -255,13 +258,15 @@ if [[ $UNITFILE ]]; then
   elif [[ $DISTRO == "suse" ]]; then
     OWNER=$($PKG -q --whatprovides $UNITFILE 2> /dev/null | cut -d: -f1)
     REPO=$(zypper --quiet -s 11 se -i -t package -s $OWNER | grep "^i" | awk '{print $6}')
-  elif [[ $DISTRO == "azurelinux" ]]; then
-    OWNER=$($PKG -q --whatprovides $UNITFILE | cut -d: -f1)
-    REPO=$($DNF info  $OWNER 2>/dev/null | grep -i "Repository" | tr -d '[:blank:]'| cut -d: -f2)
   else
-    # Mariner does something different for the 'from repo' part
+    # default to distros that use (t)DNF
     OWNER=$($PKG -q --whatprovides $UNITFILE | cut -d: -f1)
-    REPO=$($DNF info  $OWNER 2>/dev/null | grep -i "From repo" | tr -d '[:blank:]'| cut -d: -f2)
+    # store in a tmp so we only run dnf once
+    REPOTMP=$($DNF info  $OWNER 2>/dev/null)
+    REPO=$(echo "$REPOTMP" | grep -iE "^From repo" | tr -d '[:blank:]'| cut -d: -f2)
+    if [[ -z $REPO ]]; then
+      REPO=$(echo "$REPOTMP" | grep -iE "^Repository" | tr -d '[:blank:]'| cut -d: -f2)
+    fi
   fi
   loggy "Agent owned by $OWNER and installed from $REPO"
 
@@ -348,7 +353,14 @@ fi
 #  this could be done with --version, but then you get other fluff
 loggy "Checking $PY version"
 PYVERSION=$($PY -c 'import sys; print(str(sys.version_info.major)+"."+str(sys.version_info.minor)+"."+str(sys.version_info.micro))')
+IFS='.' read PYMAJ PYMIN PYPATCH <<< "$PYVERSION"
 loggy "Python=$PYVERSION"
+
+if [ "$PYMAJ" = "2" ]; then
+  # Nothing good will happen if we're calling python2 - distro may be old or python is wrongly pointed
+  PYSTAT=$((PYSTAT+16))
+  loggy "The referenced python is v2 - either EoL distribution or a misdirected python link"
+fi
 
 # now that we should definitively have a python path, find out who owns it.  If this is still empty, just fail, since waagent
 # didn't eval out, maybe waagent doesn't even exist??
@@ -363,13 +375,15 @@ if [[ $PYPATH ]]; then
   elif [[ $DISTRO == "suse" ]]; then
     PYOWNER=$($PKG -q --whatprovides $PYPATH | cut -d: -f1)
     PYREPO=$(zypper --quiet -s 11 se -i -t package -s $PYOWNER | grep "^i" | awk '{print $6}')
-  elif [[ $DISTRO == "azurelinux" ]]; then
-    PYOWNER=$($PKG -q --whatprovides $PYPATH | cut -d: -f1)
-    PYREPO=$($DNF info  $PYOWNER 2>/dev/null | grep -i "Repository" | tr -d '[:blank:]'| cut -d: -f2)
   else
-    # Maybe everything else is RHEL(like)
+    # default to distros that use (t)DNF
     PYOWNER=$($PKG -q --whatprovides $PYPATH | cut -d: -f1)
-    PYREPO=$($DNF info  $PYOWNER 2>/dev/null | grep -i "From repo" | tr -d '[:blank:]'| cut -d: -f2)
+    # store in a tmp so we only run dnf once
+    PYREPOTMP=$($DNF info  $PYOWNER 2>/dev/null)
+    PYREPO=$(echo "$PYREPOTMP" | grep -iE "^From repo" | tr -d '[:blank:]'| cut -d: -f2)
+    if [[ -z $PYREPO ]]; then
+      PYREPO=$(echo "$PYREPOTMP" | grep -iE "^Repository" | tr -d '[:blank:]'| cut -d: -f2)
+    fi
   fi
 else
   PYOWNER="python defintion undef or defaulted - is waagent here?"
@@ -393,6 +407,7 @@ else
   if testPyMod $PYPATH "requests" ; then
     PYREQ="loaded"
   else
+    loggy "Failing to load 'requests' module"
     PYREQ="failed"
     PYSTAT=$((PYSTAT+1)) # if we can't load 'requests' then a lot of things are going to break - also this may be an illegitimate python
   fi
@@ -401,6 +416,7 @@ else
   if  testPyMod $PYPATH  "azurelinuxagent.agent" ; then
     PYALA="loaded"
   else
+    loggy "Failing to load 'azurelinuxagent' module"
     PYALA="failed"
     PYSTAT=$((PYSTAT+2)) # if we can't load the agent module then either waagent will fail entirely, or this could be an illegitimate python
   fi
@@ -408,6 +424,7 @@ else
   if  testPyMod $PYPATH  "argparse" ; then
     PYARG="loaded"
   else
+    loggy "Failing to load 'argparse' module - this is not an issue for waagent, but will keep vmassist from working - and likely means python is not consistent"
     PYARG="failed"
     PYSTAT=$((PYSTAT+4)) # if we can't load argparse then we won't be able to spawn the subscript successfully - maybe python is <3.2
   fi
@@ -572,6 +589,7 @@ loggy $LOGSTRING
 ## output our report to the 'console' if in debug, we 'asked' for it by arg, 
 #  or if python is bad and we won't be running the python script
 if [[ $DEBUG ]] || [[ $BASHREPORT ]] || [[ $PYSTAT -gt 0 ]] ; then
+  echo -e "----- vmassist.sh report -- v$VMASHVER -----"
   echo -e "Distro Family:   $DISTRO"
   echo -e "Agent Service:   $SERVICE"
   echo -e "- status:        $(printColorCondition $UNITSTATRC $UNITSTAT)"
@@ -594,6 +612,7 @@ if [[ $DEBUG ]] || [[ $BASHREPORT ]] || [[ $PYSTAT -gt 0 ]] ; then
   # System checks
   echo -e "Volumes >$FSFULLPCENT%:   "$(printColorCondition "$FULLFS" "$FULLFS" "none")
   echo -e "Please see https://aka.ms/vmassistlinux for guidance on the information in the above output"
+  echo -e "----- end vmassist.sh report -----"
 fi
 
 ### This is where we diverge into the python sub-script.  Many checks can be moved into Python code once we have validated that the python is workable

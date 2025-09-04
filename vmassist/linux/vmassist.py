@@ -44,7 +44,7 @@ parser = argparse.ArgumentParser(
     description="stuff"
 )
 parser.add_argument('-b', '--bash', required=True, type=str)
-parser.add_argument('-r', '--report', action='store_true') # this is just to 'catch' a bash-side parameter, we don't use it
+parser.add_argument('-r', '--report', action='store_true') # this is just to 'catch' the bash 'reporting' parameter, we don't use it
 parser.add_argument('-d', '--debug', action='store_true')
 parser.add_argument('-v', '--verbose', action='count', default=0)
 parser.add_argument('-l', '--log', type=str, required=False, default='/var/log/azure/'+os.path.basename(__file__)+'.log')
@@ -65,10 +65,12 @@ bashArgs = dict(inStr.split('=') for inStr in args.bash.split("|"))
 ### END COMMAND LINE ARGUMENT HANDLING
 ### UTILS
 #### UTIL VARs and OBJs
+vmaPyVersion="1.0.1"
+
 logger = logging.getLogger(__name__)
-logging.basicConfig(format='%(asctime)s %(message)s', filename=args.log, level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s py %(levelname)s %(message)s', filename=args.log, level=logging.DEBUG)
 # start logging as soon as possible
-logger.info("Python script started:"+os.path.basename(__file__))
+logger.info("Python script version "+vmaPyVersion+" started:"+os.path.basename(__file__))
 # add the 'to the console' flag to the logger
 if ( args.verbose > 0 ):
   logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
@@ -86,6 +88,7 @@ def colorPrint(color, strIn):
 def cRed(strIn): return colorPrint("\033[91m", strIn)
 def cGreen(strIn): return colorPrint("\033[92m", strIn)
 def cYellow(strIn): return colorPrint("\033[93m", strIn)
+def cBlue(strIn): return colorPrint("\033[94m", strIn)
 def cBlack(strIn): return colorPrint("\033[98m", strIn)
 def colorString(strIn, redVal="dead", greenVal="active", yellowVal="inactive"):
   # force these into strs
@@ -179,7 +182,8 @@ def validateBin(binPathIn):
       # binary not found or may be source installed (no pkg)
       thisBin["pkg"]=f"no file or owning pkg for {binPathIn}"
       thisBin["repo"]="n/a"
-  elif ( osrID == "fedora"):
+  # catch more options for ID in os-release since RHEL10 adds some variabilty
+  elif ( "fedora" in osrID or "centos" in osrID ):
     try:
       rpm=subprocess.check_output("rpm -q --whatprovides " + binPath, shell=True, stderr=subprocess.DEVNULL).decode().strip()
       thisBin["pkg"]=rpm
@@ -193,7 +197,10 @@ def validateBin(binPathIn):
       else:
         dnfOut=result.stdout.decode().strip()
         # Repo line should look like "From repo   : [reponame]" so clean it up
-        thisBin["repo"]=re.search("From repo.*",dnfOut).group().strip().split(":")[1].strip()
+        m = re.search(r"(From repo.*|Repository.*)",dnfOut).group().strip().split(":")[1].strip()
+        if ( not m ):
+          m = f"No repo found for {binPath}"
+        thisBin["repo"]=m
     except subprocess.CalledProcessError as e:
       thisBin["pkg"]=f"no file or owning pkg: {e.output}"
       thisBin["repo"]="n/a"
@@ -845,8 +852,8 @@ else:
 # END ALL CHECKS
 
 # START OUTPUT
-print("------ vmassist.py results ------")
-print("Please see https://aka.ms/vmassistlinux for guidance on the information in the above output")
+print(f"------ vmassist.py results -- v{vmaPyVersion}------")
+print(f"Please see {cBlue('https://aka.ms/vmassistlinux')} for guidance on the information in the report output below")
 print(f"OS family        : {osrID}")
 # things we will always report on:
 ## WAA service
