@@ -387,6 +387,7 @@ function Get-ThirdPartyLoadedModules
         [string]$processName
     )
     $microsoftWindowsProductionPCA2011 = 'CN=Microsoft Windows Production PCA 2011, O=Microsoft Corporation, L=Redmond, S=Washington, C=US'
+    $microsoftCodeSigningPCA2011 = 'CN=Microsoft Code Signing PCA 2011, O=Microsoft Corporation, L=Redmond, S=Washington, C=US'
     Out-Log "Third-party modules in $($processName):" -startLine
     if ($isVMAgentInstalled)
     {
@@ -401,7 +402,7 @@ function Get-ThirdPartyLoadedModules
                     $filePath = $processThirdPartyModule.FileName
                     $signature = Invoke-ExpressionWithLogging "Get-AuthenticodeSignature -FilePath '$filePath' -ErrorAction SilentlyContinue" -verboseOnly
                     $issuer = $signature.SignerCertificate.Issuer
-                    if ($issuer -eq $microsoftWindowsProductionPCA2011)
+                    if ($issuer -eq $microsoftWindowsProductionPCA2011 -or $issuer -eq $microsoftCodeSigningPCA2011)
                     {
                         $processThirdPartyModules = $processThirdPartyModules | Where-Object {$_.FileName -ne $filePath}
                     }
