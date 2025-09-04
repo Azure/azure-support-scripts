@@ -1164,7 +1164,7 @@ function Get-ExtensionHandlers
     return $extensionHandlers
 }
 
-# Tests if the built in System account has Full access to a directory
+# Tests if the built in System account has Full Control to a directory and its subfolders/files
 function Test-SystemFullAccess {
     [CmdletBinding()]
     param(
@@ -2281,7 +2281,7 @@ if ($isVMAgentInstalled)
         Out-Log $windowsAzureAllowsSystemFullAccess -color Cyan -endLine
         $details = "The System account does not have full access to $windowsAzureFolderPath"
         New-Check -name "$windowsAzureFolderPath permissions" -result 'Info' -details $details
-        New-Finding -type Information -name "Non-default $windowsAzureFolderPath permissions" -description $details -mitigation 'The C:\WindowsAzure directory has been changed from its default permissions. Ensure the built-in System account has Full control to this folder, subfolder, and directories in order for the Guest Agent to work properly.'
+        New-Finding -type Information -name "Non-default $windowsAzureFolderPath permissions" -description $details -mitigation 'The built-in System account does not have Full control of the C:\WindowsAzure directory. Ensure the built-in System account has Full control to this folder, subfolder, and directories in order for the Guest Agent to work properly.'
     }
 }
 else
@@ -2308,7 +2308,7 @@ if ($isVMAgentInstalled)
         Out-Log $packagesAllowsSystemFullAccess -color Cyan -endLine
         $details = "The System account does not have full access to $packagesFolderPath"
         New-Check -name "$packagesFolderPath permissions" -result 'Info' -details $details
-        New-Finding -type Information -name "Non-default $packagesFolderPath permissions" -description $details -mitigation 'The C:\Packages directory has been changed from its default permissions. Ensure the built-in System account has Full control to this folder, subfolder, and directories in order for the Guest Agent to work properly.'
+        New-Finding -type Information -name "Non-default $packagesFolderPath permissions" -description $details -mitigation 'The built-in System account does not have Full control of the C:\Packages directory. Ensure the built-in System account has Full control to this folder, subfolder, and directories in order for the Guest Agent to work properly.'
     }
 }
 else
