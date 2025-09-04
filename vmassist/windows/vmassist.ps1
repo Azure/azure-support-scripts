@@ -1166,30 +1166,70 @@ function Get-ExtensionHandlers
 
 # Tests if the built in System account has Full access to a directory
 function Test-SystemFullAccess {
-    param (
-        [Parameter(Mandatory = $true)]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
         [string]$Path
     )
 
-    try {
-        $acl = Get-Acl -Path $Path
-        $fullControl = [System.Security.AccessControl.FileSystemRights]::FullControl
+    # Get SYSTEM SID
+    $systemAccount = New-Object System.Security.Principal.NTAccount("NT AUTHORITY","SYSTEM")
+    $systemSID = $systemAccount.Translate([System.Security.Principal.SecurityIdentifier])
 
-        $systemAccess = $acl.Access | Where-Object {
-            $_.IdentityReference -eq 'NT AUTHORITY\SYSTEM' -and
-            ($_.FileSystemRights -band $fullControl) -eq $fullControl -and
-            $_.AccessControlType -eq 'Allow' -and
-            ($_.InheritanceFlags -band [System.Security.AccessControl.InheritanceFlags]::ContainerInherit) -ne 0 -and
-            ($_.InheritanceFlags -band [System.Security.AccessControl.InheritanceFlags]::ObjectInherit) -ne 0 -and
-            $_.PropagationFlags -eq [System.Security.AccessControl.PropagationFlags]::None
+    # Get all local groups SYSTEM belongs to
+    $groupSIDs = @()
+
+    # Enumerate all local groups and check if SYSTEM is a member
+    foreach ($grp in Get-LocalGroup) {
+        try {
+            $members = Get-LocalGroupMember -Group $grp.Name -ErrorAction Stop
+            if ($members.SID -contains $systemSID.Value) {
+                # Translate group name to SID
+                $groupSID = (New-Object System.Security.Principal.NTAccount($grp.Name)).Translate([System.Security.Principal.SecurityIdentifier])
+                $groupSIDs += $groupSID
+            }
+        } catch {
+            # Ignore groups we can't query
+        }
+    }
+
+    # Combine SYSTEM SID and group SIDs
+    $allSIDs = @($systemSID) + $groupSIDs
+
+    # Get ACL for the target path
+    $acl = Get-Acl -Path $Path
+
+    # Define Full Control mask
+    $fullControlMask = [System.Security.AccessControl.FileSystemRights]::FullControl
+
+    # Track effective rights
+    $effectiveRights = 0
+
+    # Evaluate ACEs in order
+    foreach ($ace in $acl.Access) {
+        try {
+            $aceSID = $ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier])
+        } catch {
+            continue
         }
 
-        return $systemAccess.Count -gt 0
+        # Skip ACEs that don't apply to SYSTEM or its groups
+        if (-not ($allSIDs -contains $aceSID)) { continue }
+
+        # Deny entries take precedence
+        if ($ace.AccessControlType -eq 'Deny') {
+            if (($ace.FileSystemRights -band $fullControlMask) -ne 0) {
+                return $false
+            }
+        }
+        elseif ($ace.AccessControlType -eq 'Allow') {
+            $effectiveRights = $effectiveRights -bor $ace.FileSystemRights
+        }
     }
-    catch {
-        Write-Error "Failed to retrieve ACL for '$Path': $_"
-        return $false
-    }
+
+    # Final check
+    return (($effectiveRights -band $fullControlMask) -eq $fullControlMask)
+
 }
 
 #endregion functions
