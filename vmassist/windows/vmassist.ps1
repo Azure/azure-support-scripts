@@ -2259,7 +2259,7 @@ else
     Out-Log $machineKeysHasDefaultPermissions -color Cyan -endLine
     $details = "$machineKeysPath folder does not have default NTFS permissions<br>SDDL: $machineKeysSddl<br>$machineKeysAccessString"
     New-Check -name 'MachineKeys folder permissions' -result 'Info' -details $details
-    $mitigation = '<a href="https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/troubleshoot-extension-certificates-issues-windows-vm#solution-2-fix-the-access-control-list-acl-in-the-machinekeys-or-systemkeys-folders">Troubleshoot extension certificates</a>'
+    $mitigation = 'The default permissions on "C:\ProgramData\Microsoft\Crypto\RSA\MachineKeys" have been altered. If incorrect permissions are given on this directory then it may block an extension from decrypting its protected settings. If the Guest Agent status is Ready, but extensions with protected settings are failing to install then <a href="https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/troubleshoot-extension-certificates-issues-windows-vm#solution-2-fix-the-access-control-list-acl-in-the-machinekeys-or-systemkeys-folders">troubleshoot extension certificates</a>'
     New-Finding -type Information -name 'Non-default MachineKeys permissions' -description $details -mitigation $mitigation
 }
 
