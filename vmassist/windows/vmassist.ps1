@@ -200,7 +200,7 @@ function Get-WCFConfig
         $global:dbgMachineConfigStrings = $machineConfigStrings
         $description = "$machineConfigx64FilePath shows WCF debugging is enabled:<p>$matchesString<p>"
         $global:dbgDescription = $description
-        New-Finding -type Critical -name 'WCF debugging enabled' -description $description -mitigation 'We recommend only enabling WCF debugging while debugging a WCF issue. Please disable WCF debugging'
+        New-Finding -type Critical -name 'WCF debugging enabled' -description $description -mitigation 'We recommend only enabling WCF debugging while debugging a WCF issue. Please disable WCF debugging. Please see the following <a href="https://learn.microsoft.com/en-us/azure/virtual-machines/extensions/agent-windows#manual-installation">article for more steps.</a>'
     }
     else
     {
@@ -387,6 +387,7 @@ function Get-ThirdPartyLoadedModules
         [string]$processName
     )
     $microsoftWindowsProductionPCA2011 = 'CN=Microsoft Windows Production PCA 2011, O=Microsoft Corporation, L=Redmond, S=Washington, C=US'
+    $microsoftCodeSigningPCA2011 = 'CN=Microsoft Code Signing PCA 2011, O=Microsoft Corporation, L=Redmond, S=Washington, C=US'
     Out-Log "Third-party modules in $($processName):" -startLine
     if ($isVMAgentInstalled)
     {
@@ -401,7 +402,7 @@ function Get-ThirdPartyLoadedModules
                     $filePath = $processThirdPartyModule.FileName
                     $signature = Invoke-ExpressionWithLogging "Get-AuthenticodeSignature -FilePath '$filePath' -ErrorAction SilentlyContinue" -verboseOnly
                     $issuer = $signature.SignerCertificate.Issuer
-                    if ($issuer -eq $microsoftWindowsProductionPCA2011)
+                    if ($issuer -eq $microsoftWindowsProductionPCA2011 -or $issuer -eq $microsoftCodeSigningPCA2011)
                     {
                         $processThirdPartyModules = $processThirdPartyModules | Where-Object {$_.FileName -ne $filePath}
                     }
@@ -1164,6 +1165,74 @@ function Get-ExtensionHandlers
     return $extensionHandlers
 }
 
+# Tests if the built in System account has Full Control to a directory and its subfolders/files
+function Test-SystemFullAccess {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    # Get SYSTEM SID
+    $systemAccount = New-Object System.Security.Principal.NTAccount("NT AUTHORITY","SYSTEM")
+    $systemSID = $systemAccount.Translate([System.Security.Principal.SecurityIdentifier])
+
+    # Get all local groups SYSTEM belongs to
+    $groupSIDs = @()
+
+    # Enumerate all local groups and check if SYSTEM is a member
+    foreach ($grp in Get-LocalGroup) {
+        try {
+            $members = Get-LocalGroupMember -Group $grp.Name -ErrorAction Stop
+            if ($members.SID -contains $systemSID.Value) {
+                # Translate group name to SID
+                $groupSID = (New-Object System.Security.Principal.NTAccount($grp.Name)).Translate([System.Security.Principal.SecurityIdentifier])
+                $groupSIDs += $groupSID
+            }
+        } catch {
+            # Ignore groups we can't query
+        }
+    }
+
+    # Combine SYSTEM SID and group SIDs
+    $allSIDs = @($systemSID) + $groupSIDs
+
+    # Get ACL for the target path
+    $acl = Get-Acl -Path $Path
+
+    # Define Full Control mask
+    $fullControlMask = [System.Security.AccessControl.FileSystemRights]::FullControl
+
+    # Track effective rights
+    $effectiveRights = 0
+
+    # Evaluate ACEs in order
+    foreach ($ace in $acl.Access) {
+        try {
+            $aceSID = $ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier])
+        } catch {
+            continue
+        }
+
+        # Skip ACEs that don't apply to SYSTEM or its groups
+        if (-not ($allSIDs -contains $aceSID)) { continue }
+
+        # Deny entries take precedence
+        if ($ace.AccessControlType -eq 'Deny') {
+            if (($ace.FileSystemRights -band $fullControlMask) -ne 0) {
+                return $false
+            }
+        }
+        elseif ($ace.AccessControlType -eq 'Allow') {
+            $effectiveRights = $effectiveRights -bor $ace.FileSystemRights
+        }
+    }
+
+    # Final check
+    return (($effectiveRights -band $fullControlMask) -eq $fullControlMask)
+
+}
+
 #endregion functions
 
 $eula = @'
@@ -1559,46 +1628,42 @@ Get-ServiceCrashes -Name 'Windows Azure Guest Agent'
 Get-ApplicationErrors -Name 'WaAppagent'
 Get-ApplicationErrors -Name 'WindowsAzureGuestAgent'
 
-# TODO: WS25+ no longer include WMIC.exe (<WS25 versions have it in C:\Windows\System32\wbem\WMIC.exe), so need to use a different approach here
-# It can be installed as a feature-on-demand in WS25, but since it'll ultimately even that won't an option, but to address this now
-# https://learn.microsoft.com/en-us/windows-server/get-started/removed-deprecated-features-windows-server-2025#features-were-no-longer-developing
-if ($productName.Contains("2008") -or $productName.Contains("2012") -or $productName.Contains("2016") -or $productName.Contains("2019") -or $productName.Contains("2022")) {
-    Out-Log 'StdRegProv WMI class:' -startLine
-    if ($winmgmt.Status -eq 'Running')
+Out-Log 'StdRegProv WMI class:' -startLine
+if ($winmgmt.Status -eq 'Running')
+{
+    if ($fakeFinding)
     {
-        if ($fakeFinding)
-        {
-            # Using intentionally wrong class name NOTStdRegProv in order to generate a finding on-demand without having to change any config
-            $stdRegProv = Invoke-ExpressionWithLogging "wmic /namespace:\\root\default Class NOTStdRegProv Call GetDWORDValue hDefKey='&H80000002' sSubKeyName='SYSTEM\CurrentControlSet\Services\Winmgmt' sValueName=Start 2>`$null" -verboseOnly
-        }
-        else
-        {
-            $stdRegProv = Invoke-ExpressionWithLogging "wmic /namespace:\\root\default Class StdRegProv Call GetDWORDValue hDefKey='&H80000002' sSubKeyName='SYSTEM\CurrentControlSet\Services\Winmgmt' sValueName=Start 2>`$null" -verboseOnly
-        }
-
-        $wmicExitCode = $LASTEXITCODE
-        if ($wmicExitCode -eq 0)
-        {
-            $stdRegProvQuerySuccess = $true
-            Out-Log $stdRegProvQuerySuccess -color Green -endLine
-            New-Check -name 'StdRegProv WMI class' -result 'OK' -details 'StdRegProv WMI class query succeeded'
-        }
-        else
-        {
-            $stdRegProvQuerySuccess = $false
-            Out-Log $stdRegProvQuerySuccess -color Red -endLine
-            New-Check -name 'StdRegProv WMI class' -result 'FAILED' -details ''
-            $description = "StdRegProv WMI class query failed with error code $wmicExitCode"
-            New-Finding -type Critical -name 'StdRegProv WMI class query failed' -description $description -mitigation ''
-        }
+        # Using intentionally wrong class name NOTStdRegProv in order to generate a finding on-demand without having to change any config
+        $stdRegProv = Invoke-ExpressionWithLogging "Invoke-CimMethod -ClassName NOTStdRegProv -MethodName GetDWORDValue -Arguments @{sSubKeyName = 'SYSTEM\CurrentControlSet\Services\Winmgmt';sValueName = 'Start'} 2>`$null" -verboseOnly
     }
     else
     {
-        $details = 'Skipped (Winmgmt service not running)'
-        New-Check -name 'StdRegProv WMI class' -result 'Skipped' -details $details
-        Out-Log $details -endLine
+        $stdRegProv = Invoke-ExpressionWithLogging "Invoke-CimMethod -ClassName StdRegProv -MethodName GetDWORDValue -Arguments @{sSubKeyName = 'SYSTEM\CurrentControlSet\Services\Winmgmt';sValueName = 'Start'} 2>`$null" -verboseOnly
+    }
+
+    if ($stdRegProv.ReturnValue -eq 0)
+    {
+        $stdRegProvQuerySuccess = $true
+        Out-Log $stdRegProvQuerySuccess -color Green -endLine
+        New-Check -name 'StdRegProv WMI class' -result 'OK' -details 'StdRegProv WMI class query succeeded'
+    }
+    else
+    {
+        $stdRegProvReturnValue = $stdRegProv.ReturnValue
+        $stdRegProvQuerySuccess = $false
+        Out-Log $stdRegProvQuerySuccess -color Red -endLine
+        New-Check -name 'StdRegProv WMI class' -result 'FAILED' -details 'StdRegProv WMI class query failed'
+        $description = "StdRegProv WMI class query failed with error code $stdRegProvReturnValue"
+        New-Finding -type Critical -name 'StdRegProv WMI class query failed' -description $description -mitigation 'The VM agent .msi file uses WMI StdRegProv to access the registry. If this is not working properly then installing the VM Guest Agent via MSI will fail. See this <a href="https://learn.microsoft.com/en-us/azure/virtual-machines/extensions/agent-windows#manual-installation">article for steps on how to fix it</a>'
     }
 }
+else
+{
+    $details = 'Skipped (Winmgmt service not running)'
+    New-Check -name 'StdRegProv WMI class' -result 'Skipped' -details $details
+    Out-Log $details -endLine
+}
+
 
 #Check to see if the Guest Agent is installed by validating if the c:\WindowsAzure folder, rdagent service, windowsazureguestagent service, waappagent.exe, and windowsazureguestagent.exe exist. Returns $true if installed
 Out-Log 'VM Agent installed:' -startLine
@@ -1634,7 +1699,7 @@ if ($isVMAgentInstalled)
     if ($agentUninstallKey)
     {
         New-Check -name 'VM agent installed by MSI' -result 'OK' -details ''
-        Out-Log 'MSI: MSI' -color Green -endLine
+        Out-Log 'MSI' -color Green -endLine
     }
     else
     {
@@ -1771,7 +1836,7 @@ if ($isVMAgentInstalled)
 # If you are using a proxy, you will get its value under the ProxyServer key.
 # This gets the same settings as running "netsh winhttp show proxy"
 $proxyConfigured = $false
-Out-Log 'Proxy configured:' -startLine
+Out-Log 'Netsh proxy configured:' -startLine
 $netshWinhttpShowProxyOutput = netsh winhttp show proxy
 Out-Log "`$netshWinhttpShowProxyOutput: $netshWinhttpShowProxyOutput" -verboseOnly
 $proxyServers = $netshWinhttpShowProxyOutput | Select-String -SimpleMatch 'Proxy Server(s)' | Select-Object -ExpandProperty Line
@@ -1868,14 +1933,14 @@ Out-Log "$machinePoliciesInternetSettingsKeyPath\ProxySettingsPerUser: $proxySet
 
 if ($proxyConfigured)
 {
-    New-Check -name 'Proxy configured' -result 'Info' -details $proxyServers
+    New-Check -name 'Netsh proxy configured' -result 'Info' -details $proxyServers
     Out-Log $proxyConfigured -color Cyan -endLine
     $mitigation = '<a href="https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows-azure-guest-agent#solution-3-enable-dhcp-and-make-sure-that-the-server-isnt-blocked-by-firewalls-proxies-or-other-sources">Ensure the proxy is not blocking connectivity to 168.63.129.16 on ports 80 or 32526</a>'
-    New-Finding -type Information -name 'Proxy configured' -description $proxyServers -mitigation $mitigation
+    New-Finding -type Information -name 'Netsh proxy configured' -description $proxyServers -mitigation $mitigation
 }
 else
 {
-    New-Check -name 'Proxy configured' -result 'OK' -details 'No proxy detected'
+    New-Check -name 'Netsh proxy configured' -result 'OK' -details 'No netsh proxy detected'
     Out-Log $proxyConfigured -color Green -endLine
 }
 
@@ -2087,10 +2152,17 @@ if ($imdsReachable.Succeeded)
         $macAddress = $metadata.network.interface.macAddress
         $privateIpAddress = $metadata.network.interface | Select-Object -First 1 | Select-Object -ExpandProperty ipv4 -First 1 | Select-Object -ExpandProperty ipAddress -First 1 | Select-Object -ExpandProperty privateIpAddress -First 1
         $publicIpAddress = $metadata.network.interface | Select-Object -First 1 | Select-Object -ExpandProperty ipv4 -First 1 | Select-Object -ExpandProperty ipAddress -First 1 | Select-Object -ExpandProperty publicIpAddress -First 1
-        $publicIpAddressReportedFromAwsCheckIpService = Invoke-RestMethod -Uri https://checkip.amazonaws.com -WebSession $webSession
+        try{
+            $publicIpAddressReportedFromAwsCheckIpService = Invoke-RestMethod -Uri https://checkip.amazonaws.com -WebSession $webSession
+        }
+        catch{
+        }
         if ($publicIpAddressReportedFromAwsCheckIpService)
         {
             $publicIpAddressReportedFromAwsCheckIpService = $publicIpAddressReportedFromAwsCheckIpService.Trim()
+        }
+        else {
+            $publicIpAddressReportedFromAwsCheckIpService = $null
         }
     }
     else
@@ -2187,7 +2259,7 @@ else
     Out-Log $machineKeysHasDefaultPermissions -color Cyan -endLine
     $details = "$machineKeysPath folder does not have default NTFS permissions<br>SDDL: $machineKeysSddl<br>$machineKeysAccessString"
     New-Check -name 'MachineKeys folder permissions' -result 'Info' -details $details
-    $mitigation = '<a href="https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/troubleshoot-extension-certificates-issues-windows-vm#solution-2-fix-the-access-control-list-acl-in-the-machinekeys-or-systemkeys-folders">Troubleshoot extension certificates</a>'
+    $mitigation = 'The default permissions on "C:\ProgramData\Microsoft\Crypto\RSA\MachineKeys" have been altered. If incorrect permissions are given on this directory then it may block an extension from decrypting its protected settings. If the Guest Agent status is Ready, but extensions with protected settings are failing to install then <a href="https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/troubleshoot-extension-certificates-issues-windows-vm#solution-2-fix-the-access-control-list-acl-in-the-machinekeys-or-systemkeys-folders">troubleshoot extension certificates</a>'
     New-Finding -type Information -name 'Non-default MachineKeys permissions' -description $details -mitigation $mitigation
 }
 
@@ -2195,29 +2267,22 @@ else
 # It first removes all user/groups and then sets the following permission
 # (Read & Execute: Everyone, Full Control: SYSTEM & Local Administrators only) to these folders.
 # If GA fails to remove/set the permission, it can't proceed further.
-Out-Log "$windowsAzureFolderPath folder has default permissions:" -startLine
+Out-Log "The System account has full access to $windowsAzureFolderPath`:" -startLine
 if ($isVMAgentInstalled)
 {
-    $windowsAzureDefaultSddl = 'O:SYG:SYD:PAI(A;OICI;0x1200a9;;;WD)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)'
-    $windowsAzureAcl = Get-Acl -Path $windowsAzureFolderPath
-    $windowsAzureSddl = $windowsAzureAcl | Select-Object -ExpandProperty Sddl
-    $windowsAzureAccess = $windowsAzureAcl | Select-Object -ExpandProperty Access
-    $windowsAzureAccessString = $windowsAzureAccess | ForEach-Object {"$($_.IdentityReference) $($_.AccessControlType) $($_.FileSystemRights)"}
-    $windowsAzureAccessString = $windowsAzureAccessString -join '<br>'
-    if ($windowsAzureSddl -eq $windowsAzureDefaultSddl)
+    $windowsAzureAllowsSystemFullAccess = Test-SystemFullAccess($windowsAzureFolderPath)
+    if ($windowsAzureAllowsSystemFullAccess)
     {
-        $windowsAzureHasDefaultPermissions = $true
-        Out-Log $windowsAzureHasDefaultPermissions -color Green -endLine
-        $details = "$windowsAzureFolderPath folder has default NTFS permissions" # <br>SDDL: $windowsAzureSddl<br>$windowsAzureAccessString"
+        Out-Log $windowsAzureAllowsSystemFullAccess -color Green -endLine
+        $details = "The System account has full access to $windowsAzureFolderPath"
         New-Check -name "$windowsAzureFolderPath permissions" -result 'OK' -details $details
     }
     else
     {
-        $windowsAzureHasDefaultPermissions = $false
-        Out-Log $windowsAzureHasDefaultPermissions -color Cyan -endLine
-        $details = "$windowsAzureFolderPath does not have default NTFS permissions<br>SDDL: $windowsAzureSddl<br>$windowsAzureAccessString"
+        Out-Log $windowsAzureAllowsSystemFullAccess -color Cyan -endLine
+        $details = "The System account does not have full access to $windowsAzureFolderPath"
         New-Check -name "$windowsAzureFolderPath permissions" -result 'Info' -details $details
-        New-Finding -type Information -name "Non-default $windowsAzureFolderPath permissions" -description $details -mitigation 'The C:\WindowsAzure directory has been changed from its default permissions. Ensure the built-in System account has Full control to this folder, subfolder, and directories in order for the Guest Agent to work properly.'
+        New-Finding -type Information -name "Non-default $windowsAzureFolderPath permissions" -description $details -mitigation 'The built-in System account does not have Full control of the C:\WindowsAzure directory. If you are unable to install the Guest Agent or the Guest Agent services fail to start due to "Access denied", then ensure that the built-in System account has Full control of C:\WindowsAzure applied to this folder, subfolder, and directories.'
     }
 }
 else
@@ -2229,29 +2294,22 @@ else
 
 #Validates permissions on the Packages folder
 $packagesFolderPath = "$env:SystemDrive\Packages"
-Out-Log "$packagesFolderPath folder has default permissions:" -startLine
+Out-Log "The System account has full access to $packagesFolderPath`:" -startLine
 if ($isVMAgentInstalled)
 {
-    $packagesDefaultSddl = 'O:BAG:SYD:P(A;OICI;0x1200a9;;;WD)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)'
-    $packagesAcl = Get-Acl -Path $packagesFolderPath
-    $packagesSddl = $packagesAcl | Select-Object -ExpandProperty Sddl
-    $packagesAccess = $packagesAcl | Select-Object -ExpandProperty Access
-    $packagessAccessString = $packagesAccess | ForEach-Object {"$($_.IdentityReference) $($_.AccessControlType) $($_.FileSystemRights)"}
-    $packagesAccessString = $packagessAccessString -join '<br>'
-    if ($packagesSddl -eq $packagesDefaultSddl)
+    $packagesAllowsSystemFullAccess = Test-SystemFullAccess($packagesFolderPath)
+    if ($packagesAllowsSystemFullAccess)
     {
-        $packagesHasDefaultPermissions = $true
-        Out-Log $packagesHasDefaultPermissions -color Green -endLine
-        $details = "$packagesFolderPath folder has default NTFS permissions" # <br>SDDL: $packagesSddl<br>$packagesAccessString"
+        Out-Log $packagesAllowsSystemFullAccess -color Green -endLine
+        $details = "The System account has full access to $packagesFolderPath"
         New-Check -name "$packagesFolderPath permissions" -result 'OK' -details $details
     }
     else
     {
-        $packagesHasDefaultPermissions = $false
-        Out-Log $packagesHasDefaultPermissions -color Cyan -endLine
-        $details = "$packagesFolderPath does not have default NTFS permissions<br>SDDL: $packagesSddl<br>$packagesAccessString"
+        Out-Log $packagesAllowsSystemFullAccess -color Cyan -endLine
+        $details = "The System account does not have full access to $packagesFolderPath"
         New-Check -name "$packagesFolderPath permissions" -result 'Info' -details $details
-        New-Finding -type Information -name "Non-default $packagesFolderPath permissions" -description $details -mitigation 'The C:\Packages directory has been changed from its default permissions. Ensure the built-in System account has Full control to this folder, subfolder, and directories in order for the Guest Agent to work properly.'
+        New-Finding -type Information -name "Non-default $packagesFolderPath permissions" -description $details -mitigation 'The built-in System account does not have Full control of the C:\Packages directory. If you are unable to install the Guest Agent/Extensions or the Guest Agent services fail to start due to "Access denied", then ensure that the built-in System account has Full control of C:\Packages applied to this folder, subfolder, and directories.'
     }
 }
 else
