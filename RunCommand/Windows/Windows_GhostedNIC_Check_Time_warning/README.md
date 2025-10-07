@@ -17,7 +17,6 @@ This PowerShell script is used to detect if there are 'ghosted nic' inside of th
 Run the script in PowerShell **within an Azure VM**:
 
 ```powershell
-Invoke-WebRequest -Uri https://github.com/Azure/azure-support-scripts/blob/master/Windows_GhostedNIC_Check_Time_warning/Windows_GhostedNIC_Check_Time_warning.ps1 -OutFile Windows_GhostedNIC_Check_Time_warning.ps1
 Set-ExecutionPolicy Bypass -Force
 .\Windows_GhostedNIC_Check_Time_warning.ps1
 ```
