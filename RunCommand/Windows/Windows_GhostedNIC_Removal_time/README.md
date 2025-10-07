@@ -1,7 +1,7 @@
 
-# Azure VM - Windows Ghosted NIC Check Time Warning Script
+# Azure VM - Windows Ghosted NIC Check Removal Script
 
-This PowerShell script is used to detect if there are 'ghosted nic' inside of the VM. A VM that has one ore more could experienced issues with connect to the VM or Windows Update could fail.This script detects ghosted (disconnected) which are network interface cards (NICs) that are notr valid.
+This PowerShell script is used to detect and remove 'ghosted nic' inside of the VM. A VM that has one ore more could experienced issues with connect to the VM or Windows Update could fail.  This script detects ghosted (disconnected) which are network interface cards (NICs) that are not valid.
 
 ## Features
 
