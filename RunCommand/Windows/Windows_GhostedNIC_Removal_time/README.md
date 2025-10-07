@@ -23,7 +23,6 @@ Ensure you have a recovery point or snapshot in case rollback is needed.</h3>
 Run the script in PowerShell **within an Azure VM**:
 
 ```powershell
-Invoke-WebRequest -Uri https://github.com/Azure/azure-support-scripts/blob/master/Windows_GhostedNIC_Removal_time/Windows_GhostedNIC_Removal_time.ps1 -OutFile Windows_GhostedNIC_Removal_time.ps1
 Set-ExecutionPolicy Bypass -Force
 .\Windows_GhostedNIC_Removal_time.ps1
 ```
