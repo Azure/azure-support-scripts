@@ -40,7 +40,7 @@ foreach ($pattern in $patterns) {
 if ($issueDetected) {
     Write-Host "`nSummary: Duplicate SID or machine account issue detected in netsetup.log."
     Write-Host "Refer to Microsoft documentation for resolution:"
-    Write-Host "https://learn.microsoft.com/en-us/troubleshoot/windows-server/identity/machine-account-duplicate-sid%22
+    Write-Host "https://learn.microsoft.com/en-us/troubleshoot/windows-server/identity/machine-account-duplicate-sid"
 } else {
     Write-Host "`nSummary: No duplicate SID indicators found."
 }
