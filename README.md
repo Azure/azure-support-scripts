@@ -32,7 +32,6 @@ The repo is organized by support scenario and each contains a simple description
 
 ## How To Contribute
 
-**Make sure you are a member of this permission group: https://repos.opensource.microsoft.com/Azure/teams/diskinspection-extended
 
 	1.	Clone github repo locally
 		 $ git clone https://github.com/Azure/azure-support-scripts <local_path>
