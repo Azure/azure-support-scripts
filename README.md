@@ -42,7 +42,7 @@ The repo is organized by support scenario and each contains a simple description
 
 	4.	Apply your changes in the branch
 
-	5.	Push changes to your remote branch by following below sequesnce of commands
+	5.	Push changes to your remote branch by following below sequence of commands
 		$ git add <file_changed>
 		$ git commit -m "<Commit_message>"
 		$ git push --set-upstream origin <new_branch> 
