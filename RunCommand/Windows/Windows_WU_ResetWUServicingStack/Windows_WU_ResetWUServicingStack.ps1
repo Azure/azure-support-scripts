@@ -1,5 +1,42 @@
-# Requires running as Administrator
- 
+
+<#
+DISCLAIMER
+    The sample script is provided AS IS without warranty of any kind.
+    Microsoft disclaims all implied warranties, including, without limitation,
+    any implied warranties of merchantability or fitness for a particular purpose.
+    The entire risk arising out of the use or performance of this script remains with you.
+    In no event shall Microsoft, its authors, or anyone else involved in the creation,
+    production, or delivery of the script be liable for any damages whatsoever
+    (including, without limitation, damages for loss of business profits,
+    business interruption, loss of business information, or other pecuniary loss)
+    arising out of the use of or inability to use the script,
+    even if Microsoft has been advised of the possibility of such damages.
+
+.SYNOPSIS
+    Resets Windows Update components by stopping services, renaming folders,
+    re-registering DLLs, and restarting services.
+	Version: 1.0 (Modified by Copilot for enhanced messaging)
+
+.DESCRIPTION
+    This script performs a full reset of Windows Update components on Windows systems.
+    It stops related services, renames SoftwareDistribution and Catroot2 folders,
+    re-registers core DLLs, and restarts services to restore update functionality.
+    Useful for troubleshooting update failures.
+
+.NOTES
+    Requires administrator privileges.
+    Tested on Windows Server 2016 and later, and Windows 10/11.
+
+.EXAMPLE
+    Run as administrator:
+    PS> .\Reset-WindowsUpdateComponents.ps1
+#>
+
+If (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Error "This script must be run as Administrator."
+    exit 1
+}
+
 Write-Host "Stopping Windows Update related services..." -ForegroundColor Yellow
 
 Stop-Service -Name wuauserv -Force
