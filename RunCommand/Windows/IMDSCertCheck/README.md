@@ -20,7 +20,6 @@ This PowerShell script is used to verify the attestation signature provided by t
 Run the script in PowerShell **within an Azure VM**:
 
 ```powershell
-Invoke-WebRequest -Uri https://github.com/Azure/azure-support-scripts/blob/master/IMDSCertCheck/IMDSCertCheck.ps1 -OutFile IMDSCertCheck.ps1
 Set-ExecutionPolicy Bypass -Force
 .\IMDSCertCheck.ps1
 ```
