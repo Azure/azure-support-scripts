@@ -5,10 +5,8 @@ This PowerShell script is used to detect and remove 'ghosted nic' inside of the 
 
 ## Features
 
-- Fetches attested metadata from the Azure Instance Metadata Service.
-- Extracts and decodes the signature.
-- Attempts to build a certificate chain for verification.
-- Warns if any certificates in the chain are missing and provides a link to Microsoft’s documentation.
+- Detects for Ghosted Nics
+- Removes Ghosted Nics
 
 ## Prerequisites
 
