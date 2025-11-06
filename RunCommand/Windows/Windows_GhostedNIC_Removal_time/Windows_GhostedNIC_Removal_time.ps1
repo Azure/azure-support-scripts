@@ -13,7 +13,6 @@ Disclaimer
 
 .SYNOPSIS
     Detects ghosted (disconnected) and valid network interface cards (NICs) on Windows.
-    Author: woasmeglobal@microsoft.com 
     Version: 1.0 (Modified by Copilot for enhanced messaging)
 
 .DESCRIPTION

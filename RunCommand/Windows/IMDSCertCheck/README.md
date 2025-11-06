@@ -38,7 +38,7 @@ Visit the provided Microsoft documentation to download and install the necessary
 
 ## References
 
-- [Azure Instance Metadata Service](https://learn.microsoft.com/en-us/azure/virtual-machines/windows/instance-metadata-service)
+- [Azure Instance Metadata Service](https://learn.microsoft.com/azure/virtual-machines/windows/instance-metadata-service)
 - [Azure Certificate Authority Details](https://learn.microsoft.com/azure/security/fundamentals/azure-ca-details)
 
 ## Liability

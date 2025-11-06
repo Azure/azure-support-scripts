@@ -6,7 +6,6 @@ This PowerShell script is used to detect if there are 'ghosted nic' inside of th
 ## Features
 
 - Detects for Ghosted Nics
-- Removes Ghosted Nics
 
 ## Prerequisites
 
