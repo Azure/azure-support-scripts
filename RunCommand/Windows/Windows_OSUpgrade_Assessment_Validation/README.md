@@ -90,7 +90,7 @@ Windows Version: Windows Server 2019 Datacenter
 The VM is running Windows Server 2019 Datacenter. 
 The supported upgrade options are: Windows Server 2022 or Windows Server 2025.
 Please refer to the official documentation for more details: 
-https://learn.microsoft.com/en-us/azure/virtual-machines/windows-in-place-upgrade
+https://learn.microsoft.com/azure/virtual-machines/windows-in-place-upgrade
 ```
 
 Example output on an Azure Gen1 Windows 10 VM:
@@ -109,7 +109,15 @@ FAILED: The VM is running Windows 10 Gen1. Upgrade to Windows 11 is only support
 ```
 ---
 
-## Resources
+## References
 
 - [PC Health Check App](https://support.microsoft.com/en-us/windows/how-to-use-the-pc-health-check-app-9c8abd9b-03ba-4e67-81ef-36f37caa7844)  
-- [Windows 11 Installation Assistant](https://www.microsoft.com/en-us/software-download/windows11)
+- [Windows 11 Installation Assistant](https://www.microsoft.com/software-download/windows11)
+
+## Liability
+As described in the [MIT license](..\..\..\LICENSE.txt), these scripts are provided as-is with no warranty or liability associated with their use.
+
+## Provide Feedback
+We value your input. If you encounter problems with the scripts or ideas on how they can be improved please file an issue in the [Issues](https://github.com/Azure/azure-support-scripts/issues) section of the project.
+
+## Known Issues
