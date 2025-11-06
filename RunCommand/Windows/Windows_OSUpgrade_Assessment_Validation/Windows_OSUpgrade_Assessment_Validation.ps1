@@ -1,5 +1,4 @@
 # Windows In-Place Upgrade Assessment Script
-# Author: Bowen Zhang
 # Last Updated: 2025-08-07
 # Description: Checks Windows version, server upgrade paths, and Azure VM security features for upgrade readiness.
 
@@ -124,7 +123,7 @@ if ($isServer) {
                     $messages += "The VM is running Windows 10 Gen2. you may upgrade it to Windows 11 via feature update, or using Windows 11 Installation Assistant. Confirm the upgrade eligibility using the PC Health Check App."
                     $messages += ""
                     $messages += 'PC Health Check App: https://support.microsoft.com/en-us/windows/how-to-use-the-pc-health-check-app-9c8abd9b-03ba-4e67-81ef-36f37caa7844'
-                    $messages += 'Windows 11 Installation Assistant: https://www.microsoft.com/en-us/software-download/windows11'
+                    $messages += 'Windows 11 Installation Assistant: https://www.microsoft.com/software-download/windows11'
                 }
             }
         } else {
@@ -189,7 +188,7 @@ if ($isServer) {
     $securityProfile = Get-AzureSecurityProfile
     if ($null -eq $securityProfile) {
         $checklist += "[Failed] Unable to retrieve Azure metadata. Ensure the script is running on an Azure VM with access to instance metadata."
-        $checklist += "IMDS Errors and debugging: https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service?tabs=windows#errors-and-debugging"
+        $checklist += "IMDS Errors and debugging: https://learn.microsoft.com/azure/virtual-machines/instance-metadata-service?tabs=windows#errors-and-debugging"
     } else {
         $trustedLaunchEnabled = $securityProfile.securityType -eq 'TrustedLaunch'
         $secureBootEnabledBool = [System.Convert]::ToBoolean($securityProfile.secureBootEnabled)
