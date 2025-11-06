@@ -10,7 +10,7 @@ Write-Host "codes that may require an In-Place Upgrade (IPU) or repair." -Foregr
 Write-Host "It counts occurrences of each error code and provides a" -ForegroundColor Cyan
 Write-Host "summary at the end. If any errors are found, a remediation" -ForegroundColor Cyan
 Write-Host "link to Microsoft documentation is displayed." -ForegroundColor Cyan
-Write-Host "Reference: https://learn.microsoft.com/en-us/azure/virtual-machines/windows-in-place-upgrade" -ForegroundColor Cyan
+Write-Host "Reference: https://learn.microsoft.com/azure/virtual-machines/windows-in-place-upgrade" -ForegroundColor Cyan
 Write-Host "------------------------------------------------------------`n" -ForegroundColor Cyan
 
 # Calculate the date X days from now
