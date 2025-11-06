@@ -1,4 +1,3 @@
-
 # Azure VM - Windows Ghosted NIC Check Removal Script
 
 This PowerShell script is used to detect and remove 'ghosted nic' inside of the VM. A VM that has one ore more could experienced issues with connect to the VM or Windows Update could fail.  This script detects ghosted (disconnected) which are network interface cards (NICs) that are not valid.
@@ -10,7 +9,8 @@ This PowerShell script is used to detect and remove 'ghosted nic' inside of the 
 
 ## Prerequisites
 
-- PowerShell 5.1 or later (earlier versions may not support `-NoProxy`).
+- PowerShell 5.1 or later
+- Must be executed within an Azure VM
 
 ## Usage
 
@@ -22,7 +22,14 @@ Run the script in PowerShell **within an Azure VM**:
 
 ```powershell
 Set-ExecutionPolicy Bypass -Force
-.\Windows_GhostedNIC_Removal_time.ps1
+.\Windows_GhostedNIC_Removal.ps1
 ```
 
+## Liability
+As described in the [MIT license](..\..\..\LICENSE.txt), these scripts are provided as-is with no warranty or liability associated with their use.
+
+## Provide Feedback
+We value your input. If you encounter problems with the scripts or ideas on how they can be improved please file an issue in the [Issues](https://github.com/Azure/azure-support-scripts/issues) section of the project.
+
+## Known Issues
 
