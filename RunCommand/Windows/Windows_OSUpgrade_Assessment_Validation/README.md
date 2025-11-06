@@ -66,7 +66,7 @@ This PowerShell script is designed to assess the readiness of a Windows machine 
 2. Run the script:
 
    ```powershell
-   .\WindowsUpgradeAssessmentValidation.ps1
+   .\Windows_OSUpgrade_Assessment_Validation.ps1
    ```
 
 3. Review the output for upgrade recommendations and any potential blockers.
@@ -102,7 +102,7 @@ Windows Version: Windows 10 Pro
 [Passed] Physical Memory (Total: 8 GB)
 [Failed] VM Generation: Gen2 required for upgrade
 [Failed] Unable to retrieve Azure metadata. Ensure the script is running on an Azure VM with access to instance metadata.
-IMDS Errors and debugging: https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service?tabs=windows#errors-and-debugging
+IMDS Errors and debugging: https://learn.microsoft.com/azure/virtual-machines/instance-metadata-service?tabs=windows#errors-and-debugging
 
 FAILED: The VM is running Windows 10 Gen1. Upgrade to Windows 11 is only supported for Gen2 VMs
 
