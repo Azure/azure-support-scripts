@@ -99,7 +99,7 @@ if ($errorCount -gt 0) {
     foreach ($code in $errorSummary.Keys) {
         Write-Host "$code : $($errorSummary[$code]) occurrences" -ForegroundColor Yellow
     }
-    Write-Host "`nFor remediation guidance, visit: https://learn.microsoft.com/en-us/azure/virtual-machines/windows-in-place-upgrade" -ForegroundColor Green
+    Write-Host "`nFor remediation guidance, visit: https://learn.microsoft.com/azure/virtual-machines/windows-in-place-upgrade" -ForegroundColor Green
 } else {
     Write-Host "No matching errors found in the scanned logs." -ForegroundColor Gray
 }
