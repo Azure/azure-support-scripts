@@ -8,12 +8,6 @@
     - Summary at the end
 #>
 
-[CmdletBinding()]
-param(
-    # Where to write the log; default: C:\WindowsUpdateReset_<timestamp>.log
-    [string]$LogPath = "C:\WindowsUpdateReset_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss')
-)
-
 # ---- Safety checks -----------------------------------------------------------
 function Assert-Admin {
     $isAdmin = ([Security.Principal.WindowsPrincipal] `
@@ -96,15 +90,6 @@ function Rename-WithTimestamp {
         Write-Err "Failed to rename $Path : $($_.Exception.Message)"
         $Summary.RenameFailed.Add($Path)
     }
-}
-
-# ---- Start transcript ---------------------------------------------------------
-try {
-    Start-Transcript -Path $LogPath -Append | Out-Null
-    Write-Ok "Logging to: $LogPath"
-} catch {
-    Write-Err "Could not start transcript. $_"
-    # Continue without transcript
 }
 
 # ---- Main --------------------------------------------------------------------
