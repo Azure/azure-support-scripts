@@ -190,6 +190,6 @@ Write-Host "  dism /online /get-packages /format:table" -ForegroundColor White
 Write-Host "  Get-HotFix" -ForegroundColor White
 
 # ---- Add Public URL ----------------------------------------------------------
-Write-Host "`nFor more details, see: https://learn.microsoft.com/en-us/troubleshoot/windows-server/installing-updates-features-roles/fix-windows-update-errors" -ForegroundColor Cyan
+Write-Host "`nFor more details, see: https://learn.microsoft.com/troubleshoot/windows-server/installing-updates-features-roles/fix-windows-update-errors" -ForegroundColor Cyan
 
 # ---- Cleanup transcript ------------------------------------------------------
