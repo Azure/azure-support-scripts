@@ -5,7 +5,7 @@
     - Renames: %SystemRoot%\SoftwareDistribution, %SystemRoot%\System32\catroot2 (timestamped)
     - Re-registers core update-related DLLs (skips any not present)
     - Restarts services
-    - Logs all actions + prints a summary at the end
+    - Summary at the end
 #>
 
 [CmdletBinding()]
