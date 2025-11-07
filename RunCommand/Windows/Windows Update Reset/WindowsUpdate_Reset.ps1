@@ -143,7 +143,6 @@ Write-Host "Restarting services..." -ForegroundColor Yellow
 
 # ---- Summary -----------------------------------------------------------------
 Write-Host "`n==================== SUMMARY ====================" -ForegroundColor Magenta
-Write-Host ("Log file                : {0}" -f $Summary.LogPath)
 Write-Host ("Services stopped        : {0}" -f ($Summary.Services.Stopped -join ', '))
 if ($Summary.Services.AlreadyStop.Count -gt 0) {
     Write-Host ("Already stopped         : {0}" -f ($Summary.Services.AlreadyStop -join ', '))
