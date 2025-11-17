@@ -128,7 +128,6 @@ Write-Host "`r`nEstimated cleanup time guidance:" -ForegroundColor Cyan
 Write-Host " - ~30 mins for ~600 ghosted NICs" -ForegroundColor Yellow
 Write-Host " - ~60+ mins for >1000 ghosted NICs`r`n" -ForegroundColor Yellow
 
-Write-Host "Script completed successfully." -ForegroundColor Cyan
-
 Write-Host "`r`nGhosted NIC Removal script on GitHub:`r`nhttps://aka.ms/AzVmGhostedNicCleanup" -ForegroundColor Cyan
-Write-Host "`r`nAdditional Information:`r`nhttps://aka.ms/AzVmGhostedNicDetect" -ForegroundColor Cyan
+Write-Host "`r`nAdditional Information: https://aka.ms/AzVmGhostedNicDetect" -ForegroundColor Cyan
+Write-Host "`r`nScript completed successfully." -ForegroundColor Cyan

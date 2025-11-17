@@ -173,5 +173,5 @@ Write-Host "`nOptional: To check update history, run:" -ForegroundColor Magenta
 Write-Host "  dism /online /get-packages /format:table" -ForegroundColor White
 Write-Host "  Get-HotFix" -ForegroundColor White
 
-# ---- Add Public URL ----------------------------------------------------------
-Write-Host "`nFor more details, see: https://aka.ms/AzVmWUAServicingStackReset" -ForegroundColor Cyan
+Write-Host "`r`nAdditional Information: https://aka.ms/AzVmWUAServicingStackReset" -ForegroundColor Cyan
+Write-Host "`r`nScript completed successfully." -ForegroundColor Cyan

@@ -128,5 +128,6 @@ if ($errorCount -gt 0) {
 } else {
     Write-Host "No matching errors found in the scanned logs." -ForegroundColor Gray
 }
-# ---- Add Public URL ----------------------------------------------------------
-Write-Host "`nFor more details, see: https://aka.ms/AzVmIPUValidation" -ForegroundColor Cyan
+
+Write-Host "`r`nAdditional Information: https://aka.ms/AzVmIPUValidation" -ForegroundColor Cyan
+Write-Host "`r`nScript completed successfully." -ForegroundColor Cyan

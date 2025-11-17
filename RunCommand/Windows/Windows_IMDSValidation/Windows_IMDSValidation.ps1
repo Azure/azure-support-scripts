@@ -100,3 +100,7 @@ try {
     Write-Host "For more information, visit: https://aka.ms/AzVmIMDSValidation" -ForegroundColor Cyan
     Write-Host "https://learn.microsoft.com/azure/virtual-machines/instance-metadata-service" -ForegroundColor Yellow
 }
+
+
+Write-Host "`r`nAdditional Information: https://aka.ms/AzVmIMDSValidation" -ForegroundColor Cyan
+Write-Host "`r`nScript completed successfully." -ForegroundColor Cyan

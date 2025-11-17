@@ -30,10 +30,17 @@ Disclaimer
     PS> .\Windows_GhostedNIC_Removal_time.ps1
 #>
 
-If (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Error "This script must be run as Administrator."
-    exit 1
+function Assert-Admin {
+    $isAdmin = ([Security.Principal.WindowsPrincipal] `
+        [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+    if (-not $isAdmin) {
+        Write-Host "Please run this script as Administrator." -ForegroundColor Red
+        exit 1
+    }
 }
+Assert-Admin
 
 Write-Host "Collecting all current network adapter PnPDeviceIDs..."
 $AllAdaptersPnPIDs = (Get-NetAdapter).PnpDeviceID
@@ -193,7 +200,7 @@ If ($FoundGhostNICs -gt 0) {
     }
 }
 
+
+Write-Host "`r`nAdditional Information: https://aka.ms/AzVmGhostedNicCleanup" -ForegroundColor Cyan
 Write-Host "`r`nScript completed successfully." -ForegroundColor Cyan
-Write-Host "Script completed successfully." -ForegroundColor Cyan
-Write-Host "`r`nAdditional Information:`r`nhttps://aka.ms/AzVmGhostedNicCleanup" -ForegroundColor Cyan
 

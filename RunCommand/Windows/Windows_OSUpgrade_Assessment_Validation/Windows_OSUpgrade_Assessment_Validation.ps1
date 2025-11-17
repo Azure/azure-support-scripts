@@ -106,7 +106,8 @@ if ($isServer) {
                 $messages += ""
                 $messages += "The VM is running $windowsProductName. The supported upgrade options are: $($serverUpgradeMatrix[$serverVersion])."
                 $messages += ""
-                $messages += "Please refer to the official documentation for more details: https://learn.microsoft.com/en-us/azure/virtual-machines/windows-in-place-upgrade"
+                $messages += "Please refer to the official documentation for more details:"
+                $messages += "               https://learn.microsoft.com/en-us/azure/virtual-machines/windows-in-place-upgrade"
                 break
             }
         }
@@ -228,3 +229,6 @@ if ($isServer) {
 # Output checklist first, then messages
 $checklist | ForEach-Object { Write-Output $_ }
 $messages | ForEach-Object { Write-Output $_ }
+
+Write-Host "`r`nAdditional Information: https://aka.ms/AzVmOSUpgradeAssessment" -ForegroundColor Cyan
+Write-Host "`r`nScript completed successfully." -ForegroundColor Cyan
