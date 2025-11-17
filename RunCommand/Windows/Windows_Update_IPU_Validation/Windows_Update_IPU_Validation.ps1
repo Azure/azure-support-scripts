@@ -10,8 +10,33 @@ Write-Host "codes that may require an In-Place Upgrade (IPU) or repair." -Foregr
 Write-Host "It counts occurrences of each error code and provides a" -ForegroundColor Cyan
 Write-Host "summary at the end. If any errors are found, a remediation" -ForegroundColor Cyan
 Write-Host "link to Microsoft documentation is displayed." -ForegroundColor Cyan
-Write-Host "Reference: https://learn.microsoft.com/azure/virtual-machines/windows-in-place-upgrade" -ForegroundColor Cyan
+Write-Host "Reference: https://aka.ms/AzVmIPUValidation" -ForegroundColor Cyan
 Write-Host "------------------------------------------------------------`n" -ForegroundColor Cyan
+
+<#
+    Reset Windows Update Components with Logging & Summary
+    ------------------------------------------------------
+    - Stops: wuauserv, cryptsvc, bits
+    - Renames: %SystemRoot%\SoftwareDistribution, %SystemRoot%\System32\catroot2 (timestamped)
+    - Re-registers core update-related DLLs (skips any not present)
+    - Restarts services
+    - Summary at the end
+#>
+
+# ---- Safety checks -----------------------------------------------------------
+function Assert-Admin {
+    $isAdmin = ([Security.Principal.WindowsPrincipal] `
+        [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+    if (-not $isAdmin) {
+        Write-Host "Please run this script as Administrator." -ForegroundColor Red
+        exit 1
+    }
+}
+Assert-Admin
+
+# ---- Main Logic --------------------------------------------------------------
 
 # Calculate the date X days from now
 $StartDate = (Get-Date).AddDays(-$StartDays)
@@ -99,7 +124,9 @@ if ($errorCount -gt 0) {
     foreach ($code in $errorSummary.Keys) {
         Write-Host "$code : $($errorSummary[$code]) occurrences" -ForegroundColor Yellow
     }
-    Write-Host "`nFor remediation guidance, visit: https://learn.microsoft.com/azure/virtual-machines/windows-in-place-upgrade" -ForegroundColor Green
+    Write-Host "`nFor remediation guidance, visit: https://aka.ms/AzVmIPUValidation" -ForegroundColor Green
 } else {
     Write-Host "No matching errors found in the scanned logs." -ForegroundColor Gray
 }
+# ---- Add Public URL ----------------------------------------------------------
+Write-Host "`nFor more details, see: https://aka.ms/AzVmIPUValidation" -ForegroundColor Cyan

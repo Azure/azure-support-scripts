@@ -1,3 +1,26 @@
+# Display description on screen
+Write-Host "---------------------------------------------------------------------------------------------------------------------" -ForegroundColor Cyan
+Write-Host "This script is used to verify the attestation signature provided by the Azure Instance Metadata Service (IMDS)." -ForegroundColor Cyan
+Write-Host "It helps ensure that the certificate used in the attestation is valid and trusted by attempting to build a certificate chain." -ForegroundColor Cyan
+Write-Host "This can be useful in verifying the integrity and authenticity of an Azure VM's identity." -ForegroundColor Cyan
+Write-Host "Reference: https://aka.ms/AzVmIMDSValidation" -ForegroundColor Cyan
+Write-Host "---------------------------------------------------------------------------------------------------------------------`n" -ForegroundColor Cyan
+
+# ---- Safety checks -----------------------------------------------------------
+function Assert-Admin {
+    $isAdmin = ([Security.Principal.WindowsPrincipal] `
+        [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+    if (-not $isAdmin) {
+        Write-Host "Please run this script as Administrator." -ForegroundColor Red
+        exit 1
+    }
+}
+Assert-Admin
+
+# ---- Main Logic --------------------------------------------------------------
+
 try {
     # Get the attested document from IMDS
     $attestedDoc = Invoke-RestMethod -Headers @{"Metadata"="true"} -Method GET -Uri http://169.254.169.254/metadata/attested/document?api-version=2018-10-01
@@ -74,5 +97,6 @@ try {
 } catch {
     Write-Host "Unable to connect to the metadata server: $($_.Exception.Message)" -ForegroundColor Red
     Write-Host "Please refer to the following link for details about IMDS endpoint connection:" -ForegroundColor Yellow
+    Write-Host "For more information, visit: https://aka.ms/AzVmIMDSValidation" -ForegroundColor Cyan
     Write-Host "https://learn.microsoft.com/azure/virtual-machines/instance-metadata-service" -ForegroundColor Yellow
 }

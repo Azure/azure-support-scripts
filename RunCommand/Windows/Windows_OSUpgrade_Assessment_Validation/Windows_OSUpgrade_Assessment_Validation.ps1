@@ -2,6 +2,20 @@
 # Last Updated: 2025-08-07
 # Description: Checks Windows version, server upgrade paths, and Azure VM security features for upgrade readiness.
 
+
+# ---- Safety checks -----------------------------------------------------------
+function Assert-Admin {
+    $isAdmin = ([Security.Principal.WindowsPrincipal] `
+        [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+    if (-not $isAdmin) {
+        Write-Host "Please run this script as Administrator." -ForegroundColor Red
+        exit 1
+    }
+}
+Assert-Admin
+
 # --- Helper Functions ---
 function Get-AzureSecurityProfile {
     try {

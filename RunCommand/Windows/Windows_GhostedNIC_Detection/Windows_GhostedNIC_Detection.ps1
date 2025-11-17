@@ -33,11 +33,18 @@ Disclaimer:
     PS> .\Windows_GhostedNIC_Detection.ps1
 #>
 
-# Ensure script runs with administrator privileges
-If (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Error "This script must be run as Administrator."
-    exit 1
+# ---- Safety checks -----------------------------------------------------------
+function Assert-Admin {
+    $isAdmin = ([Security.Principal.WindowsPrincipal] `
+        [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+    if (-not $isAdmin) {
+        Write-Host "Please run this script as Administrator." -ForegroundColor Red
+        exit 1
+    }
 }
+Assert-Admin
 
 Write-Host "`r`nInitializing NIC scan..." -ForegroundColor Cyan
 Write-Host "NOTE: Cleanup may take time depending on the number of ghosted NICs detected."
@@ -123,4 +130,5 @@ Write-Host " - ~60+ mins for >1000 ghosted NICs`r`n" -ForegroundColor Yellow
 
 Write-Host "Script completed successfully." -ForegroundColor Cyan
 
-Write-Host "`r`nGhosted NIC Removal script on GitHub:`r`nhttps://github.com/Azure/azure-support-scripts/tree/master/RunCommand/Windows/Windows_GhostedNIC_Detection" -ForegroundColor Cyan
+Write-Host "`r`nGhosted NIC Removal script on GitHub:`r`nhttps://aka.ms/AzVmGhostedNicCleanup" -ForegroundColor Cyan
+Write-Host "`r`nAdditional Information:`r`nhttps://aka.ms/AzVmGhostedNicDetect" -ForegroundColor Cyan

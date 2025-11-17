@@ -107,6 +107,8 @@ try {
 
 } catch {
     Write-Host "Unable to connect to the metadata server: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host "Please refer to the following link for details about IMDS endpoint connection:" -ForegroundColor Yellow
-    Write-Host "https://learn.microsoft.com/azure/virtual-machines/instance-metadata-service" -ForegroundColor Yellow
+    Write-Host "Please refer to the following link for details about validating the IMDS endpoint connection: https://aka.ms/AzVmIMDSValidation" -ForegroundColor Yellow
+    Write-Host "https://aka.ms/AzVmIMDSValidation" -ForegroundColor Yellow
 }
+# ---- Add Public URL ----------------------------------------------------------
+Write-Host "`nFor more details, see: https://aka.ms/AzVmWinActivationValidationTool" -ForegroundColor Cyan

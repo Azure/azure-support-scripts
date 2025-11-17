@@ -194,3 +194,6 @@ If ($FoundGhostNICs -gt 0) {
 }
 
 Write-Host "`r`nScript completed successfully." -ForegroundColor Cyan
+Write-Host "Script completed successfully." -ForegroundColor Cyan
+Write-Host "`r`nAdditional Information:`r`nhttps://aka.ms/AzVmGhostedNicCleanup" -ForegroundColor Cyan
+
