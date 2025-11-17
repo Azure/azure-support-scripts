@@ -2,6 +2,20 @@
 # Last Updated: 2025-08-07
 # Description: Checks Windows version, server upgrade paths, and Azure VM security features for upgrade readiness.
 
+
+# ---- Safety checks -----------------------------------------------------------
+function Assert-Admin {
+    $isAdmin = ([Security.Principal.WindowsPrincipal] `
+        [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+    if (-not $isAdmin) {
+        Write-Host "Please run this script as Administrator." -ForegroundColor Red
+        exit 1
+    }
+}
+Assert-Admin
+
 # --- Helper Functions ---
 function Get-AzureSecurityProfile {
     try {
@@ -92,7 +106,8 @@ if ($isServer) {
                 $messages += ""
                 $messages += "The VM is running $windowsProductName. The supported upgrade options are: $($serverUpgradeMatrix[$serverVersion])."
                 $messages += ""
-                $messages += "Please refer to the official documentation for more details: https://learn.microsoft.com/en-us/azure/virtual-machines/windows-in-place-upgrade"
+                $messages += "Please refer to the official documentation for more details:"
+                $messages += "               https://learn.microsoft.com/en-us/azure/virtual-machines/windows-in-place-upgrade"
                 break
             }
         }
@@ -214,3 +229,6 @@ if ($isServer) {
 # Output checklist first, then messages
 $checklist | ForEach-Object { Write-Output $_ }
 $messages | ForEach-Object { Write-Output $_ }
+
+Write-Host "`r`nAdditional Information: https://aka.ms/AzVmOSUpgradeAssessment" -ForegroundColor Cyan
+Write-Host "`r`nScript completed successfully." -ForegroundColor Cyan
