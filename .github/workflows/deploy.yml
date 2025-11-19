@@ -46,8 +46,9 @@ jobs:
         cp styles.css _site/
         cp liblzma-streaming-worker.js _site/
         # Copy built WASM files
-        cp liblzma-wasm/dist-streaming/liblzma-xz-streaming.js _site/
-        cp liblzma-wasm/dist-streaming/liblzma-xz-streaming.wasm _site/
+        mkdir -p _site/liblzma-wasm/dist-streaming/
+        cp liblzma-wasm/dist-streaming/liblzma-xz-streaming.js _site/liblzma-wasm/dist-streaming/
+        cp liblzma-wasm/dist-streaming/liblzma-xz-streaming.wasm _site/liblzma-wasm/dist-streaming/
         cp README.md _site/ || true
         
     - name: List deployment files
