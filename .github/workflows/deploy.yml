@@ -33,12 +33,13 @@ jobs:
         
     - name: Build WASM module
       run: |
-        cd liblzma-wasm
+        cd rca-too/liblzma-wasm
         chmod +x build-liblzma-streaming.sh
         ./build-liblzma-streaming.sh
         
     - name: Prepare deployment directory
       run: |
+        cd rca-tool/
         mkdir -p _site
         # Copy HTML, CSS and worker JS from root
         cp index.html _site/
@@ -47,13 +48,12 @@ jobs:
         # Copy built WASM files
         cp liblzma-wasm/dist-streaming/liblzma-xz-streaming.js _site/
         cp liblzma-wasm/dist-streaming/liblzma-xz-streaming.wasm _site/
-        # Optional: Copy README if you want it accessible
         cp README.md _site/ || true
         
     - name: List deployment files
       run: |
         echo "Files to be deployed:"
-        ls -lh _site/
+        ls -lh rca-tool/_site/
         
     - name: Setup Pages
       uses: actions/configure-pages@v4
@@ -61,7 +61,7 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
       with:
-        path: '_site'
+        path: 'rca-tool/_site'
 
   deploy:
     environment:
