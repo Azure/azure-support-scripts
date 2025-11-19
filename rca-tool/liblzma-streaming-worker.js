@@ -2468,11 +2468,32 @@ LZMA_XZ_Streaming_Module({
     }
 }).then((mod) => {
     Module = mod;
+    debugLog('[XZ Streaming Worker] Module object received');
+    
+    // Verify critical properties are available
+    if (!Module.HEAPU8) {
+        console.error('[XZ Streaming Worker] HEAPU8 not available in module');
+        console.error('[XZ Streaming Worker] Available properties:', Object.keys(Module));
+        self.postMessage({ error: 'WASM module initialization incomplete: HEAPU8 missing' });
+        moduleReady = false;
+        return;
+    }
+    if (!Module._xz_stream_init || !Module._xz_stream_process) {
+        console.error('[XZ Streaming Worker] Required functions not available');
+        console.error('[XZ Streaming Worker] Available functions:', Object.keys(Module).filter(k => k.startsWith('_')));
+        self.postMessage({ error: 'WASM module initialization incomplete: functions missing' });
+        moduleReady = false;
+        return;
+    }
+    
     moduleReady = true;
     debugLog('[XZ Streaming Worker] Module initialized successfully');
+    debugLog('[XZ Streaming Worker] HEAPU8 available:', !!Module.HEAPU8);
     debugLog('[XZ Streaming Worker] Exported functions:', Object.keys(Module).filter(k => k.startsWith('_')));
+    
     // Signal to main thread that worker is ready
     self.postMessage({ ready: true });
+    debugLog('[XZ Streaming Worker] Ready message sent to main thread');
 }).catch((err) => {
     console.error('[XZ Streaming Worker] Module initialization failed:', err);
     self.postMessage({ error: 'WASM module initialization failed: ' + err.message });
@@ -3022,8 +3043,8 @@ self.onmessage = async function(e) {
     
     // Handle streaming XZ decompression (existing code)
     if (e.data.cmd === 'decompress_streaming') {
-        if (!moduleReady) {
-            self.postMessage({ error: 'Module not ready' });
+        if (!moduleReady || !Module || !Module.HEAPU8) {
+            self.postMessage({ error: 'WASM module not properly initialized' });
             return;
         }
 
