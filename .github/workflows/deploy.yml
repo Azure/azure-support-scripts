@@ -33,7 +33,7 @@ jobs:
         
     - name: Build WASM module
       run: |
-        cd rca-too/liblzma-wasm
+        cd rca-tool/liblzma-wasm
         chmod +x build-liblzma-streaming.sh
         ./build-liblzma-streaming.sh
         
