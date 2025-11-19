@@ -1,0 +1,1805 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>RCA Tool - WASM</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="dark-mode">
+    <button id="theme-toggle" aria-label="Toggle dark mode">
+        <span id="theme-icon">🌙</span>
+    </button>
+    
+    <div class="container">
+        <h1>RCA Tool</h1>
+        
+        <div class="info">
+            <h3>Instructions:</h3>
+            <ul>
+                <li>Drag and drop a <strong>.tar.gz</strong>, <strong>.tar.xz</strong>, or <strong>.txz</strong> cluster file onto the drop zone below</li>
+                <li>The application will analyze and detect if it's an <strong>hb_report</strong>, <strong>supportconfig</strong>, or <strong>sosreport</strong></li>
+                <li>View the complete file listing and diagnostic information</li>
+            </ul>
+        </div>
+        
+        <div id="loading">
+            <div>Loading WebAssembly module...</div>
+            <div id="load-progress" class="text-muted" style="margin-top: 10px; font-size: 0.9em;"></div>
+        </div>
+        
+        <!-- Simple file upload UI -->
+        <div id="drop-zone">
+            <h2>Select Cluster File</h2>
+            <p>Choose a .tar.gz or .tar.xz cluster file (hb_report, crm_report, supportconfig, or sosreport)</p>
+            <p style='font-size: 0.9em;'>Supports both gzip and XZ compression</p>
+            <input type="file" id="file-input" accept=".txz,.tar.xz,.tar.gz,.tgz">
+        </div>
+        <pre id="output"></pre>
+    </div>
+
+    <script type="module">
+        // Dark mode toggle functionality
+        const themeToggle = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-icon');
+        
+        // Initialize dark mode as default (already set in body class)
+        function updateThemeIcon() {
+            if (document.body.classList.contains('dark-mode')) {
+                themeIcon.textContent = '🌙'; // Moon icon when in dark mode
+            } else {
+                themeIcon.textContent = '☀️'; // Sun icon when in light mode
+            }
+        }
+        
+        themeToggle.addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+            updateThemeIcon();
+            // Save preference
+            localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
+        });
+        
+        // Load saved preference (optional: keep default dark if no preference)
+        const savedMode = localStorage.getItem('darkMode');
+        if (savedMode !== null && savedMode === 'false') {
+            document.body.classList.remove('dark-mode');
+            updateThemeIcon();
+        }
+        
+        // Check for debug mode via URL parameter (?debug=on or ?debug=true or ?debug=cluster)
+        const urlParams = new URLSearchParams(window.location.search);
+        const debugParam = urlParams.get('debug');
+        let DEBUG_MODE = false;
+        if (debugParam === 'on' || debugParam === 'true') {
+            DEBUG_MODE = true;
+            console.log('Debug mode enabled via URL parameter');
+        } else if (debugParam === 'cluster') {
+            DEBUG_MODE = 'cluster';
+            console.log('Cluster debug mode enabled via URL parameter');
+        }
+        
+        let lzmaLoaded = false;
+        let workerSupported = typeof Worker !== 'undefined';
+        
+        // Add file input and drag-drop handlers immediately
+        document.addEventListener('DOMContentLoaded', () => {
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+            const output = document.getElementById('output');
+            
+            // Handle file selection via input button
+            if (fileInput) {
+                fileInput.addEventListener('change', async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    
+                    output.textContent = `Processing ${file.name}...`;
+                    
+                    const reader = new FileReader();
+                    reader.onload = async (evt) => {
+                        const data = new Uint8Array(evt.target.result);
+                        await window.processLargeXZFile(data, file.name, output);
+                    };
+                    reader.readAsArrayBuffer(file);
+                });
+            }
+            
+            // Handle drag-and-drop
+            if (dropZone) {
+                // Prevent default drag behaviors
+                ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                    dropZone.addEventListener(eventName, (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }, false);
+                });
+                
+                // Highlight drop zone when dragging over it
+                ['dragenter', 'dragover'].forEach(eventName => {
+                    dropZone.addEventListener(eventName, () => {
+                        const isDark = document.body.classList.contains('dark-mode');
+                        const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--dropzone-bg-active').trim();
+                        const borderColor = getComputedStyle(document.documentElement).getPropertyValue('--dropzone-border').trim();
+                        dropZone.style.backgroundColor = bgColor;
+                        dropZone.style.borderColor = borderColor;
+                    }, false);
+                });
+                
+                ['dragleave', 'drop'].forEach(eventName => {
+                    dropZone.addEventListener(eventName, () => {
+                        dropZone.style.backgroundColor = '';
+                        dropZone.style.borderColor = '';
+                    }, false);
+                });
+                
+                // Handle dropped files
+                dropZone.addEventListener('drop', async (e) => {
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) {
+                        const file = files[0];
+                        output.textContent = `Processing ${file.name}...`;
+                        
+                        const reader = new FileReader();
+                        reader.onload = async (evt) => {
+                            const data = new Uint8Array(evt.target.result);
+                            await window.processLargeXZFile(data, file.name, output);
+                        };
+                        reader.readAsArrayBuffer(file);
+                    }
+                }, false);
+            }
+        });
+        
+        // Load LZMA library asynchronously
+        async function loadLZMA() {
+            return new Promise((resolve, reject) => {
+                if (window.LZMA) {
+                    lzmaLoaded = true;
+                    resolve();
+                    return;
+                }
+                
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/lzma@2.3.2/src/lzma-min.js';
+                script.onload = () => {
+                    lzmaLoaded = true;
+                    resolve();
+                };
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }
+
+        // Load Pako library asynchronously for gzip decompression
+        let pakoLoaded = false;
+        async function loadPako() {
+            return new Promise((resolve, reject) => {
+                if (window.pako) {
+                    pakoLoaded = true;
+                    resolve();
+                    return;
+                }
+                
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js';
+                script.onload = () => {
+                    pakoLoaded = true;
+                    resolve();
+                };
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }
+
+        // Unified wrapper for LZMA decompression supporting multiple build styles
+        function lzmaDecompress(input, onFinish, onProgress) {
+            if (!window.LZMA) {
+                throw new Error('LZMA library not loaded');
+            }
+
+            // Case 1: Classic object with decompress function
+            if (typeof window.LZMA.decompress === 'function') {
+                return window.LZMA.decompress(input, onFinish, onProgress);
+            }
+
+            // Case 2: LZMA is a constructor returning instance with decompress
+            if (typeof window.LZMA === 'function') {
+                try {
+                    const inst = new window.LZMA();
+                    if (inst && typeof inst.decompress === 'function') {
+                        return inst.decompress(input, onFinish, onProgress);
+                    }
+                } catch (e) {
+                    console.warn('LZMA instantiation attempt failed:', e);
+                }
+            }
+
+            // Case 3: Some builds expose an array-like structure (e.g., web worker helper)
+            // Try to locate a function with expected arity
+            if (typeof window.LZMA === 'object') {
+                for (const key of Object.keys(window.LZMA)) {
+                    const candidate = window.LZMA[key];
+                    if (typeof candidate === 'function' && /decompress/i.test(key)) {
+                        return candidate(input, onFinish, onProgress);
+                    }
+                }
+            }
+
+            console.error('Unable to find LZMA.decompress. LZMA keys:', Object.keys(window.LZMA || {}));
+            throw new Error('Unsupported LZMA build: decompress function not found');
+        }
+        
+        // Web Worker decompression (truly non-blocking)
+                function decompressWithWorker(compressedData) {
+            return new Promise((resolve, reject) => {
+                console.log('Creating Web Worker for XZ decompression...');
+                
+                let worker;
+                try {
+                    worker = new Worker('./xz-worker.js');
+                } catch (e) {
+                    reject(new Error(`Failed to create worker: ${e.message}`));
+                    return;
+                }
+                
+                const id = Date.now();
+                let timeout = setTimeout(() => {
+                    worker.terminate();
+                    reject(new Error('Worker decompression timeout'));
+                }, 300000); // 5 minute timeout
+                
+                worker.onmessage = function(e) {
+                    const { id: responseId, success, result, error, progress } = e.data;
+                    
+                    if (responseId !== id) return;
+                    
+                    if (progress !== undefined) {
+                        console.log(`Worker XZ decompression progress: ${progress}%`);
+                        return;
+                    }
+                    
+                    clearTimeout(timeout);
+                    worker.terminate();
+                    
+                    if (success) {
+                        console.log('Worker decompression completed successfully');
+                        resolve(new Uint8Array(result));
+                    } else {
+                        console.error('Worker decompression failed:', error);
+                        reject(new Error(error));
+                    }
+                };
+                
+                worker.onerror = function(error) {
+                    clearTimeout(timeout);
+                    worker.terminate();
+                    console.error('Worker error:', error);
+                    reject(new Error(`Worker error: ${error.message}`));
+                };
+                
+                // Send data to worker with transferable object
+                try {
+                    // Clone data so original buffer remains usable for fallbacks
+                    const clone = compressedData.slice(); // Uint8Array copy
+                    worker.postMessage({
+                        compressedData: clone.buffer,
+                        id: id
+                    }, [clone.buffer]);
+                } catch (e) {
+                    clearTimeout(timeout);
+                    worker.terminate();
+                    reject(new Error(`Failed to send data to worker: ${e.message}`));
+                }
+            });
+        }
+        
+        // Process compressed TAR files (gzip or XZ) with actual decompression
+        window.processLargeXZFile = async function(compressedData, filename, outputElement) {
+            try {
+                console.log(`Processing compressed file: ${filename} (${compressedData.length} bytes)`);
+                
+                // Detect file format by magic bytes
+                const isGzip = compressedData[0] === 0x1f && compressedData[1] === 0x8b;
+                const isXZ = compressedData[0] === 0xfd && compressedData[1] === 0x37 && 
+                            compressedData[2] === 0x7a && compressedData[3] === 0x58 && 
+                            compressedData[4] === 0x5a && compressedData[5] === 0x00;
+                
+                let compressionType = 'unknown';
+                if (isGzip) compressionType = 'gzip';
+                else if (isXZ) compressionType = 'xz';
+                
+                console.log(`Detected compression format: ${compressionType}`);
+                
+                if (!isGzip && !isXZ) {
+                    throw new Error(`Unknown compression format. Expected XZ (.tar.xz) or gzip (.tar.gz), but file signature doesn't match either format.`);
+                }
+                
+                // Update UI to show decompression in progress
+                outputElement.innerHTML = `<div class="progress-container">
+                    <p class="progress-title">Decompressing ${filename} (${compressionType})...</p>
+                    <div class="progress-bar-wrapper">
+                        <div class="progress-bar">
+                            <div id="progress-fill" class="progress-fill"></div>
+                        </div>
+                        <p id="progress-text" class="progress-text">Preparing...</p>
+                    </div>
+                </div>`;
+                
+                const progressFill = document.getElementById('progress-fill');
+                const progressText = document.getElementById('progress-text');
+                
+                let decompressedData;
+                let usedWorker = false;
+                let workerPath = 'none';
+                
+                // Handle gzip decompression
+                if (isGzip) {
+                    try {
+                        progressText.textContent = 'Loading gzip decompressor...';
+                        await loadPako();
+                        
+                        progressText.textContent = 'Decompressing gzip...';
+                        progressFill.style.width = '50%';
+                        
+                        console.log('Starting pako gzip decompression...');
+                        decompressedData = pako.ungzip(compressedData);
+                        
+                        progressFill.style.width = '100%';
+                        progressText.textContent = 'Gzip decompression complete';
+                        console.log(`Gzip decompression completed: ${decompressedData.length} bytes`);
+                        
+                        // Now parse the TAR data using the streaming worker's analysis
+                        const Worker = window.Worker;
+                        const workerSupported = typeof Worker !== 'undefined';
+                        
+                        if (!workerSupported) {
+                            throw new Error('Web Workers not supported - cannot analyze TAR archive');
+                        }
+                        
+                        progressText.textContent = 'Analyzing TAR archive...';
+                        
+                        // Use streaming worker for analysis only (no decompression)
+                        const streamingResult = await new Promise((resolve, reject) => {
+                            const w = new Worker('liblzma-streaming-worker.js');
+                            const timeout = setTimeout(() => {
+                                w.terminate();
+                                reject(new Error('TAR analysis timeout after 5 minutes'));
+                            }, 5 * 60 * 1000);
+                            
+                            let workerReady = false;
+                            
+                            w.onmessage = (e) => {
+                                console.log('[Main] Received message from worker:', e.data);
+                                const msg = e.data;
+                                
+                                // Handle worker ready signal
+                                if (msg.ready) {
+                                    workerReady = true;
+                                    console.log('[Main] TAR analysis worker ready, setting debug mode...');
+                                    
+                                    // Set debug mode in worker
+                                    w.postMessage({ command: 'set_debug', enabled: DEBUG_MODE });
+                                    
+                                    // Send TAR data for analysis
+                                    const clone = decompressedData.slice();
+                                    w.postMessage({ 
+                                        cmd: 'analyze_tar', 
+                                        tarData: clone.buffer
+                                    }, [clone.buffer]);
+                                    return;
+                                }
+                                
+                                console.log('[Main] Checking message type:', {
+                                    hasReady: 'ready' in msg,
+                                    readyValue: msg.ready,
+                                    hasProgress: 'progress' in msg,
+                                    progressValue: msg.progress,
+                                    hasError: 'error' in msg,
+                                    hasSuccess: 'success' in msg,
+                                    successValue: msg.success,
+                                    successType: typeof msg.success
+                                });
+                                
+                                // Check for success BEFORE progress to avoid early return
+                                if (msg.success) {
+                                    console.log('[Main] Worker success message received!');
+                                    clearTimeout(timeout);
+                                    w.terminate();
+                                    console.log('[Main] Worker terminated');
+                                    console.log('[Main] Analysis data:', msg.analysis);
+                                    try {
+                                        resolve({
+                                            totalDecompressed: decompressedData.length,
+                                            analysis: msg.analysis,
+                                            streaming: true
+                                        });
+                                        console.log('[Main] Promise resolved successfully');
+                                    } catch (err) {
+                                        console.error('[Main] Error resolving promise:', err);
+                                        reject(err);
+                                    }
+                                    return;
+                                }
+                                
+                                if (msg.progress !== undefined) {
+                                    progressText.textContent = `Analyzing: ${msg.progress}% (${msg.analysis ? msg.analysis.fileCount : 0} files found)`;
+                                    return;
+                                }
+                                
+                                if (msg.error) {
+                                    clearTimeout(timeout);
+                                    w.terminate();
+                                    reject(new Error(msg.error));
+                                    return;
+                                }
+                            };
+                            
+                            w.onerror = (err) => {
+                                clearTimeout(timeout);
+                                w.terminate();
+                                reject(new Error('Worker error: ' + err.message));
+                            };
+                            
+                            // Wait for worker to be ready before sending data
+                            // (Worker will send ready signal, we set debug mode, then send TAR data)
+                        });
+                        
+                        progressFill.style.width = '100%';
+                        progressText.textContent = 'Analysis complete';
+                        
+                        console.log('[Main] Gzip analysis complete, formatting results...');
+                        console.log('[Main] streamingResult:', streamingResult);
+                        console.log('[Main] streamingResult.analysis:', streamingResult.analysis);
+                        
+                        const tarAnalysis = formatStreamingAnalysis(streamingResult.analysis, compressedData.length, decompressedData.length, filename);
+                        
+                        console.log('[Main] tarAnalysis HTML length:', tarAnalysis ? tarAnalysis.length : 0);
+                        
+                        outputElement.innerHTML = `
+                            <div style="text-align: left; max-width: 800px; margin: 0 auto;">
+                                ${tarAnalysis}
+                            </div>
+                        `;
+                        
+                        console.log('[Main] UI updated successfully');
+                        
+                        return; // Success - exit function
+                        
+                    } catch (gzipErr) {
+                        console.error('Gzip decompression failed:', gzipErr);
+                        outputElement.innerHTML = `
+                            <div style="text-align: center; color: red;">
+                                <h3>Gzip Decompression Failed</h3>
+                                <p><strong>File:</strong> ${filename}</p>
+                                <p><strong>Error:</strong> ${gzipErr.message}</p>
+                            </div>
+                        `;
+                        return;
+                    }
+                }
+
+                // XZ decompression path (existing code)
+
+                // Try streaming decompression for large files (memory-efficient)
+                async function tryStreamingWorker() {
+                    return new Promise((resolve, reject) => {
+                        if (!workerSupported) return reject(new Error('Workers not supported'));
+                        try {
+                            const w = new Worker('./liblzma-streaming-worker.js');
+                            let timeout = setTimeout(() => { 
+                                w.terminate(); 
+                                reject(new Error('Streaming worker timeout')); 
+                            }, 1800000); // 30 minute timeout for very large files
+                            
+                            let lastUpdate = Date.now();
+                            let workerReady = false;
+                            let pendingWork = null;
+                            
+                            w.onmessage = (e) => {
+                                const msg = e.data;
+                                
+                                // Worker ready signal
+                                if (msg.ready) {
+                                    workerReady = true;
+                                    console.log('[Main] Streaming worker ready, setting debug mode and sending data...');
+                                    
+                                    // Set debug mode in worker
+                                    w.postMessage({ command: 'set_debug', enabled: DEBUG_MODE });
+                                    
+                                    if (pendingWork) {
+                                        w.postMessage(pendingWork);
+                                        pendingWork = null;
+                                    }
+                                    return;
+                                }
+                                
+                                // Progress updates
+                                if (msg.progress !== undefined) {
+                                    const now = Date.now();
+                                    // Throttle UI updates to every 100ms
+                                    if (now - lastUpdate > 100) {
+                                        progressFill.style.width = `${msg.progress}%`;
+                                        progressText.textContent = `Streaming: ${msg.progress}% (${(msg.decompressed / 1024 / 1024).toFixed(1)} MB decompressed, ${msg.analysis.fileCount} files found)`;
+                                        lastUpdate = now;
+                                    }
+                                    return;
+                                }
+                                
+                                // Error
+                                if (msg.error) {
+                                    clearTimeout(timeout);
+                                    w.terminate();
+                                    reject(new Error(msg.error));
+                                    return;
+                                }
+                                
+                                // Success
+                                if (msg.success) {
+                                    clearTimeout(timeout);
+                                    w.terminate();
+                                    resolve({
+                                        totalDecompressed: msg.totalDecompressed,
+                                        analysis: msg.analysis,
+                                        streaming: true
+                                    });
+                                }
+                            };
+                            
+                            w.onerror = (err) => {
+                                clearTimeout(timeout);
+                                w.terminate();
+                                reject(new Error('Worker error: ' + err.message));
+                            };
+                            
+                            // Prepare work to send (will be sent after worker signals ready)
+                            const clone = compressedData.slice();
+                            pendingWork = { 
+                                cmd: 'decompress_streaming', 
+                                compressedData: clone.buffer,
+                                chunkSize: 256 * 1024  // 256KB chunks
+                            };
+                            // Note: can't transfer buffer yet, will be done when worker is ready
+                        } catch (e) { 
+                            reject(e); 
+                        }
+                    });
+                }
+
+                // Attempt streaming decompression for all XZ files (memory-efficient)
+                // Use streaming mode for any compressed XZ file, regardless of size
+                const STREAMING_THRESHOLD = 1024; // 1KB - essentially always use streaming
+                let streamingResult = null;
+                
+                if (workerSupported && compressedData.length > STREAMING_THRESHOLD) {
+                    try {
+                        progressText.textContent = 'Starting streaming decompression (memory-efficient)...';
+                        streamingResult = await tryStreamingWorker();
+                        usedWorker = true;
+                        workerPath = 'streaming';
+                        progressFill.style.width = '100%';
+                        progressText.textContent = 'Streaming decompression complete';
+                        console.log('Streaming decompression succeeded:', streamingResult);
+                    } catch (streamErr) {
+                        console.error('Streaming worker failed:', streamErr);
+                        throw new Error(`XZ streaming decompression failed: ${streamErr.message}`);
+                    }
+                }
+
+                if (!streamingResult) {
+                    throw new Error('XZ decompression failed: file is too large for non-streaming mode. Use streaming mode (>50MB).');
+                }
+                
+                // Handle streaming results
+                let tarAnalysis, decompressedSize;
+                
+                // Streaming decompression provides analysis directly
+                console.log(`Streaming XZ decompression completed: ${streamingResult.totalDecompressed} bytes`);
+                decompressedSize = streamingResult.totalDecompressed;
+                tarAnalysis = formatStreamingAnalysis(streamingResult.analysis, compressedData.length, decompressedSize, filename);
+                
+                // Update UI with complete results - minimal wrapper
+                outputElement.innerHTML = `
+                    <div style="text-align: left; max-width: 800px; margin: 0 auto;">
+                        ${tarAnalysis}
+                    </div>
+                `;
+                
+            } catch (error) {
+                console.error('Large XZ file processing failed:', error);
+                outputElement.innerHTML = `
+                    <div style="text-align: center; color: red;">
+                        <h3>XZ Decompression Failed</h3>
+                        <p><strong>File:</strong> ${filename}</p>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                        <p><em>Please try with a smaller file or use command-line tools.</em></p>
+                    </div>
+                `;
+            }
+        };
+        
+        // Format streaming analysis results (from worker)
+        function formatStreamingAnalysis(analysis, compressedSize, decompressedSize, filename) {
+            // Debug: Log the entire analysis object to see what we're receiving
+            console.log('[DEBUG] Full analysis object:', analysis);
+            console.log('[DEBUG] osRelease:', analysis.osRelease);
+            console.log('[DEBUG] azureVMProperties:', analysis.azureVMProperties);
+            console.log('[DEBUG] hostsFile:', analysis.hostsFile);
+            console.log('[DEBUG] nodesInHosts:', analysis.nodesInHosts);
+            console.log('[DEBUG] nodesMissingFromHosts:', analysis.nodesMissingFromHosts);
+            console.log('[DEBUG] liveMigration:', analysis.liveMigration);
+            console.log('[DEBUG] kernelReboots:', analysis.kernelReboots);
+            console.log('[DEBUG] oomKiller:', analysis.oomKiller);
+            console.log('[DEBUG] rpmPackages:', analysis.rpmPackages);
+            console.log('[DEBUG] pacemakerResources:', analysis.pacemakerResources);
+            if (analysis.pacemakerResources && analysis.pacemakerResources.resources) {
+                console.log('[DEBUG] Resources detail:', analysis.pacemakerResources.resources);
+            }
+            
+            const { fileCount, directories, fileTypes, files, totalParsed, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, kernelReboots, oomKiller, corosyncConfig, rpmPackages, antivirus } = analysis;
+            
+            let html = '';
+            
+            // Azure VM Properties - Show at the top if available
+            if (azureVMProperties && azureVMProperties.found) {
+                const vm = azureVMProperties;
+                
+                html += `<details open class="success-block">`;
+                html += `<summary>Azure VM Properties</summary>`;
+                html += `<div style="margin-top: 15px;">`;
+                
+                if (vm.vmSize) {
+                    html += `<p style="margin: 5px 0;"><strong>VM Size:</strong> <code>${vm.vmSize}</code></p>`;
+                }
+                
+                if (vm.offer) {
+                    html += `<p style="margin: 5px 0;"><strong>Offer:</strong> <code>${vm.offer}</code></p>`;
+                }
+                
+                // BYOS/PAYG subsection
+                html += `<div class="subsection">`;
+                html += `<p style="margin: 0 0 5px 0; font-weight: bold;">BYOS/PAYG:</p>`;
+                if (vm.licenseType) {
+                    html += `<p style="margin: 5px 0;"><strong>License Type:</strong> <code>${vm.licenseType}</code></p>`;
+                } else {
+                    html += `<p style="margin: 5px 0;" class="text-muted"><em>License type not specified in metadata</em></p>`;
+                }
+                html += `</div>`;
+                
+                // OS Distribution subsection (if osRelease data is available)
+                if (analysis.osRelease && analysis.osRelease.found) {
+                    const os = analysis.osRelease;
+                    html += `<div class="subsection">`;
+                    html += `<p style="margin: 0 0 5px 0; font-weight: bold;">Operating System:</p>`;
+                    
+                    if (os.prettyName) {
+                        html += `<p style="margin: 5px 0;"><strong>Distribution:</strong> <code>${os.prettyName}</code></p>`;
+                    } else if (os.name) {
+                        html += `<p style="margin: 5px 0;"><strong>Distribution:</strong> <code>${os.name}</code></p>`;
+                    }
+                    
+                    if (os.versionId) {
+                        html += `<p style="margin: 5px 0;"><strong>Version:</strong> <code>${os.versionId}</code></p>`;
+                    } else if (os.majorVersion || os.minorVersion) {
+                        const versionParts = [];
+                        if (os.majorVersion) versionParts.push(os.majorVersion);
+                        if (os.minorVersion) versionParts.push(os.minorVersion);
+                        html += `<p style="margin: 5px 0;"><strong>Version:</strong> <code>${versionParts.join('.')}</code></p>`;
+                    }
+                    
+                    html += `</div>`;
+                }
+                
+                html += `</div></details>`;
+            }
+            
+            // SCC Report Information (if detected) - Collapsible
+            if (isSCCReport) {
+                const allNodesValid = clusterNodes && clusterNodes.length > 0 && 
+                                     (!hostsFile || (nodesMissingFromHosts && nodesMissingFromHosts.length === 0));
+                const statusIcon = allNodesValid ? '✓' : '✗';
+                const blockClass = allNodesValid ? 'success-block' : 'warning-block';
+                
+                html += `<details class="${blockClass}">`;
+                html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
+                html += `<span style="font-size: 20px; margin-right: 8px;">${statusIcon}</span>`;
+                html += `Cluster nodes in ha.txt and hosts file`;
+                html += ` <span style="font-size: 12px; font-weight: normal;">(${sccReportName || 'Detected'})`;
+                if (hostsFile && clusterNodes && clusterNodes.length > 0) {
+                    html += ` - ${nodesInHosts ? nodesInHosts.length : 0}/${clusterNodes.length} nodes in hosts`;
+                }
+                html += `</span>`;
+                html += `</summary>`;
+                html += `<div style="margin-top: 15px;">`;
+                
+                if (clusterNodes && clusterNodes.length > 0) {
+                    html += '<p><strong>Cluster Nodes:</strong></p>';
+                    html += '<ul style="margin: 10px 0;">';
+                    clusterNodes.forEach(node => {
+                        const inHosts = nodesInHosts && nodesInHosts.includes(node);
+                        const badge = inHosts 
+                            ? '<span class="badge badge-success">✓ in hosts</span>'
+                            : (hostsFile ? '<span class="badge badge-danger">✗ not in hosts</span>' : '');
+                        
+                        html += `<li><code>${node}</code>${badge}`;
+                        
+                        // Show IP mapping if available
+                        if (nodeToIpMap && nodeToIpMap[node]) {
+                            html += `<br><span class="text-muted" style="font-size: 11px; margin-left: 5px;">IP: ${nodeToIpMap[node]}</span>`;
+                        }
+                        
+                        html += `</li>`;
+                    });
+                    html += '</ul>';
+                    
+                    // Show validation summary if hosts file was found
+                    if (hostsFile) {
+                        html += '<div class="subsection">';
+                        html += '<p style="margin: 0;"><strong>Hosts File Validation:</strong></p>';
+                        if (nodesInHosts && nodesInHosts.length > 0) {
+                            html += `<p style="margin: 5px 0;" class="text-success">✓ ${nodesInHosts.length} node(s) found in /etc/hosts</p>`;
+                        }
+                        if (nodesMissingFromHosts && nodesMissingFromHosts.length > 0) {
+                            html += `<p style="margin: 5px 0;" class="text-danger">✗ ${nodesMissingFromHosts.length} node(s) missing from /etc/hosts</p>`;
+                            html += '<p style="margin: 5px 0; font-size: 13px;"><strong>Missing nodes:</strong></p>';
+                            html += '<ul style="margin: 5px 0 5px 20px;">';
+                            nodesMissingFromHosts.forEach(node => {
+                                html += `<li style="font-size: 13px;"><code>${node}</code></li>`;
+                            });
+                            html += '</ul>';
+                        }
+                        html += `<p style="margin: 5px 0; font-size: 12px;" class="text-muted">Total hostnames in /etc/hosts: ${hostsFile.allHostnames.length}</p>`;
+                        html += '</div>';
+                    }
+                } else {
+                    html += '<p><em>No cluster nodes detected (ha.txt not found or no HA configuration)</em></p>';
+                }
+                html += `</div></details>`;
+            }
+            
+            // Corosync Configuration - Collapsible
+            if (corosyncConfig && corosyncConfig.found) {
+                const hasWarnings = corosyncConfig.warnings && corosyncConfig.warnings.length > 0;
+                const statusIcon = hasWarnings ? '✗' : '✓';
+                const blockClass = hasWarnings ? 'danger-block' : 'success-block';
+                
+                html += `<details class="${blockClass}">`;
+                html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
+                html += `<span style="font-size: 20px; margin-right: 8px;">${statusIcon}</span>`;
+                html += `Corosync Configuration`;
+                html += ` <span style="font-size: 12px; font-weight: normal;">`;
+                if (hasWarnings) {
+                    html += `(${corosyncConfig.warnings.length} warning${corosyncConfig.warnings.length > 1 ? 's' : ''})`;
+                } else {
+                    html += `(validated)`;
+                }
+                html += `</span>`;
+                html += `</summary>`;
+                html += `<div style="margin-top: 15px;">`;
+                
+                // Show totem checks group
+                html += '<div style="margin-bottom: 20px;">';
+                html += '<p style="margin: 0 0 8px 0;"><strong>Totem checks:</strong></p>';
+                
+                if (corosyncConfig.totemToken !== null) {
+                    html += `<p style="margin: 5px 0;"><strong>token:</strong> <code>${corosyncConfig.totemToken}</code>`;
+                    if (corosyncConfig.totemToken === 30000) {
+                        html += ` <span class="text-success" style="margin-left: 5px;">✓</span>`;
+                    }
+                    html += `</p>`;
+                }
+                
+                if (corosyncConfig.totemRetransmits !== null) {
+                    html += `<p style="margin: 5px 0;"><strong>token_retransmits_before_loss_const:</strong> <code>${corosyncConfig.totemRetransmits}</code>`;
+                    if (corosyncConfig.totemRetransmits === 10) {
+                        html += ` <span class="text-success" style="margin-left: 5px;">✓</span>`;
+                    }
+                    html += `</p>`;
+                }
+                
+                if (corosyncConfig.totemJoin !== null) {
+                    html += `<p style="margin: 5px 0;"><strong>join:</strong> <code>${corosyncConfig.totemJoin}</code>`;
+                    if (corosyncConfig.totemJoin === 60) {
+                        html += ` <span class="text-success" style="margin-left: 5px;">✓</span>`;
+                    }
+                    html += `</p>`;
+                }
+                
+                if (corosyncConfig.totemConsensus !== null) {
+                    html += `<p style="margin: 5px 0;"><strong>consensus:</strong> <code>${corosyncConfig.totemConsensus}</code>`;
+                    if (corosyncConfig.totemConsensus === 36000) {
+                        html += ` <span class="text-success" style="margin-left: 5px;">✓</span>`;
+                    }
+                    html += `</p>`;
+                }
+                
+                if (corosyncConfig.totemMaxMessages !== null) {
+                    html += `<p style="margin: 5px 0;"><strong>max_messages:</strong> <code>${corosyncConfig.totemMaxMessages}</code>`;
+                    if (corosyncConfig.totemMaxMessages === 20) {
+                        html += ` <span class="text-success" style="margin-left: 5px;">✓</span>`;
+                    }
+                    html += `</p>`;
+                }
+                
+                if (corosyncConfig.totemTransport !== null) {
+                    html += `<p style="margin: 5px 0;"><strong>transport:</strong> <code>${corosyncConfig.totemTransport}</code>`;
+                    if (corosyncConfig.totemTransport === 'udpu') {
+                        html += ` <span class="text-success" style="margin-left: 5px;">✓</span>`;
+                    }
+                    html += `</p>`;
+                }
+                html += '</div>';
+                
+                // Show quorum checks group
+                html += '<div style="margin-bottom: 15px;">';
+                html += '<p style="margin: 0 0 8px 0;"><strong>Quorum checks:</strong></p>';
+                
+                if (corosyncConfig.quorumProvider !== null) {
+                    html += `<p style="margin: 5px 0;"><strong>provider:</strong> <code>${corosyncConfig.quorumProvider}</code>`;
+                    if (corosyncConfig.quorumProvider === 'corosync_votequorum') {
+                        html += ` <span class="text-success" style="margin-left: 5px;">✓</span>`;
+                    }
+                    html += `</p>`;
+                }
+                
+                if (corosyncConfig.quorumExpectedVotes !== null) {
+                    html += `<p style="margin: 5px 0;"><strong>expected_votes:</strong> <code>${corosyncConfig.quorumExpectedVotes}</code>`;
+                    if (corosyncConfig.quorumExpectedVotes === 2) {
+                        html += ` <span class="text-success" style="margin-left: 5px;">✓</span>`;
+                    }
+                    html += `</p>`;
+                }
+                
+                if (corosyncConfig.quorumTwoNode !== null) {
+                    html += `<p style="margin: 5px 0;"><strong>two_node:</strong> <code>${corosyncConfig.quorumTwoNode}</code>`;
+                    if (corosyncConfig.quorumTwoNode === 1) {
+                        html += ` <span class="text-success" style="margin-left: 5px;">✓</span>`;
+                    }
+                    html += `</p>`;
+                }
+                html += '</div>';
+                
+                // Show cluster resources if available
+                if (analysis.pacemakerResources && analysis.pacemakerResources.found) {
+                    const resources = analysis.pacemakerResources;
+                    html += '<div style="margin-top: 20px; margin-bottom: 15px;">';
+                    html += '<p style="margin: 0 0 8px 0;"><strong>Cluster Resources:</strong></p>';
+                    html += '<div class="subsection">';
+                    html += `<p style="margin: 0 0 10px 0; font-size: 13px;" class="text-muted">${resources.count} resource${resources.count > 1 ? 's' : ''} detected</p>`;
+                    html += '<ul style="margin: 0; padding-left: 20px;">';
+                    
+                    resources.resources.forEach(resource => {
+                        html += `<li style="margin: 5px 0; font-size: 13px;">`;
+                        html += `<code class="text-info" style="font-weight: bold;">${resource.name}</code>`;
+                        html += ` <span class="text-muted">- ${resource.type}`;
+                        if (resource.provider && resource.provider !== 'unknown') {
+                            html += ` (${resource.provider})`;
+                        }
+                        html += `</span>`;
+                        
+                        // Show node information if available
+                        if (resource.node) {
+                            html += `<br><span style="font-size: 11px; margin-left: 5px;" class="text-success">`;
+                            html += `▸ Active on: <strong>${resource.node}</strong>`;
+                            if (resource.status) {
+                                html += ` (${resource.status})`;
+                            }
+                            html += `</span>`;
+                        } else if (resource.status) {
+                            html += `<br><span style="font-size: 11px; margin-left: 5px;" class="text-muted">`;
+                            html += `Status: ${resource.status}`;
+                            html += `</span>`;
+                        }
+                        
+                        html += `</li>`;
+                    });
+                    
+                    html += '</ul>';
+                    html += '</div>';
+                    html += '</div>';
+                }
+                
+                // Show Failed Resource Actions if available
+                if (analysis.pacemakerResources && analysis.pacemakerResources.failedActionsCount > 0) {
+                    const failedActions = analysis.pacemakerResources.failedActions;
+                    html += '<div style="margin-top: 20px; margin-bottom: 15px;">';
+                    html += '<p style="margin: 0 0 8px 0;"><strong>Failed Resource Actions:</strong></p>';
+                    html += '<div class="warning-block">';
+                    html += `<p style="margin: 0 0 10px 0; font-size: 13px;" class="text-warning-dark">${failedActions.length} failed action${failedActions.length > 1 ? 's' : ''} detected</p>`;
+                    html += '<ul style="margin: 0; padding-left: 20px;">';
+                    
+                    failedActions.forEach(action => {
+                        html += `<li style="margin: 5px 0; font-size: 13px;">`;
+                        html += `<code class="text-danger" style="font-weight: bold;">${action.action}</code>`;
+                        html += ` <span class="text-muted">on</span> `;
+                        html += `<strong>${action.node}</strong>`;
+                        html += `<br><span style="font-size: 11px; margin-left: 5px;" class="text-warning-dark">`;
+                        html += `State: ${action.state} | Return Code: ${action.returnCode}`;
+                        if (action.details) {
+                            html += `<br>${action.details}`;
+                        }
+                        html += `</span>`;
+                        html += `</li>`;
+                    });
+                    
+                    html += '</ul>';
+                    html += '</div>';
+                    html += '</div>';
+                }
+                
+                // Show fencing/STONITH configuration if available
+                if (analysis.fencingConfig && analysis.fencingConfig.found) {
+                    const fencing = analysis.fencingConfig;
+                    const stonithStatus = fencing.stonithEnabled === true ? 'Enabled' : 
+                                        fencing.stonithEnabled === false ? 'Disabled' : 'Unknown';
+                    const stonithColorClass = fencing.stonithEnabled === true ? 'text-success' : 'text-danger';
+                    
+                    html += '<div style="margin-top: 20px; margin-bottom: 15px;">';
+                    html += '<p style="margin: 0 0 8px 0;"><strong>Fencing Configuration:</strong></p>';
+                    html += '<div class="subsection">';
+                    
+                    html += `<p style="margin: 0 0 10px 0; font-size: 13px;">`;
+                    html += `<strong>STONITH Status:</strong> `;
+                    html += `<span class="${stonithColorClass}" style="font-weight: bold;">${stonithStatus}</span>`;
+                    html += `</p>`;
+                    
+                    // Show STONITH source information
+                    if (fencing.stonithSourceFile && fencing.stonithSourcePattern) {
+                        html += `<p style="margin: 0 0 10px 0; font-size: 12px;" class="text-muted">`;
+                        html += `<em>Source: ${fencing.stonithSourceFile}</em><br>`;
+                        html += `<code style="font-size: 11px;">${fencing.stonithSourcePattern}</code>`;
+                        html += `</p>`;
+                    }
+                    
+                    if (fencing.count > 0) {
+                        html += `<p style="margin: 0 0 8px 0; font-size: 13px;" class="text-muted">${fencing.count} fencing device${fencing.count > 1 ? 's' : ''} configured</p>`;
+                        html += '<ul style="margin: 0; padding-left: 20px;">';
+                        
+                        fencing.fencingDevices.forEach(device => {
+                            html += `<li style="margin: 5px 0; font-size: 13px;">`;
+                            html += `<code class="text-info" style="font-weight: bold;">${device.name}</code>`;
+                            html += ` <span class="text-muted">- ${device.agent}`;
+                            if (device.cloud) {
+                                html += ` <span class="badge badge-info">${device.cloud}</span>`;
+                            }
+                            html += `</span>`;
+                            html += `<br><span style="font-size: 11px;" class="text-muted">Type: ${device.type}</span>`;
+                            if (device.sourceFile) {
+                                html += `<br><span style="font-size: 11px;" class="text-muted">Source: ${device.sourceFile}`;
+                                if (device.sourceLine) {
+                                    html += ` (line ${device.sourceLine})`;
+                                }
+                                html += `</span>`;
+                                if (device.pattern) {
+                                    html += `<br><code style="font-size: 10px;">${device.pattern}</code>`;
+                                }
+                            }
+                            html += `</li>`;
+                        });
+                        
+                        html += '</ul>';
+                    } else {
+                        html += `<p style="margin: 0; font-size: 13px;" class="text-danger"><em>No fencing devices detected</em></p>`;
+                    }
+                    
+                    html += '</div>';
+                    html += '</div>';
+                }
+                
+                // Show cluster events (resource migrations and fencing events) if available
+                if (analysis.clusterEvents && analysis.clusterEvents.found) {
+                    const events = analysis.clusterEvents;
+                    
+                    // Resource Migrations section
+                    if (events.resourceMigrations && events.resourceMigrations.length > 0) {
+                        html += '<div style="margin-top: 20px; margin-bottom: 15px;">';
+                        html += '<p style="margin: 0 0 8px 0;"><strong>Resource Migration Events:</strong></p>';
+                        html += '<div class="subsection">';
+                        html += `<p style="margin: 0 0 10px 0; font-size: 13px;" class="text-muted">${events.resourceMigrations.length} event${events.resourceMigrations.length > 1 ? 's' : ''} detected</p>`;
+                        html += '<div style="max-height: 300px; overflow-y: auto;">';
+                        html += '<ul style="margin: 0; padding-left: 20px;">';
+                        
+                        // Sort by timestamp (most recent first)
+                        const sortedMigrations = [...events.resourceMigrations].sort((a, b) => {
+                            if (!a.timestamp) return 1;
+                            if (!b.timestamp) return -1;
+                            return b.timestamp.localeCompare(a.timestamp);
+                        });
+                        
+                        sortedMigrations.forEach(migration => {
+                            html += `<li class="event-item">`;
+                            
+                            // Timestamp
+                            if (migration.timestamp) {
+                                html += `<div class="event-timestamp text-info">${migration.timestamp}</div>`;
+                            }
+                            
+                            // Resource name and action
+                            html += `<div style="margin-bottom: 3px;">`;
+                            html += `<code class="text-info" style="font-weight: bold;">${migration.resource}</code>`;
+                            
+                            // Action-specific display
+                            if (migration.action === 'migration' && migration.fromNode && migration.toNode) {
+                                html += ` <span class="text-muted">migrated</span>`;
+                                html += `<br><span style="font-size: 12px;" class="text-muted">`;
+                                html += `▸ From: <strong class="text-danger">${migration.fromNode}</strong>`;
+                                html += ` → To: <strong class="text-success">${migration.toNode}</strong>`;
+                                html += `</span>`;
+                            } else if (migration.action === 'start' && migration.toNode) {
+                                html += ` <span class="text-success" style="font-weight: bold;">started</span>`;
+                                html += ` <span class="text-muted">on</span> <strong class="text-success">${migration.toNode}</strong>`;
+                            } else if (migration.action === 'stop' && migration.fromNode) {
+                                html += ` <span class="text-danger" style="font-weight: bold;">stopped</span>`;
+                                html += ` <span class="text-muted">on</span> <strong class="text-danger">${migration.fromNode}</strong>`;
+                            }
+                            html += `</div>`;
+                            
+                            // Source file info
+                            html += `<div class="event-details">`;
+                            html += `Source: ${migration.sourceFile}`;
+                            if (migration.sourceLine) {
+                                html += ` (line ${migration.sourceLine})`;
+                            }
+                            html += `</div>`;
+                            
+                            // Log excerpt
+                            if (migration.logLine) {
+                                html += `<div class="event-raw-line">`;
+                                html += migration.logLine.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                html += `</div>`;
+                            }
+                            
+                            html += `</li>`;
+                        });
+                        
+                        html += '</ul>';
+                        html += '</div>';
+                        html += '</div>';
+                        html += '</div>';
+                    }
+                    
+                    // Fencing Events section
+                    if (events.fencingEvents && events.fencingEvents.length > 0) {
+                        html += '<div style="margin-top: 20px; margin-bottom: 15px;">';
+                        html += '<p style="margin: 0 0 8px 0;"><strong>Fencing Events:</strong></p>';
+                        html += '<div class="subsection-danger">';
+                        html += `<p style="margin: 0 0 10px 0; font-size: 13px;" class="text-muted">${events.fencingEvents.length} event${events.fencingEvents.length > 1 ? 's' : ''} detected</p>`;
+                        html += '<div style="max-height: 300px; overflow-y: auto;">';
+                        html += '<ul style="margin: 0; padding-left: 20px;">';
+                        
+                        // Sort by timestamp (most recent first)
+                        const sortedFencing = [...events.fencingEvents].sort((a, b) => {
+                            if (!a.timestamp) return 1;
+                            if (!b.timestamp) return -1;
+                            return b.timestamp.localeCompare(a.timestamp);
+                        });
+                        
+                        sortedFencing.forEach(fenceEvent => {
+                            // Determine color class based on status
+                            let statusColorClass = 'text-muted';
+                            if (fenceEvent.status === 'success') {
+                                statusColorClass = 'text-success';
+                            } else if (fenceEvent.status === 'failed') {
+                                statusColorClass = 'text-danger';
+                            } else if (fenceEvent.status === 'requested' || fenceEvent.status === 'pending') {
+                                statusColorClass = 'text-warning';
+                            } else if (fenceEvent.status === 'in_progress') {
+                                statusColorClass = 'text-info';
+                            }
+                            
+                            html += `<li class="event-item">`;
+                            
+                            // Timestamp
+                            if (fenceEvent.timestamp) {
+                                html += `<div class="event-timestamp text-danger">${fenceEvent.timestamp}</div>`;
+                            }
+                            
+                            // Target node and status
+                            html += `<div style="margin-bottom: 3px;">`;
+                            html += `<span class="${statusColorClass}" style="font-weight: bold;">${fenceEvent.status.toUpperCase()}</span>`;
+                            html += ` <span class="text-muted">- Fencing of node</span>`;
+                            html += ` <strong class="text-danger">${fenceEvent.targetNode}</strong>`;
+                            
+                            // Action type
+                            if (fenceEvent.action && fenceEvent.action !== 'fence') {
+                                html += ` <span class="text-muted">(${fenceEvent.action})</span>`;
+                            }
+                            
+                            // Agent info
+                            if (fenceEvent.agent) {
+                                html += `<br><span style="font-size: 11px;" class="text-muted">Agent: <code>${fenceEvent.agent}</code></span>`;
+                            }
+                            html += `</div>`;
+                            
+                            // Source file info
+                            html += `<div class="event-details">`;
+                            html += `Source: ${fenceEvent.sourceFile}`;
+                            if (fenceEvent.sourceLine) {
+                                html += ` (line ${fenceEvent.sourceLine})`;
+                            }
+                            html += `</div>`;
+                            
+                            // Log excerpt
+                            if (fenceEvent.logLine) {
+                                html += `<div class="event-raw-line">`;
+                                html += fenceEvent.logLine.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                html += `</div>`;
+                            }
+                            
+                            html += `</li>`;
+                        });
+                        
+                        html += '</ul>';
+                        html += '</div>';
+                        html += '</div>';
+                        html += '</div>';
+                    }
+                }
+                
+                // Show warnings
+                if (hasWarnings) {
+                    html += '<div class="warning-box">';
+                    corosyncConfig.warnings.forEach(warning => {
+                        html += `<div style="margin-bottom: 10px;">`;
+                        html += `<p style="margin: 0;" class="text-danger"><strong>⚠ ${warning.message}</strong></p>`;
+                        html += `<p style="margin: 5px 0 0 0; font-size: 13px;">`;
+                        html += `Expected: <code>${warning.expected}</code>, `;
+                        html += `Found: <code>${warning.actual}</code>`;
+                        html += `</p>`;
+                        if (warning.documentationUrl) {
+                            html += `<p style="margin: 5px 0 0 0; font-size: 13px;">`;
+                            html += `<a href="${warning.documentationUrl}" target="_blank" class="text-info">📘 View Documentation</a>`;
+                            html += `</p>`;
+                        }
+                        html += `</div>`;
+                    });
+                    html += '</div>';
+                }
+                
+                // Show corosync runtime status if available
+                if (analysis.corosyncStatus && analysis.corosyncStatus.found) {
+                    const status = analysis.corosyncStatus;
+                    const isValid = status.valid;
+                    
+                    if (!isValid) {
+                        // Error case
+                        html += `<div class="warning-box">`;
+                        html += `<p style="margin: 0 0 8px 0; font-weight: bold;"><strong>Runtime Status:</strong></p>`;
+                        html += `<p style="margin: 0;" class="text-danger"><strong>⚠ Corosync Configuration Error</strong></p>`;
+                        html += `<p style="margin: 10px 0 0 0; font-size: 13px;"><code class="text-danger" style="padding: 4px 8px;">${status.error}</code></p>`;
+                        html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-danger-dark">The corosync service cannot initialize its configuration. This indicates a critical configuration issue that prevents cluster communication.</p>`;
+                        html += `</div>`;
+                    } else {
+                        // Success case
+                        html += `<div class="subsection">`;
+                        html += `<p style="margin: 0 0 10px 0; font-weight: bold;"><strong>Runtime Status:</strong></p>`;
+                        html += `<p style="margin: 5px 0;"><strong>Transport:</strong> <span class="text-success">✓ Working</span></p>`;
+                        
+                        if (status.localNodeId) {
+                            html += `<p style="margin: 5px 0;"><strong>Local Node ID:</strong> <code>${status.localNodeId}</code></p>`;
+                        }
+                        
+                        if (status.transport) {
+                            html += `<p style="margin: 5px 0;"><strong>Transport Type:</strong> <code>${status.transport}</code></p>`;
+                        }
+                        
+                        if (status.nodes && status.nodes.length > 0) {
+                            html += `<p style="margin: 15px 0 5px 0;"><strong>Node Status:</strong></p>`;
+                            html += `<ul style="margin: 5px 0; padding-left: 20px;">`;
+                            status.nodes.forEach(node => {
+                                const isLocal = node.status === 'localhost';
+                                const isConnected = node.status === 'connected';
+                                const nodeStatusColorClass = isLocal ? 'text-info-dark' : (isConnected ? 'text-success' : 'text-danger');
+                                const nodeStatusIcon = isLocal ? '🏠' : (isConnected ? '✓' : '✗');
+                                
+                                html += `<li style="margin: 5px 0; font-size: 13px;">`;
+                                html += `<strong>Node ${node.nodeId}:</strong> `;
+                                html += `<span class="${nodeStatusColorClass}">${nodeStatusIcon} ${node.status}</span>`;
+                                html += `</li>`;
+                            });
+                            html += `</ul>`;
+                        }
+                        
+                        html += `</div>`;
+                    }
+                }
+                
+                html += `</div></details>`;
+            }
+            
+            // Live Migration Events - Collapsible
+            // Live Migration - Always show
+            const hasLiveMigration = liveMigration && liveMigration.count > 0;
+            const liveMigrationCount = liveMigration ? liveMigration.count : 0;
+            html += `<details class="info-block">`;
+            html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
+            html += hasLiveMigration ? `Live Migration Events Detected` : `Live Migration Events`;
+            html += ` <span style="font-size: 12px; font-weight: normal;">(${liveMigrationCount} event${liveMigrationCount !== 1 ? 's' : ''} found)</span>`;
+            html += `</summary>`;
+            html += `<div style="margin-top: 15px;">`;
+            
+            if (hasLiveMigration) {
+                html += '<p><strong>Detected Hyper-V Live Migration events:</strong></p>';
+                html += '<ul style="margin: 10px 0; max-height: 300px; overflow-y: auto;">';
+                
+                // Sort events by timestamp (most recent first)
+                const sortedEvents = [...liveMigration.events].sort((a, b) => {
+                    // Simple string comparison works for ISO and most timestamp formats
+                    return b.timestamp.localeCompare(a.timestamp);
+                });
+                
+                sortedEvents.forEach(event => {
+                    html += `<li style="margin-bottom: 8px;">`;
+                    html += `<strong class="text-info">${event.timestamp}</strong>`;
+                    html += `<br><span style="font-size: 12px;" class="text-muted">Source: ${event.sourceFile}</span>`;
+                    html += `</li>`;
+                });
+                
+                html += '</ul>';
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection pattern: hv_utils: Heartbeat IC → hv_balloon → hv_netvsc within 100 lines</em></p>`;
+            } else {
+                html += `<p class="text-muted"><em>No live migration events were detected in the analyzed files.</em></p>`;
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection pattern: hv_utils: Heartbeat IC → hv_balloon → hv_netvsc within 100 lines</em></p>`;
+            }
+            html += `</div></details>`;
+            
+            // Kernel Reboots - Always show
+            const hasKernelReboots = kernelReboots && kernelReboots.count > 0;
+            const kernelRebootsCount = kernelReboots ? kernelReboots.count : 0;
+            const rebootBlockClass = hasKernelReboots ? 'warning-block' : 'info-block';
+            html += `<details class="${rebootBlockClass}">`;
+            html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
+            html += hasKernelReboots ? `Kernel Reboots Detected` : `Kernel Reboots`;
+            html += ` <span style="font-size: 12px; font-weight: normal;">(${kernelRebootsCount} event${kernelRebootsCount !== 1 ? 's' : ''} found)</span>`;
+            html += `</summary>`;
+            html += `<div style="margin-top: 15px;">`;
+            
+            if (hasKernelReboots) {
+                html += '<p><strong>Detected system reboots:</strong></p>';
+                html += '<ul style="margin: 10px 0; max-height: 300px; overflow-y: auto;">';
+                
+                // Sort events by timestamp (most recent first)
+                const sortedReboots = [...kernelReboots.events].sort((a, b) => {
+                    return b.timestamp.localeCompare(a.timestamp);
+                });
+                
+                sortedReboots.forEach(event => {
+                    html += `<li style="margin-bottom: 10px;">`;
+                    html += `<strong class="text-warning-dark">${event.timestamp}</strong>`;
+                    if (event.kernelVersion) {
+                        html += ` <span class="badge badge-warning">Kernel ${event.kernelVersion}</span>`;
+                    }
+                    html += `<br><span style="font-size: 11px;" class="text-muted">Type: ${event.type.replace(/_/g, ' ')}</span>`;
+                    html += `<br><span style="font-size: 11px;" class="text-muted">Source: ${event.sourceFile}</span>`;
+                    html += `</li>`;
+                });
+                
+                html += '</ul>';
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection patterns: "Linux version" (kernel boot), systemd shutdown/reboot messages, kernel reboot messages</em></p>`;
+            } else {
+                html += `<p class="text-muted"><em>No kernel reboot events were detected in the analyzed files.</em></p>`;
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection patterns: "Linux version" (kernel boot), systemd shutdown/reboot messages, kernel reboot messages</em></p>`;
+            }
+            html += `</div></details>`;
+            
+            // OOM Killer Events - Always show
+            const hasOOMKiller = oomKiller && oomKiller.count > 0;
+            const oomKillerCount = oomKiller ? oomKiller.count : 0;
+            const oomBlockClass = hasOOMKiller ? 'danger-block' : 'info-block';
+            html += `<details class="${oomBlockClass}">`;
+            html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
+            html += `Out of Memory (OOM) Killer Events`;
+            html += ` <span style="font-size: 12px; font-weight: normal;">(${oomKillerCount} event${oomKillerCount !== 1 ? 's' : ''} found)</span>`;
+            html += `</summary>`;
+            html += `<div style="margin-top: 15px;">`;
+            
+            if (hasOOMKiller) {
+                html += '<p><strong>Detected OOM killer events:</strong></p>';
+                html += '<ul style="margin: 10px 0; max-height: 300px; overflow-y: auto;">';
+                
+                // Sort events by timestamp (most recent first)
+                const sortedOOM = [...oomKiller.events].sort((a, b) => {
+                    return b.timestamp.localeCompare(a.timestamp);
+                });
+                
+                sortedOOM.forEach(event => {
+                    html += `<li style="margin-bottom: 12px; padding: 8px; border-radius: 4px;" class="bg-code">`;
+                    html += `<strong class="text-danger">${event.timestamp}</strong>`;
+                    
+                    // Display based on event type
+                    if (event.type === 'oom_kill' && event.processName) {
+                        html += `<br><span style="font-weight: bold;">Killed Process: ${event.processName}</span>`;
+                        html += ` <span class="badge badge-danger">PID ${event.pid}</span>`;
+                        if (event.score) {
+                            html += ` <span style="font-size: 11px;" class="text-muted">Score: ${event.score}</span>`;
+                        }
+                        if (event.totalVM) {
+                            html += `<br><span style="font-size: 11px;" class="text-muted">Memory: ${event.totalVM}</span>`;
+                        }
+                    } else if (event.type === 'oom_invoked' && event.invokedBy) {
+                        html += `<br><span style="font-weight: bold;">OOM Invoked by: ${event.invokedBy}</span>`;
+                        if (event.order) {
+                            html += ` <span style="font-size: 11px;" class="text-muted">(order=${event.order})</span>`;
+                        }
+                    } else if (event.type === 'oom_reaper') {
+                        html += `<br><span style="font-weight: bold;">OOM Reaper</span>`;
+                        if (event.pid) {
+                            html += ` <span style="font-size: 11px;" class="text-muted">PID ${event.pid}</span>`;
+                        }
+                    } else if (event.type === 'alloc_failure') {
+                        html += `<br><span style="font-weight: bold;">Memory Allocation Failure</span>`;
+                        if (event.processName) {
+                            html += ` <span style="font-size: 11px;" class="text-muted">Process: ${event.processName}</span>`;
+                        }
+                    }
+                    
+                    html += `<br><span style="font-size: 11px;" class="text-muted">Type: ${event.type.replace(/_/g, ' ')}</span>`;
+                    if (event.lineNumber) {
+                        html += ` <span style="font-size: 11px;" class="text-muted">| Line: ${event.lineNumber}</span>`;
+                    }
+                    html += `<br><span style="font-size: 11px;" class="text-muted">Source: ${event.sourceFile}</span>`;
+                    if (event.rawLine) {
+                        html += `<br><span class="event-raw-line">${event.rawLine}</span>`;
+                    }
+                    html += `</li>`;
+                });
+                
+                html += '</ul>';
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection patterns: "Out of memory: Kill process", "oom-killer: invoked", "oom_reaper:", "Cannot allocate memory"</em></p>`;
+                html += `<p style="margin-top: 5px; font-size: 12px;" class="text-danger"><strong>⚠ Warning:</strong> OOM events indicate severe memory pressure. Review memory configuration and process memory usage.</p>`;
+            } else {
+                html += `<p class="text-muted"><em>No OOM (Out of Memory) killer events were detected in the analyzed files.</em></p>`;
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection patterns: "Out of memory: Kill process", "oom-killer: invoked", "oom_reaper:", "Cannot allocate memory"</em></p>`;
+            }
+            html += `</div></details>`;
+            
+            // RPM Packages Validation - Collapsible
+            if (analysis.rpmPackages && analysis.rpmPackages.found) {
+                const rpmPackages = analysis.rpmPackages;
+                const hasErrors = rpmPackages.warnings && rpmPackages.warnings.length > 0;
+                const allValid = !hasErrors;
+                
+                const blockClass = allValid ? 'success-block' : 'danger-block';
+                const icon = allValid ? '✓' : '⚠';
+                const statusText = allValid ? 'All Azure Packages Valid' : 'Azure Package Issues Detected';
+                
+                html += `<details class="${blockClass}">`;
+                html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
+                html += `${icon} ${statusText}`;
+                html += ` <span style="font-size: 12px; font-weight: normal;">(${Object.keys(rpmPackages.packages).length} packages found)</span>`;
+                html += `</summary>`;
+                html += `<div style="margin-top: 15px;">`;
+                
+                // Show found packages
+                html += '<p><strong>Azure Packages:</strong></p>';
+                html += '<div class="subsection" style="margin-bottom: 15px;">';
+                html += '<ul style="margin: 0; list-style: none; padding: 0;">';
+                
+                const requiredPackageNames = [
+                    'fence-agents',
+                    'python3-azure-mgmt-compute',
+                    'python3-azure-identity',
+                    'cloud-netconfig-azure',
+                    'resource-agents',
+                    'python3-azure-core'
+                ];
+                
+                requiredPackageNames.forEach(pkgName => {
+                    const version = rpmPackages.packages[pkgName];
+                    if (version) {
+                        html += `<li style="padding: 5px 0; border-bottom: 1px solid var(--code-border);">`;
+                        html += `<code class="text-info">${pkgName}</code>: `;
+                        html += `<span class="text-success">${version}</span>`;
+                        html += `</li>`;
+                    } else {
+                        html += `<li style="padding: 5px 0; border-bottom: 1px solid var(--code-border);">`;
+                        html += `<code class="text-info">${pkgName}</code>: `;
+                        html += `<span class="text-danger">not found</span>`;
+                        html += `</li>`;
+                    }
+                });
+                
+                html += '</ul>';
+                html += '</div>';
+                
+                // Show errors/warnings
+                if (hasErrors) {
+                    html += '<div class="warning-box">';
+                    rpmPackages.warnings.forEach(warning => {
+                        html += `<div style="margin-bottom: 10px;">`;
+                        html += `<p style="margin: 0;" class="text-danger"><strong>⚠ ${warning.message}</strong></p>`;
+                        html += `<p style="margin: 5px 0 0 0; font-size: 13px;">`;
+                        html += `Expected: <code>${warning.expected}</code>, `;
+                        html += `Found: <code>${warning.actual}</code>`;
+                        html += `</p>`;
+                        if (warning.documentationUrl) {
+                            html += `<p style="margin: 5px 0 0 0; font-size: 13px;">`;
+                            html += `<a href="${warning.documentationUrl}" target="_blank" class="text-info">📘 View Documentation</a>`;
+                            html += `</p>`;
+                        }
+                        html += `</div>`;
+                    });
+                    html += '</div>';
+                }
+                
+                html += `</div></details>`;
+            }
+            
+            // Antivirus and Security Software - Always show
+            const antivirusData = analysis.antivirus || { anyDetected: false, allHaveExceptions: false };
+            const hasAntivirus = antivirusData.anyDetected;
+            const hasExceptions = antivirusData.allHaveExceptions && hasAntivirus;
+            
+            // Determine block class based on state
+            let avBlockClass, avStatusText;
+            if (!hasAntivirus) {
+                // Not detected - info
+                avBlockClass = 'info-block';
+                avStatusText = 'Antivirus and Security Software';
+            } else if (hasExceptions) {
+                // Detected with exceptions - success
+                avBlockClass = 'success-block';
+                avStatusText = '✓ Antivirus Detected with SAP Exceptions';
+            } else {
+                // Detected without exceptions - danger
+                avBlockClass = 'danger-block';
+                avStatusText = '⚠ Antivirus Detected - SAP Exceptions Required';
+            }
+            
+            html += `<details class="${avBlockClass}" style="max-width: 100%; box-sizing: border-box; overflow: hidden;">`;
+            html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
+            html += avStatusText;
+            html += `</summary>`;
+            html += `<div style="margin-top: 15px; max-width: 100%; box-sizing: border-box; overflow-wrap: break-word;">`;
+            
+            if (!hasAntivirus) {
+                html += `<p class="text-muted"><em>No antivirus or security software was detected in the analyzed files.</em></p>`;
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Checked for: CrowdStrike Falcon Sensor, Microsoft Defender for Endpoint (mdatp)</em></p>`;
+            } else {
+                // Falcon Sensor
+                if (antivirusData.falconSensor && antivirusData.falconSensor.detected) {
+                    const falcon = antivirusData.falconSensor;
+                    const hasExcept = falcon.sapExceptions;
+                    const statusColorClass = hasExcept ? 'text-success' : 'text-danger';
+                    const statusBorderColor = hasExcept ? 'var(--success-color)' : 'var(--danger-color)';
+                    const statusIcon = hasExcept ? '✓' : '✗';
+                    
+                    html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderClass};">`;
+                    html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} CrowdStrike Falcon Sensor</p>`;
+                    if (falcon.version) {
+                        html += `<p style="margin: 5px 0; font-size: 13px;">Version: <code>${falcon.version}</code></p>`;
+                    }
+                    if (falcon.runningProcess) {
+                        html += `<p style="margin: 5px 0; font-size: 13px;"><span class="badge badge-success">Running</span></p>`;
+                    }
+                    
+                    if (hasExcept && falcon.exclusionPaths && falcon.exclusionPaths.length > 0) {
+                        html += `<p style="margin: 10px 0 5px 0; font-size: 13px; font-weight: bold;" class="text-success">SAP Exclusions Configured:</p>`;
+                        html += `<ul style="margin: 5px 0; font-size: 12px;">`;
+                        falcon.exclusionPaths.forEach(path => {
+                            html += `<li><code>${path}</code></li>`;
+                        });
+                        html += `</ul>`;
+                    } else {
+                        html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-danger"><strong>⚠ SAP exclusions not detected.</strong></p>`;
+                        html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
+                        html += `Required SAP paths should be excluded: /usr/sap, /hana/shared, /hana/data, /hana/log, /sapmnt`;
+                        html += `</p>`;
+                        html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
+                        html += `<a href="https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-suse-pacemaker" target="_blank" class="text-info">📘 View SAP on Azure Documentation</a>`;
+                        html += `</p>`;
+                    }
+                    
+                    if (falcon.message) {
+                        html += `<p style="margin: 10px 0 0 0; font-size: 12px;" class="text-muted"><em>${falcon.message}</em></p>`;
+                    }
+                    html += `</div>`;
+                }
+                
+                // Microsoft Defender
+                if (antivirusData.msDefender && antivirusData.msDefender.detected) {
+                    const defender = antivirusData.msDefender;
+                    const hasExcept = defender.sapExceptions;
+                    const statusColorClass = hasExcept ? 'text-success' : 'text-warning-dark';
+                    const statusBorderColor = hasExcept ? 'var(--success-color)' : 'var(--warning-color)';
+                    const statusIcon = hasExcept ? '✓' : '⚠';
+                    
+                    html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor}; max-width: 100%; overflow-wrap: break-word; word-break: break-word; white-space: normal;">`;
+                    html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} Microsoft Defender for Endpoint</p>`;
+                    if (defender.version) {
+                        html += `<p style="margin: 5px 0; font-size: 13px;">Version: <code>${defender.version}</code></p>`;
+                    }
+                    if (defender.runningProcess) {
+                        html += `<p style="margin: 5px 0; font-size: 13px;"><span class="badge badge-success">Running</span></p>`;
+                    }
+                    
+                    if (hasExcept && defender.exclusionPaths && defender.exclusionPaths.length > 0) {
+                        html += `<p style="margin: 10px 0 5px 0; font-size: 13px; font-weight: bold;" class="text-success">SAP Exclusions Configured:</p>`;
+                        html += `<ul style="margin: 5px 0; font-size: 12px;">`;
+                        defender.exclusionPaths.forEach(path => {
+                            html += `<li><code>${path}</code></li>`;
+                        });
+                        html += `</ul>`;
+                    } else {
+                        html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-warning-dark"><strong>⚠ SAP exclusions need verification</strong></p>`;
+                        html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
+                        html += `The exclusion configuration file was not found in the analyzed files. Please verify that the following SAP paths are excluded: /usr/sap, /hana/shared, /hana/data, /hana/log, /sapmnt`;
+                        html += `</p>`;
+                        html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
+                        html += `<a href="https://learn.microsoft.com/en-us/defender-endpoint/linux-exclusions" target="_blank" class="text-info">📘 Configure Defender Exclusions on Linux</a>`;
+                        html += `</p>`;
+                    }
+                    
+                    if (defender.message) {
+                        html += `<p style="margin: 10px 0 0 0; font-size: 12px;" class="text-muted"><em>${defender.message}</em></p>`;
+                    }
+                    html += `</div>`;
+                }
+                
+                // General SAP antivirus guidance
+                html += `<div class="warning-block">`;
+                html += `<p style="margin: 0; font-size: 13px;" class="text-warning-dark"><strong>Important:</strong> When running SAP on Azure, antivirus software must exclude SAP directories to prevent performance issues and potential data corruption.</p>`;
+                html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-warning-dark">Recommended exclusions: /usr/sap, /hana/shared, /hana/data, /hana/log, /sapmnt, /usr/sap/*/SYS/exe</p>`;
+                html += `</div>`;
+            }
+            
+            html += `</div></details>`;
+            
+            // Archive Contents - Collapsible
+            html += `<details class="content-details">`;
+            html += `<summary>`;
+            html += `Archive Contents <span style="font-size: 12px; font-weight: normal;">(${fileCount} files, ${directories.length} directories)</span>`;
+            html += `</summary>`;
+            html += `<div style="margin-top: 15px;">`;
+            
+            // Show success message and filename
+            if (filename) {
+                html += `<div class="success-block" style="padding: 10px;">`;
+                html += `<p style="margin: 0;"><strong>✓ File Processed Successfully</strong></p>`;
+                html += `<p style="margin: 5px 0 0 0; font-size: 13px;">${filename}</p>`;
+                html += `</div>`;
+            }
+            
+            // Show compressed/decompressed sizes if available
+            if (compressedSize && decompressedSize) {
+                html += `<p><strong>Archive Size:</strong> ${(compressedSize / 1024 / 1024).toFixed(1)} MB (compressed) → ${(decompressedSize / 1024 / 1024).toFixed(1)} MB (decompressed)</p>`;
+            }
+            
+            html += `<p><strong>Total Entries Parsed:</strong> ${totalParsed}</p>`;
+            
+            // File types
+            if (Object.keys(fileTypes).length > 0) {
+                html += '<p><strong>File Types:</strong></p><ul style="columns: 2;">';
+                Object.entries(fileTypes)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 10)
+                    .forEach(([type, count]) => {
+                        html += `<li>${type}: ${count}</li>`;
+                    });
+                html += '</ul>';
+            }
+            
+            // Sample files - nested collapsible
+            if (files && files.length > 0) {
+                html += `<details style="margin-top: 10px;">`;
+                html += `<summary style="cursor: pointer; user-select: none;"><strong>Sample Files (${files.length} total)</strong></summary>`;
+                html += '<ul style="max-height: 200px; overflow-y: auto; margin-top: 10px;">';
+                files.slice(0, 50).forEach(file => {
+                    html += `<li style="font-size: 13px;"><code>${file.name}</code> <span class="text-muted">(${(file.size / 1024).toFixed(1)} KB)</span></li>`;
+                });
+                if (files.length > 50) {
+                    html += `<li><em>...and ${files.length - 50} more files</em></li>`;
+                }
+                html += '</ul>';
+                html += `</details>`;
+            }
+            
+            html += `</div></details>`;
+            
+            return html;
+        }
+        
+        // Analyze TAR content from decompressed data
+        async function analyzeTarContent(tarData) {
+            return new Promise((resolve) => {
+                try {
+                    console.log('Analyzing TAR content:', tarData.length, 'bytes');
+                    
+                    let fileCount = 0;
+                    let directories = [];
+                    let importantFiles = [];
+                    let fileTypes = {};
+                    let offset = 0;
+                    
+                    // Parse TAR format
+                    while (offset < tarData.length - 512) {
+                        // Check if we've hit the end (two zero blocks)
+                        if (tarData[offset] === 0 && tarData[offset + 1] === 0) {
+                            let allZero = true;
+                            for (let i = 0; i < 512; i++) {
+                                if (tarData[offset + i] !== 0) {
+                                    allZero = false;
+                                    break;
+                                }
+                            }
+                            if (allZero) break;
+                        }
+                        
+                        // Read TAR header
+                        let filename = '';
+                        for (let i = 0; i < 100; i++) {
+                            if (tarData[offset + i] === 0) break;
+                            filename += String.fromCharCode(tarData[offset + i]);
+                        }
+                        
+                        if (filename.length === 0) {
+                            offset += 512;
+                            continue;
+                        }
+                        
+                        // Get file size (octal format in TAR)
+                        let sizeStr = '';
+                        for (let i = 124; i < 136; i++) {
+                            if (tarData[offset + i] === 0 || tarData[offset + i] === 32) break;
+                            sizeStr += String.fromCharCode(tarData[offset + i]);
+                        }
+                        
+                        const size = parseInt(sizeStr, 8) || 0;
+                        const fileType = tarData[offset + 156];
+                        
+                        fileCount++;
+                        
+                        // Categorize files
+                        if (filename.endsWith('/')) {
+                            directories.push(filename);
+                        } else {
+                            // Check for important files
+                            const basename = filename.split('/').pop().toLowerCase();
+                            if (basename.includes('config') || basename.includes('log') || 
+                                basename.includes('version') || basename.includes('status') ||
+                                basename === 'messages' || basename === 'syslog' ||
+                                basename.includes('cluster') || basename.includes('pacemaker')) {
+                                importantFiles.push({ name: filename, size: size });
+                            }
+                            
+                            // Track file types
+                            const ext = basename.split('.').pop();
+                            fileTypes[ext] = (fileTypes[ext] || 0) + 1;
+                        }
+                        
+                        // Move to next file (header + data, rounded up to 512 bytes)
+                        const dataSize = Math.ceil(size / 512) * 512;
+                        offset += 512 + dataSize;
+                        
+                        // Prevent infinite loops
+                        if (fileCount > 10000) break;
+                    }
+                    
+                    // Generate analysis report
+                    const report = `
+                        <p><strong>Total Files:</strong> ${fileCount}</p>
+                        <p><strong>Directories:</strong> ${directories.length}</p>
+                        
+                        <h5>Key Directories (first 10):</h5>
+                        <ul style="font-family: monospace; font-size: 0.9em;">
+                            ${directories.slice(0, 10).map(dir => `<li>${dir}</li>`).join('')}
+                        </ul>
+                        
+                        <h5>Important Files (first 15):</h5>
+                        <ul style="font-family: monospace; font-size: 0.9em;">
+                            ${importantFiles.slice(0, 15).map(file => 
+                                `<li>${file.name} <span class="text-muted">(${(file.size / 1024).toFixed(1)} KB)</span></li>`
+                            ).join('')}
+                        </ul>
+                        
+                        <h5>File Types:</h5>
+                        <ul style="font-size: 0.9em;">
+                            ${Object.entries(fileTypes).slice(0, 10).map(([ext, count]) => 
+                                `<li><strong>.${ext}:</strong> ${count} files</li>`
+                            ).join('')}
+                        </ul>
+                    `;
+                    
+                    resolve(report);
+                    
+                } catch (error) {
+                    console.error('TAR analysis error:', error);
+                    resolve(`<p style="color: red;">TAR analysis failed: ${error.message}</p>`);
+                }
+            });
+        }
+        
+        // JavaScript XZ decompression function that WASM can call
+        window.decompressXZ = function(compressedData) {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    console.log(`JavaScript XZ decompression starting with ${compressedData.length} bytes`);
+                    
+        // For now, skip Web Worker and use chunked main thread processing
+        console.log('Using chunked main thread decompression with yielding...');                                    // Load LZMA if needed
+                if (!lzmaLoaded || !window.LZMA) {
+                    console.log('LZMA library not ready, loading...');
+                    await loadLZMA();
+                }
+                
+                // Convert Uint8Array to Array if needed
+                const inputArray = Array.from(compressedData);
+                
+                // Use chunked processing with setTimeout yields
+                console.log('Starting chunked XZ decompression...');
+                
+                // Process in chunks to avoid blocking
+                function processChunked() {
+                    return new Promise((resolveChunk, rejectChunk) => {
+                        // Use setTimeout to yield control
+                        setTimeout(() => {
+                            try {
+                                lzmaDecompress(inputArray, function(result, error) {
+                                    if (error) {
+                                        console.error('Chunked XZ decompression failed:', error);
+                                        rejectChunk(new Error(`Chunked XZ decompression failed: ${error}`));
+                                    } else {
+                                        console.log(`Chunked XZ decompression completed: ${result.length} bytes`);
+                                        const uint8Result = new Uint8Array(result);
+                                        resolveChunk(uint8Result);
+                                    }
+                                });
+                            } catch (e) {
+                                rejectChunk(e);
+                            }
+                        }, 50); // 50ms delay to yield control
+                    });
+                }
+                
+                // Execute chunked processing
+                const result = await processChunked();
+                resolve(result);
+                    
+                } catch (e) {
+                    console.error('JavaScript XZ decompression exception:', e);
+                    reject(e);
+                }
+            });
+        };
+        
+        async function run() {
+            const progressDiv = document.getElementById('load-progress');
+            
+            try {
+                // Load compression libraries
+                progressDiv.textContent = 'Loading compression libraries...';
+                
+                let loadingRemoved = false;
+                const removeLoadingOnce = () => {
+                    if (!loadingRemoved) {
+                        const loadingElement = document.getElementById('loading');
+                        if (loadingElement) {
+                            loadingElement.remove();
+                            loadingRemoved = true;
+                        }
+                    }
+                };
+                
+                loadLZMA().then(() => {
+                    console.log('LZMA library loaded successfully');
+                    removeLoadingOnce();
+                }).catch(error => {
+                    console.error('Failed to load LZMA library:', error);
+                    progressDiv.textContent = 'Warning: Compression library failed to load. XZ files may not work.';
+                    removeLoadingOnce();
+                });
+                
+                // Don't wait for LZMA - remove loading message after WASM attempt
+                setTimeout(() => {
+                    removeLoadingOnce();
+                }, 500);
+                
+            } catch (error) {
+                console.error('Failed to initialize:', error);
+                progressDiv.textContent = 'Failed to initialize. Please check the console for errors.';
+            }
+        }
+        
+        // Start immediately but don't block the load event
+        run();
+    </script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+name: Build and Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Emscripten
+      uses: mymindstorm/setup-emsdk@v14
+      with:
+        version: 'latest'
+        
+    - name: Verify Emscripten installation
+      run: |
+        emcc --version
+        
+    - name: Build WASM module
+      run: |
+        cd liblzma-wasm
+        chmod +x build-liblzma-streaming.sh
+        ./build-liblzma-streaming.sh
+        
+    - name: Prepare deployment directory
+      run: |
+        mkdir -p _site
+        # Copy HTML, CSS and worker JS from root
+        cp index.html _site/
+        cp styles.css _site/
+        cp liblzma-streaming-worker.js _site/
+        # Copy built WASM files
+        cp liblzma-wasm/dist-streaming/liblzma-xz-streaming.js _site/
+        cp liblzma-wasm/dist-streaming/liblzma-xz-streaming.wasm _site/
+        # Optional: Copy README if you want it accessible
+        cp README.md _site/ || true
+        
+    - name: List deployment files
+      run: |
+        echo "Files to be deployed:"
+        ls -lh _site/
+        
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+      
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: '_site'
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
