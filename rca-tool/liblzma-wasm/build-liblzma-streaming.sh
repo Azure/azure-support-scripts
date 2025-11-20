@@ -48,7 +48,7 @@ emcc \
     -s MODULARIZE=1 \
     -s EXPORT_NAME='LZMA_XZ_Streaming_Module' \
     -s EXPORTED_FUNCTIONS='["_malloc","_free","_xz_stream_init","_xz_stream_process","_xz_stream_error","_xz_stream_free","_xz_decompress"]' \
-    -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","getValue","setValue","UTF8ToString"]' \
+    -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","getValue","setValue","UTF8ToString","HEAPU8"]' \
     -s ALLOW_MEMORY_GROWTH=1 \
     -s INITIAL_MEMORY=16MB \
     -s MAXIMUM_MEMORY=2GB \
