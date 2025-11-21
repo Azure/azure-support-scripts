@@ -52,5 +52,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: test-results
-        path: rca-tool/test-results/
+        path: rca-tool/tests/test-results/
         retention-days: 30
