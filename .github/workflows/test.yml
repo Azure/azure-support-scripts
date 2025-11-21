@@ -1,9 +1,9 @@
 name: Run Tests
 
 on:
-  push:
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   test:
@@ -29,10 +29,16 @@ jobs:
         chmod +x build-liblzma-streaming.sh
         ./build-liblzma-streaming.sh
         
-    - name: Install dependencies
+    - name: Install dependencies, Playwright and running tests
       run: npm ci
       working-directory: rca-tool/tests
-      
+
+    - name: Building fixtures
+      run: |
+        chmod +x create-fixtures.sh
+        ./create-fixtures.sh
+      working-directory: rca-tool/tests
+ 
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps msedge
       working-directory: rca-tool/tests
