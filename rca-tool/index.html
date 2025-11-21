@@ -566,7 +566,7 @@
 
                 // Attempt streaming decompression for all XZ files (memory-efficient)
                 // Use streaming mode for any compressed XZ file, regardless of size
-                const STREAMING_THRESHOLD = 1024; // 1KB - essentially always use streaming
+                const STREAMING_THRESHOLD = 0; // always use streaming
                 let streamingResult = null;
                 
                 if (workerSupported && compressedData.length > STREAMING_THRESHOLD) {
