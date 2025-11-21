@@ -1,0 +1,16 @@
+{
+  "name": "rca-tool-tests",
+  "version": "1.0.0",
+  "description": "Tests for RCA Tool",
+  "scripts": {
+    "test": "playwright test",
+    "test:debug": "playwright test --debug",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed",
+    "serve": "http-server -p 8080"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "http-server": "^14.1.1"
+  }
+}
