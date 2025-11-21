@@ -25,26 +25,26 @@ jobs:
         
     - name: Build WASM module
       run: |
-        cd liblzma-wasm
+        cd rca-too/liblzma-wasm
         chmod +x build-liblzma-streaming.sh
         ./build-liblzma-streaming.sh
         
     - name: Install dependencies
       run: npm ci
-      working-directory: tests
+      working-directory: rca-tool/tests
       
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps msedge
-      working-directory: tests
+      working-directory: rca-tool/tests
       
     - name: Run tests
       run: npm test
-      working-directory: tests
+      working-directory: rca-tool/tests
       
     - name: Upload test results
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: test-results
-        path: test-results/
+        path: rca-tool/test-results/
         retention-days: 30
