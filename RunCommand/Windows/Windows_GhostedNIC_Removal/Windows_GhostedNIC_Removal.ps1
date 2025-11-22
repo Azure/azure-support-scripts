@@ -13,8 +13,7 @@ Disclaimer
 
 .SYNOPSIS
     Detects ghosted (disconnected) and valid network interface cards (NICs) on Windows.
-    Version: 1.0 (Modified by Copilot for enhanced messaging)
-
+    
 .DESCRIPTION
     This script scans the Windows registry for network adapters on PCI and VMBUS buses,
     identifies ghosted (disconnected) NICs, and will remove them up from the registry.
@@ -183,24 +182,8 @@ If ($FoundGhostNICs -gt 0) {
     Write-Host " - Up to 60+ minutes if over 1000 ghosted NICs are found." -ForegroundColor Yellow
     Write-Host "`r`n"
 
-    $CleanEntries = Read-Host "Should we clean ghosted NIC(s)? (Y/N)"
-    Write-Host "`r`n"
-
-    Switch($CleanEntries.ToLower()) {
-        { $_ -in "y","yes" } {
-            DeleteGhostedNICs
-        }
-        { $_ -in "n","no" } { 
-            Write-Host "No changes made."
-        }
-        default { 
-            Write-Host "Invalid answer. (Y/N)"
-            return
-        }
-    }
+    DeleteGhostedNICs
 }
-
 
 Write-Host "`r`nAdditional Information: https://aka.ms/AzVmGhostedNicCleanup" -ForegroundColor Cyan
 Write-Host "`r`nScript completed successfully." -ForegroundColor Cyan
-
