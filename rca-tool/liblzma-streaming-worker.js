@@ -73,8 +73,9 @@ const SCC_RULES = {
                 let billingModel = null;
                 let detectionMethod = null;
                 
-                const licenseTypeUpper = licenseType ? licenseType.toUpperCase() : null;
-                const billingCodeNormalized = billingCode || 'N/A';
+                // Normalize licenseType: treat empty or whitespace-only strings as not-available
+                const licenseTypeUpper = (typeof licenseType === 'string' && licenseType.trim() !== '') ? licenseType.trim().toUpperCase() : null;
+                const billingCodeNormalized = (typeof billingCode === 'string' && billingCode.trim() !== '') ? billingCode.trim() : null;
                 
                 // Rule 1: License Type takes precedence (highest confidence)
                 if (licenseTypeUpper) {
@@ -109,7 +110,8 @@ const SCC_RULES = {
                 }
                 
                 // Rule 2: Billing Code (if no license type or license type is N/A/NONE)
-                if (!billingModel || licenseTypeUpper === 'N/A' || licenseTypeUpper === 'NONE') {
+                // If we still don't have a billing model, or the licenseType is missing/empty/NONE/N/A, try billingCode
+                if (!billingModel || !licenseTypeUpper || licenseTypeUpper === 'N/A' || licenseTypeUpper === 'NONE') {
                     if (billingCode) {
                         // BYOS Billing Codes
                         if (billingCode === 'Linux_IaaS' ||
