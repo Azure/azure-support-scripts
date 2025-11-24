@@ -64,15 +64,104 @@ const SCC_RULES = {
                 // Extract properties from root
                 const vmSize = metadata.vmSize || null;
                 const offer = metadata.offer || null;
+                const publisher = metadata.publisher || null;
+                const sku = metadata.sku || null;
                 const licenseType = metadata.licenseType || null;
+                const billingCode = metadata.billingCode || null;
+                
+                // Determine PAYG vs BYOS based on official Azure rules
+                let billingModel = null;
+                let detectionMethod = null;
+                
+                const licenseTypeUpper = licenseType ? licenseType.toUpperCase() : null;
+                const billingCodeNormalized = billingCode || 'N/A';
+                
+                // Rule 1: License Type takes precedence (highest confidence)
+                if (licenseTypeUpper) {
+                    // BYOS License Types
+                    if (licenseTypeUpper === 'RHEL_BYOS' || 
+                        licenseTypeUpper === 'SLES_BYOS') {
+                        billingModel = 'BYOS';
+                        detectionMethod = `License Type: ${licenseType}`;
+                    }
+                    // PAYG License Types - RHEL
+                    else if (licenseTypeUpper === 'RHEL_BASE' ||
+                             licenseTypeUpper === 'RHEL_SAPAPPS' ||
+                             licenseTypeUpper === 'RHEL_BASESAPHA' ||
+                             licenseTypeUpper === 'RHEL_SAPHA' ||
+                             licenseTypeUpper === 'RHEL_EUS') {
+                        billingModel = 'PAYG';
+                        detectionMethod = `License Type: ${licenseType}`;
+                    }
+                    // PAYG License Types - SLES
+                    else if (licenseTypeUpper === 'SLES' ||
+                             licenseTypeUpper === 'SLES_SAP' ||
+                             licenseTypeUpper === 'SLES_STANDARD' ||
+                             licenseTypeUpper === 'SLES_HPC') {
+                        billingModel = 'PAYG';
+                        detectionMethod = `License Type: ${licenseType}`;
+                    }
+                    // PAYG License Types - Ubuntu Pro
+                    else if (licenseTypeUpper === 'UBUNTU_PRO') {
+                        billingModel = 'PAYG';
+                        detectionMethod = `License Type: ${licenseType}`;
+                    }
+                }
+                
+                // Rule 2: Billing Code (if no license type or license type is N/A/NONE)
+                if (!billingModel || licenseTypeUpper === 'N/A' || licenseTypeUpper === 'NONE') {
+                    if (billingCode) {
+                        // BYOS Billing Codes
+                        if (billingCode === 'Linux_IaaS' ||
+                            billingCode === 'Linux_IaaS_Canonical' ||
+                            billingCode === 'Linux_IaaS_Software_Store' ||
+                            billingCode === 'Linux_IaaS_Oracle' ||
+                            billingCode === 'Linux_IaaS_OpenLogic' ||
+                            billingCode === 'Linux_IaaS_Software_RedHat_Support_on_Store' ||
+                            billingCode === 'Linux_IaaS_Software_suse_sles_hpc_byos' ||
+                            billingCode === 'Linux_IaaS_Software_suse_sles_sap_byos' ||
+                            billingCode === 'Linux_IaaS_Software_SUSE_BYOS') {
+                            billingModel = 'BYOS';
+                            detectionMethod = `Billing Code: ${billingCode}`;
+                        }
+                        // PAYG Billing Codes
+                        else if (billingCode === 'Linux_IaaS_SUSE' ||
+                                 billingCode === 'Linux_IaaS_RedHat_Support' ||
+                                 billingCode === 'Linux_IaaS_Software_SLES_Basic' ||
+                                 billingCode === 'Linux_IaaS_Software_SUSE_Support' ||
+                                 billingCode === 'Linux_IaaS_Software_RedHat_Support' ||
+                                 billingCode === 'Linux_IaaS_Software_RedHat_HA' ||
+                                 billingCode === 'Linux_IaaS_Software_RedHat_SAP_HA' ||
+                                 billingCode === 'Linux_IaaS_Software_SLES_for_HPC_Priority' ||
+                                 billingCode === 'Linux_IaaS_Software_SLES_for_SAP' ||
+                                 billingCode === 'Linux_IaaS_Software_SLES_Standard' ||
+                                 billingCode === 'Linux_IaaS_Software_RedHat-SAP_BusApp') {
+                            billingModel = 'PAYG';
+                            detectionMethod = `Billing Code: ${billingCode}`;
+                        }
+                    }
+                }
+                
+                
                 debugLog('[azureVMProperties parser] VM Size:', vmSize);
+                debugLog('[azureVMProperties parser] Publisher:', publisher);
                 debugLog('[azureVMProperties parser] Offer:', offer);
+                debugLog('[azureVMProperties parser] SKU:', sku);
+                debugLog('[azureVMProperties parser] Billing Code:', billingCode);
                 debugLog('[azureVMProperties parser] License Type:', licenseType);
+                debugLog('[azureVMProperties parser] Billing Model:', billingModel);
+                debugLog('[azureVMProperties parser] Detection Method:', detectionMethod);
+                
                 return {
                     found: true,
                     vmSize: vmSize,
+                    publisher: publisher,
                     offer: offer,
-                    licenseType: licenseType
+                    sku: sku,
+                    billingCode: billingCode,
+                    licenseType: licenseType,
+                    billingModel: billingModel,
+                    detectionMethod: detectionMethod
                 };
             } catch (e) {
                 console.error('[azureVMProperties parser] Failed to parse JSON:', e);

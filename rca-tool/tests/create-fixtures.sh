@@ -35,14 +35,16 @@ cat > test-data/var/log/messages.txt << 'EOF'
 EOF
 create_fixture "test-systemd-messages"
 
-# 2. Test for Azure VM properties
+# 2. Test for Azure VM properties - BYOS via License Type
 echo ""
 echo "=== Creating test-azure-vm.tar.xz ==="
 mkdir -p test-data
 cat > test-data/instance_metadata.json << 'EOF'
 {
   "vmSize": "Standard_E4s_v3",
+  "publisher": "SUSE",
   "offer": "sles-sap-15-sp4-byos",
+  "sku": "gen2",
   "licenseType": "SLES_BYOS"
 }
 EOF
@@ -56,6 +58,94 @@ VERSION_ID="15.4"
 PRETTY_NAME="SUSE Linux Enterprise Server 15 SP4"
 EOF
 create_fixture "test-azure-vm"
+
+################################################################################
+# Test 2a: Azure VM PAYG - RHEL with License Type
+################################################################################
+echo ""
+echo "=== Creating test-azure-vm-rhel-payg.tar.xz ==="
+mkdir -p test-data
+cat > test-data/instance_metadata.json << 'EOF'
+{
+  "vmSize": "Standard_E16s_v3",
+  "publisher": "RedHat",
+  "offer": "RHEL-SAP-HA",
+  "sku": "8.2",
+  "billingCode": "Linux_IaaS_Software_RedHat_SAP_HA",
+  "licenseType": "RHEL_SAPHA"
+}
+EOF
+create_fixture "test-azure-vm-rhel-payg"
+
+################################################################################
+# Test 2b: Azure VM BYOS - RHEL with Billing Code
+################################################################################
+echo ""
+echo "=== Creating test-azure-vm-rhel-byos.tar.xz ==="
+mkdir -p test-data
+cat > test-data/instance_metadata.json << 'EOF'
+{
+  "vmSize": "Standard_E16s_v3",
+  "publisher": "RedHat",
+  "offer": "rhel-byos",
+  "sku": "rhel-lvm84",
+  "billingCode": "Linux_IaaS",
+  "licenseType": "N/A"
+}
+EOF
+create_fixture "test-azure-vm-rhel-byos"
+
+################################################################################
+# Test 2c: Azure VM PAYG - SLES with Billing Code
+################################################################################
+echo ""
+echo "=== Creating test-azure-vm-sles-payg.tar.xz ==="
+mkdir -p test-data
+cat > test-data/instance_metadata.json << 'EOF'
+{
+  "vmSize": "Standard_M32ts",
+  "publisher": "SUSE",
+  "offer": "sles-sap-15-sp3",
+  "sku": "gen2",
+  "billingCode": "Linux_IaaS_Software_SLES_for_SAP",
+  "licenseType": "NONE"
+}
+EOF
+create_fixture "test-azure-vm-sles-payg"
+
+################################################################################
+# Test 2d: Azure VM BYOS - Canonical Ubuntu
+################################################################################
+echo ""
+echo "=== Creating test-azure-vm-ubuntu-byos.tar.xz ==="
+mkdir -p test-data
+cat > test-data/instance_metadata.json << 'EOF'
+{
+  "vmSize": "Standard_D4s_v3",
+  "publisher": "Canonical",
+  "offer": "0001-com-ubuntu-server-focal",
+  "sku": "20_04-lts",
+  "billingCode": "Linux_IaaS_Canonical"
+}
+EOF
+create_fixture "test-azure-vm-ubuntu-byos"
+
+################################################################################
+# Test 2e: Azure VM PAYG - Ubuntu Pro
+################################################################################
+echo ""
+echo "=== Creating test-azure-vm-ubuntu-pro.tar.xz ==="
+mkdir -p test-data
+cat > test-data/instance_metadata.json << 'EOF'
+{
+  "vmSize": "Standard_D4s_v3",
+  "publisher": "Canonical",
+  "offer": "0001-com-ubuntu-pro-focal",
+  "sku": "pro-20_04-lts",
+  "licenseType": "UBUNTU_PRO"
+}
+EOF
+create_fixture "test-azure-vm-ubuntu-pro"
 
 # 3. Test for cluster nodes and /etc/hosts validation
 echo ""

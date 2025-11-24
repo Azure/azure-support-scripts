@@ -64,7 +64,134 @@ test.describe('SAP HANA Cluster Analyzer', () => {
     const result = await uploadAndWaitForAnalysis(page, 'scc_test-azure-vm.tar.xz');
     
     expect(result).toContain('Azure VM Properties');
-    expect(result).toMatch(/VM ID:|VM Size:|Location:/);
+    expect(result).toMatch(/VM Size:|Publisher:|Offer:/);
+  });
+
+  test('detects BYOS billing model via license type (SLES)', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(
+      path.join(__dirname, 'fixtures', 'scc_test-azure-vm.tar.xz')
+    );
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('Azure VM Properties');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+    
+    // Should detect BYOS
+    expect(content).toContain('BYOS');
+    expect(content).toContain('License Type: SLES_BYOS');
+  });
+
+  test('detects PAYG billing model via license type (RHEL SAP HA)', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(
+      path.join(__dirname, 'fixtures', 'scc_test-azure-vm-rhel-payg.tar.xz')
+    );
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('Azure VM Properties');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+    
+    // Should detect PAYG
+    expect(content).toContain('PAYG');
+    expect(content).toContain('License Type: RHEL_SAPHA');
+    expect(content).toMatch(/Billing Code:.*Linux_IaaS_Software_RedHat_SAP_HA/);
+  });
+
+  test('detects BYOS via billing code when license type is N/A (RHEL)', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(
+      path.join(__dirname, 'fixtures', 'scc_test-azure-vm-rhel-byos.tar.xz')
+    );
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('Azure VM Properties');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+    
+    // Should detect BYOS via billing code
+    expect(content).toContain('BYOS');
+    expect(content).toContain('Billing Code: Linux_IaaS');
+  });
+
+  test('detects PAYG via billing code when license type is NONE (SLES SAP)', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(
+      path.join(__dirname, 'fixtures', 'scc_test-azure-vm-sles-payg.tar.xz')
+    );
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('Azure VM Properties');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+    
+    // Should detect PAYG via billing code
+    expect(content).toContain('PAYG');
+    expect(content).toContain('Billing Code: Linux_IaaS_Software_SLES_for_SAP');
+  });
+
+  test('detects BYOS for Canonical Ubuntu via billing code', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(
+      path.join(__dirname, 'fixtures', 'scc_test-azure-vm-ubuntu-byos.tar.xz')
+    );
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('Azure VM Properties');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+    
+    // Should detect BYOS
+    expect(content).toContain('BYOS');
+    expect(content).toContain('Billing Code: Linux_IaaS_Canonical');
+  });
+
+  test('detects PAYG for Ubuntu Pro via license type', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(
+      path.join(__dirname, 'fixtures', 'scc_test-azure-vm-ubuntu-pro.tar.xz')
+    );
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('Azure VM Properties');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+    
+    // Should detect PAYG
+    expect(content).toContain('PAYG');
+    expect(content).toContain('License Type: UBUNTU_PRO');
   });
 
   test('detects cluster nodes and validates /etc/hosts', async ({ page }) => {
