@@ -1,7 +1,0 @@
-# Test results and artifacts
-test-results/
-playwright-report/
-coverage/
-
-# Playwright
-playwright/.cache/

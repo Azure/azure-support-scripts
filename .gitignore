@@ -5,3 +5,11 @@
 *.dll
 *.exe
 *.pyc
+*.swp
+
+# rca-tool
+test-results/
+playwright-report/
+rca-tool/tests/fixtures/
+rca-tool/tmp/
+node_modules/

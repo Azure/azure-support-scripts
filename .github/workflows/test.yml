@@ -47,6 +47,10 @@ jobs:
       run: npm test
       working-directory: rca-tool/tests
       
+    - name: Run accessibility checks
+      run: node accessibility-check.js
+      working-directory: rca-tool/tests
+      
     - name: Upload test results
       if: always()
       uses: actions/upload-artifact@v4

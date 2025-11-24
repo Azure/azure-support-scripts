@@ -57,6 +57,36 @@ body.dark-mode {
     --dropzone-bg-active: #2a4a7f;
 }
 
+/* Color-Blind Friendly Mode (IBM Color Blind Safe Palette) */
+body.colorblind-mode {
+    --bg-color: #f5f5f5;
+    --text-color: #2d2d2d;
+    --card-bg: white;
+    --card-shadow: rgba(0,0,0,0.1);
+    --accent-color: #648FFF;
+    --muted-text: #666;
+    --border-color: #bbb;
+    
+    /* Semantic colors - optimized for color blindness */
+    --success-color: #648FFF; /* Blue instead of green */
+    --danger-color: #DC267F; /* Magenta instead of red */
+    --warning-color: #FFB000; /* Yellow - highly visible */
+    --info-color: #785EF0; /* Purple for info */
+    --warning-text: #B37800;
+    --danger-dark: #A01B5E;
+    --info-dark: #5940B8;
+    
+    /* Code and inline elements */
+    --code-bg: #f8f9fa;
+    --code-border: #e1e4e8;
+    --progress-bg: #e8e8e8;
+    
+    /* Drop zone colors */
+    --dropzone-bg: #E6EDFF;
+    --dropzone-border: #648FFF;
+    --dropzone-bg-active: #D4E0FF;
+}
+
 /* Base Styles */
 body {
     font-family: Arial, sans-serif;
@@ -130,6 +160,11 @@ h1 {
     transform: scale(1.1);
 }
 
+#theme-toggle:focus {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}
+
 /* Drop Zone Styles */
 #drop-zone {
     border: 2px dashed var(--border-color);
@@ -191,7 +226,7 @@ body.dark-mode {
 }
 
 /* Content Block Styles - Light Mode Variables */
-body:not(.dark-mode) {
+body:not(.dark-mode):not(.colorblind-mode) {
     --success-bg: #d4edda;
     --success-text: #155724;
     --success-border: #28a745;
@@ -206,6 +241,24 @@ body:not(.dark-mode) {
     --info-border: #17a2b8;
     --content-bg: white;
     --content-border: #dee2e6;
+}
+
+/* Content Block Styles - Color-Blind Mode Variables */
+body.colorblind-mode {
+    --success-bg: #E6EDFF;
+    --success-text: #2D4AA8;
+    --success-border: #648FFF;
+    --warning-bg: #FFF5E0;
+    --warning-text: #B37800;
+    --warning-border: #FFB000;
+    --danger-bg: #FCE4F0;
+    --danger-text: #A01B5E;
+    --danger-border: #DC267F;
+    --info-bg: #F0EBFF;
+    --info-text: #5940B8;
+    --info-border: #785EF0;
+    --content-bg: white;
+    --content-border: #d0d0d0;
 }
 
 /* Success Block */

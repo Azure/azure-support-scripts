@@ -10,6 +10,7 @@
     "serve": "http-server -p 8080"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.0",
     "@playwright/test": "^1.48.0",
     "http-server": "^14.1.1"
   }
