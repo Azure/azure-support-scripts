@@ -3,7 +3,7 @@
  * 
  * To run this:
  * 1. Install axe: npm install --save-dev @axe-core/playwright
- * 2. Run: node manual-accessibility-check.js
+ * 2. Run: node accessibility-check.js
  */
 
 const { chromium } = require('@playwright/test');
@@ -12,7 +12,10 @@ const AxeBuilder = require('@axe-core/playwright').default;
 async function runAccessibilityTest() {
   console.log('Starting accessibility scan...\n');
   
-  const browser = await chromium.launch({ headless: true }); // Changed to headless
+  const browser = await chromium.launch({ 
+    headless: true,
+    channel: 'msedge'  // Use Edge browser
+  });
   const context = await browser.newContext();
   const page = await context.newPage();
 
