@@ -142,18 +142,25 @@ test.describe('SAP HANA Cluster Analyzer', () => {
     }
   });
 
-  test('dark mode toggle works', async ({ page }) => {
+  test('theme toggle cycles through all modes', async ({ page }) => {
     // Check initial state (dark mode by default)
     const body = page.locator('body');
     await expect(body).toHaveClass(/dark-mode/);
     
-    // Toggle to light mode
+    // Click once: dark -> colorblind
     await page.click('#theme-toggle');
+    await expect(body).toHaveClass(/colorblind-mode/);
     await expect(body).not.toHaveClass(/dark-mode/);
     
-    // Toggle back to dark mode
+    // Click twice: colorblind -> light
+    await page.click('#theme-toggle');
+    await expect(body).not.toHaveClass(/dark-mode/);
+    await expect(body).not.toHaveClass(/colorblind-mode/);
+    
+    // Click thrice: light -> dark
     await page.click('#theme-toggle');
     await expect(body).toHaveClass(/dark-mode/);
+    await expect(body).not.toHaveClass(/colorblind-mode/);
   });
 
   test('handles invalid file format gracefully', async ({ page }) => {
