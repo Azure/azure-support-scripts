@@ -1510,7 +1510,7 @@
                     const statusBorderColor = hasExcept ? 'var(--success-color)' : 'var(--danger-color)';
                     const statusIcon = hasExcept ? '✓' : '✗';
                     
-                    html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderClass};">`;
+                    html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor};">`;
                     html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} CrowdStrike Falcon Sensor</p>`;
                     if (falcon.version) {
                         html += `<p style="margin: 5px 0; font-size: 13px;">Version: <code>${falcon.version}</code></p>`;
