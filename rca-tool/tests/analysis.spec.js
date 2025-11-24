@@ -163,6 +163,79 @@ test.describe('SAP HANA Cluster Analyzer', () => {
     await expect(body).not.toHaveClass(/colorblind-mode/);
   });
 
+  test('analyzes kernel tuning with correct values', async ({ page }) => {
+    // Listen to console messages
+    page.on('console', msg => console.log('BROWSER:', msg.text()));
+    page.on('pageerror', err => console.error('PAGE ERROR:', err));
+    
+    const fileInput = await page.locator('input[type="file"]');
+    
+    await fileInput.setInputFiles(
+      path.join(__dirname, 'fixtures', 'scc_test-kernel-tuning.tar.xz')
+    );
+    
+    // Wait for analysis to complete - wait for specific content to appear
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('Kernel and Tuning');
+      },
+      { timeout: 60000 }
+    );
+    
+    // Check that kernel tuning section exists
+    const content = await page.locator('#output').textContent();
+    expect(content).toContain('Kernel and Tuning');
+    
+    // Should have parameters table
+    expect(content).toMatch(/vm\.dirty_bytes.*629145600/);
+    expect(content).toMatch(/vm\.dirty_background_bytes.*314572800/);
+    expect(content).toMatch(/vm\.swappiness.*10/);
+    
+    // Should not have warnings (all values are correct)
+    expect(content).not.toContain('Kernel Parameter Warnings');
+  });
+
+  test('detects kernel tuning warnings', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    
+    await fileInput.setInputFiles(
+      path.join(__dirname, 'fixtures', 'scc_test-kernel-tuning-warnings.tar.xz')
+    );
+    
+    // Wait for analysis to complete - wait for specific content to appear
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('Kernel and Tuning');
+      },
+      { timeout: 60000 }
+    );
+    
+    // Check that kernel tuning section exists
+    const content = await page.locator('#output').textContent();
+    expect(content).toContain('Kernel and Tuning');
+    
+    // Should have warning about incorrect vm.dirty_bytes
+    expect(content).toContain('Kernel Parameter Warnings');
+    expect(content).toMatch(/vm\.dirty_bytes/);
+    expect(content).toContain('Expected: 629145600');
+    expect(content).toContain('Found: 200000000');
+    
+    // Should have warning about incorrect vm.dirty_background_bytes
+    expect(content).toMatch(/vm\.dirty_background_bytes/);
+    expect(content).toContain('Expected: 314572800');
+    expect(content).toContain('Found: 100000000');
+    
+    // Should have warning about incorrect vm.swappiness
+    expect(content).toMatch(/vm\.swappiness/);
+    expect(content).toContain('Expected: 10');
+    expect(content).toContain('Found: 60');
+    
+    // Should have documentation links
+    expect(content).toContain('View Documentation');
+  });
+
   test('handles invalid file format gracefully', async ({ page }) => {
     const fileInput = await page.locator('input[type="file"]');
     

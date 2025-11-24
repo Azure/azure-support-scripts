@@ -13,3 +13,6 @@ playwright-report/
 rca-tool/tests/fixtures/
 rca-tool/tmp/
 node_modules/
+build-streaming/
+dist-streaming/
+xz-*/

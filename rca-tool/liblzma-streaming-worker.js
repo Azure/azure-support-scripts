@@ -2430,6 +2430,71 @@ const SCC_RULES = {
                 hasExclusions: foundExclusions.length > 0
             };
         }
+    },
+    
+    // Rule: Extract kernel tuning parameters from sysctl
+    kernelTuning: {
+        filePattern: /sos_commands\/kernel\/sysctl_-a$/,
+        
+        parse: function(content, filename) {
+            debugLog('[kernelTuning parser] Analyzing kernel parameters in:', filename);
+            
+            const lines = content.split('\n');
+            const parameters = {};
+            const warnings = [];
+            
+            // Expected values for SAP HANA / high-performance workloads
+            const expectedValues = {
+                'vm.dirty_bytes': '629145600',
+                'vm.dirty_background_bytes': '314572800',
+                'vm.swappiness': '10'
+            };
+            
+            const documentation = {
+                'vm.dirty_bytes': 'https://learn.microsoft.com/en-us/azure/sap/workloads/sap-hana-high-availability',
+                'vm.dirty_background_bytes': 'https://learn.microsoft.com/en-us/azure/sap/workloads/sap-hana-high-availability',
+                'vm.swappiness': 'https://learn.microsoft.com/en-us/azure/sap/workloads/sap-hana-high-availability'
+            };
+            
+            // Parse sysctl output
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed || trimmed.startsWith('#')) continue;
+                
+                // Parse "key = value" format
+                const match = trimmed.match(/^([^\s=]+)\s*=\s*(.+)$/);
+                if (match) {
+                    const key = match[1].trim();
+                    const value = match[2].trim();
+                    parameters[key] = value;
+                }
+            }
+            
+            // Check for expected values
+            for (const [param, expectedValue] of Object.entries(expectedValues)) {
+                if (parameters[param]) {
+                    const actualValue = parameters[param];
+                    if (actualValue !== expectedValue) {
+                        warnings.push({
+                            parameter: param,
+                            expected: expectedValue,
+                            actual: actualValue,
+                            documentationUrl: documentation[param]
+                        });
+                        debugLog(`[kernelTuning parser] Warning: ${param} = ${actualValue}, expected ${expectedValue}`);
+                    } else {
+                        debugLog(`[kernelTuning parser] OK: ${param} = ${actualValue}`);
+                    }
+                }
+            }
+            
+            return {
+                found: true,
+                parameters: parameters,
+                warnings: warnings,
+                hasWarnings: warnings.length > 0
+            };
+        }
     }
     
     // ADD MORE RULES HERE
@@ -2981,6 +3046,7 @@ class IncrementalTARParser {
             fencingConfig: fencingConfigData,
             clusterEvents: clusterEventsData,
             antivirus: antivirusResults,
+            kernelTuning: this.analysisResults.kernelTuning || null,
             // Cross-validation results
             nodesInHosts: nodesInHosts,
             nodesMissingFromHosts: nodesMissingFromHosts

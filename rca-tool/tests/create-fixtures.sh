@@ -220,6 +220,135 @@ cat > test-data/messages << 'EOF'
 EOF
 create_fixture "test-live-migration"
 
+################################################################################
+# Test 8: Kernel Tuning Analysis
+# Tests kernel parameter validation with both correct and incorrect values
+################################################################################
+echo ""
+echo "=== Creating test-kernel-tuning.tar.xz ==="
+mkdir -p test-data/sos_commands/kernel
+cat > test-data/sos_commands/kernel/sysctl_-a << 'EOF'
+debug.exception-trace = 1
+debug.kprobes-optimization = 1
+dev.cdrom.autoclose = 1
+dev.cdrom.autoeject = 0
+dev.cdrom.check_media = 0
+dev.cdrom.debug = 0
+dev.cdrom.info = CD-ROM information, Id: cdrom.c 3.20 2003/12/17
+dev.cdrom.info = 
+dev.cdrom.info = drive name:		
+dev.cdrom.info = drive speed:		
+dev.cdrom.info = drive # of slots:	
+dev.cdrom.info = Can close tray:		
+dev.cdrom.lock = 1
+fs.aio-max-nr = 1048576
+fs.aio-nr = 0
+fs.file-max = 9223372036854775807
+fs.file-nr = 1408	0	9223372036854775807
+fs.inode-nr = 48652	354
+fs.inode-state = 48652	354	0	0	0	0	0
+fs.leases-enable = 1
+fs.nr_open = 1048576
+kernel.acct = 4	2	30
+kernel.auto_msgmni = 0
+kernel.cap_last_cap = 37
+kernel.core_pattern = core
+kernel.core_pipe_limit = 0
+kernel.core_uses_pid = 0
+kernel.dmesg_restrict = 0
+kernel.hostname = test-host
+kernel.msgmax = 8192
+kernel.msgmnb = 16384
+kernel.msgmni = 32000
+kernel.osrelease = 4.18.0-425.3.1.el8.x86_64
+kernel.ostype = Linux
+kernel.panic = 0
+kernel.panic_on_oops = 1
+kernel.pid_max = 4194304
+kernel.randomize_va_space = 2
+kernel.real-root-dev = 0
+kernel.sem = 32000	1024000000	500	32000
+kernel.shmall = 1152921504606846720
+kernel.shmmax = 18446744073692774399
+kernel.shmmni = 4096
+kernel.threads-max = 4127428
+kernel.version = #1 SMP Thu Nov 10 15:21:08 UTC 2022
+net.core.netdev_max_backlog = 5000
+net.core.rmem_default = 262144
+net.core.rmem_max = 4194304
+net.core.somaxconn = 4096
+net.core.wmem_default = 262144
+net.core.wmem_max = 1048576
+net.ipv4.ip_local_port_range = 40000	61000
+net.ipv4.tcp_fin_timeout = 60
+net.ipv4.tcp_keepalive_intvl = 75
+net.ipv4.tcp_keepalive_probes = 9
+net.ipv4.tcp_keepalive_time = 7200
+net.ipv4.tcp_max_syn_backlog = 8192
+net.ipv4.tcp_rmem = 4096	87380	6291456
+net.ipv4.tcp_slow_start_after_idle = 1
+net.ipv4.tcp_syn_retries = 6
+net.ipv4.tcp_synack_retries = 5
+net.ipv4.tcp_timestamps = 1
+net.ipv4.tcp_tw_reuse = 2
+net.ipv4.tcp_wmem = 4096	16384	4194304
+sunrpc.tcp_slot_table_entries = 65536
+sunrpc.udp_slot_table_entries = 65536
+user.max_user_namespaces = 15076
+vm.admin_reserve_kbytes = 8192
+vm.dirty_background_bytes = 314572800
+vm.dirty_background_ratio = 10
+vm.dirty_bytes = 629145600
+vm.dirty_expire_centisecs = 3000
+vm.dirty_ratio = 20
+vm.dirty_writeback_centisecs = 500
+vm.max_map_count = 2147483647
+vm.min_free_kbytes = 4096000
+vm.nr_hugepages = 0
+vm.overcommit_memory = 0
+vm.overcommit_ratio = 50
+vm.swappiness = 10
+vm.vfs_cache_pressure = 100
+EOF
+create_fixture "test-kernel-tuning"
+
+################################################################################
+# Test 9: Kernel Tuning with Incorrect Values
+# Tests warning generation for non-optimal kernel parameters
+################################################################################
+echo ""
+echo "=== Creating test-kernel-tuning-warnings.tar.xz ==="
+mkdir -p test-data/sos_commands/kernel
+cat > test-data/sos_commands/kernel/sysctl_-a << 'EOF'
+debug.exception-trace = 1
+fs.file-max = 9223372036854775807
+kernel.hostname = test-host
+kernel.osrelease = 4.18.0-425.3.1.el8.x86_64
+kernel.ostype = Linux
+kernel.pid_max = 4194304
+kernel.sem = 32000	1024000000	500	32000
+kernel.shmall = 1152921504606846720
+kernel.shmmax = 18446744073692774399
+kernel.shmmni = 4096
+net.core.rmem_max = 4194304
+net.core.wmem_max = 1048576
+net.ipv4.ip_local_port_range = 40000	61000
+net.ipv4.tcp_rmem = 4096	87380	6291456
+net.ipv4.tcp_wmem = 4096	16384	4194304
+vm.admin_reserve_kbytes = 8192
+vm.dirty_background_bytes = 100000000
+vm.dirty_background_ratio = 10
+vm.dirty_bytes = 200000000
+vm.dirty_expire_centisecs = 3000
+vm.dirty_ratio = 20
+vm.dirty_writeback_centisecs = 500
+vm.max_map_count = 2147483647
+vm.min_free_kbytes = 4096000
+vm.swappiness = 60
+EOF
+
+create_fixture "test-kernel-tuning-warnings"
+
 echo ""
 echo "========================================="
 echo "✓ All test fixtures created successfully!"
