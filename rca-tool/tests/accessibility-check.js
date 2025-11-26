@@ -40,7 +40,7 @@ async function runAccessibilityTest() {
     console.log('='.repeat(60));
 
     if (accessibilityScanResults.violations.length > 0) {
-      console.log('\n🔴 VIOLATIONS FOUND:\n');
+      console.log('\n[ERROR] VIOLATIONS FOUND:\n');
       
       accessibilityScanResults.violations.forEach((violation, index) => {
         console.log(`\n${index + 1}. ${violation.id}`);
@@ -63,12 +63,12 @@ async function runAccessibilityTest() {
         console.log('\n   ' + '-'.repeat(56));
       });
     } else {
-      console.log('\n✅ No accessibility violations found!');
+      console.log('\n[OK] No accessibility violations found!');
     }
 
     // Incomplete tests (need manual review)
     if (accessibilityScanResults.incomplete.length > 0) {
-      console.log('\n\n⚠️  INCOMPLETE TESTS (Manual Review Needed):\n');
+      console.log('\n\n[WARNING] INCOMPLETE TESTS (Manual Review Needed):\n');
       
       accessibilityScanResults.incomplete.forEach((incomplete, index) => {
         console.log(`\n${index + 1}. ${incomplete.id}`);
@@ -90,7 +90,7 @@ async function runAccessibilityTest() {
 }
 
 // Check if server is running
-console.log('⚠️  Make sure your dev server is running on http://localhost:8080');
+console.log('[WARNING] Make sure your dev server is running on http://localhost:8080');
 console.log('   You can start it with: npx http-server rca-tool/ -p 8080\n');
 
 runAccessibilityTest();
