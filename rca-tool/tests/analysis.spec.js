@@ -240,7 +240,8 @@ test.describe('SAP HANA Cluster Analyzer', () => {
     const result = await uploadAndWaitForAnalysis(page, 'scc_test-pacemaker-resources.tar.xz');
 
     // New GUI section should be present
-    expect(result).toContain('SAP Application Detection');
+    expect(result).toContain('Applications');
+    expect(result).toContain('SAP Applications Detected');
 
     // Should list HANA / SAP resources discovered via pacemaker
     expect(result).toMatch(/SAPHana|HDB|rsc_SAPHana/i);
