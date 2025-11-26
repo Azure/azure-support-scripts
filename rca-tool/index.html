@@ -1478,10 +1478,14 @@
                     
                     if (pkgs.warnings && pkgs.warnings.length > 0) {
                         html += `<div class="warning-block" style="margin-bottom: 10px;">`;
-                        html += `<p style="margin: 0 0 5px 0; color: #ff9800;"><strong>⚠ Package Warnings (${pkgs.warnings.length}):</strong></p>`;
+                        html += `<p style="margin: 0 0 5px 0; color: #ff9800;"><strong>Package Warnings (${pkgs.warnings.length}):</strong></p>`;
                         html += `<ul style="margin: 5px 0; padding-left: 20px; font-size: 12px;">`;
                         pkgs.warnings.forEach(warning => {
-                            html += `<li>${warning}</li>`;
+                            html += `<li><strong>${warning.package}:</strong> ${warning.message}`;
+                            if (warning.documentationUrl) {
+                                 html += ` <a href="${warning.documentationUrl}" target="_blank" style="font-size: 11px;">[docs]</a>`;
+                            }
+                            html += `</li>`;
                         });
                         html += `</ul>`;
                         html += `</div>`;
