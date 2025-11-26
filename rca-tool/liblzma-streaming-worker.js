@@ -169,6 +169,129 @@ const SCC_RULES = {
                 console.error('[azureVMProperties parser] Failed to parse JSON:', e);
                 return { found: false };
             }
+        },
+        // Rule: Extract Distribution information from sysinfo.txt (some reports)
+        sysinfo: {
+            filePattern: /sysinfo\.txt$/,
+
+            parse: function(content, filename) {
+                debugLog('[sysinfo parser] Analyzing sysinfo in:', filename);
+                const lines = content.split('\n');
+                let distribution = null;
+
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (!trimmed) continue;
+
+                    // Look for lines like: Distribution: SUSE Linux Enterprise Server 12 SP3
+                    const distMatch = trimmed.match(/^Distribution:\s*(.+)$/i);
+                    if (distMatch) {
+                        distribution = distMatch[1].trim();
+                        debugLog('[sysinfo parser] Found Distribution:', distribution);
+                        break;
+                    }
+                }
+
+                if (!distribution) {
+                    debugLog('[sysinfo parser] No Distribution line found in sysinfo.txt');
+                    return { found: false };
+                }
+
+                return {
+                    found: true,
+                    distribution: distribution
+                };
+            }
+        }
+    },
+    
+    // Rule: Parse basic-environment.txt (supportconfig) as additional fallback for OS identification
+    basicEnvironment: {
+        filePattern: /basic-environment\.txt$/,
+
+        parse: function(content, filename) {
+            debugLog('[basicEnvironment parser] Analyzing basic-environment in:', filename);
+            const lines = content.split('\n');
+            let prettyName = null;
+            let name = null;
+            let product = null;
+            let skipSection = false;
+
+            for (let i = 0; i < lines.length; i++) {
+                const raw = lines[i];
+                const trimmed = raw.trim();
+
+                // Treat lines starting with '#' as section headers in supportconfig dumps
+                if (trimmed.startsWith('#')) {
+                    // If the header references a .rpmsave file, skip the following section
+                    if (trimmed.toLowerCase().includes('.rpmsave')) {
+                        skipSection = true;
+                    } else {
+                        // New header — stop skipping
+                        skipSection = false;
+                    }
+                    continue;
+                }
+
+                if (skipSection) continue;
+
+                if (!trimmed) continue;
+
+                // Look for PRETTY_NAME= or NAME= lines (similar to /etc/os-release)
+                const prettyMatch = trimmed.match(/^PRETTY_NAME=(?:"|')?([^"']+)(?:"|')?$/i);
+                if (prettyMatch) {
+                    prettyName = prettyMatch[1].trim();
+                    debugLog('[basicEnvironment parser] Found PRETTY_NAME:', prettyName);
+                    break;
+                }
+
+                const nameMatch = trimmed.match(/^NAME=(?:"|')?([^"']+)(?:"|')?$/i);
+                if (nameMatch) {
+                    name = nameMatch[1].trim();
+                    debugLog('[basicEnvironment parser] Found NAME:', name);
+                    // don't break — prefer PRETTY_NAME if present later
+                }
+
+                // Some basic-environment dumps include a 'Product: ...' line
+                const prodMatch = trimmed.match(/^Product:\s*(.+)$/i);
+                if (prodMatch) {
+                    product = prodMatch[1].trim();
+                    debugLog('[basicEnvironment parser] Found Product:', product);
+                }
+            }
+
+            const distribution = prettyName || product || name;
+            if (!distribution) {
+                debugLog('[basicEnvironment parser] No distribution info found');
+                return { found: false };
+            }
+
+            // Detect SAP-specific product name (e.g. "SUSE Linux Enterprise Server for SAP Applications")
+            let sapProductDetected = false;
+            // Detect EPIC-specific product name
+            let epicProductDetected = false;
+            try {
+                const checkFields = [prettyName, product, name].filter(Boolean);
+                for (const f of checkFields) {
+                    if (/\bSAP\b|for\s+SAP|SAP\s+Applications/i.test(f)) {
+                        sapProductDetected = true;
+                    }
+                    if (/\bEPIC\b|Enterprise\s+Portal\s+Integration|for\s+EPIC/i.test(f)) {
+                        epicProductDetected = true;
+                    }
+                }
+            } catch (e) {
+                // ignore regex errors
+            }
+
+            return {
+                found: true,
+                prettyName: prettyName,
+                name: name,
+                distribution: distribution,
+                sapProductDetected: sapProductDetected,
+                epicProductDetected: epicProductDetected
+            };
         }
     },
     
@@ -3123,7 +3246,7 @@ class IncrementalTARParser {
             sccReportName: this.sccReportName,
             // Rule-based analysis results
             azureVMProperties: this.analysisResults.azureVMProperties || null,
-            osRelease: this.analysisResults.osRelease || null,
+            osRelease: this.analysisResults.osRelease || this.analysisResults.sysinfo || this.analysisResults.basicEnvironment || null,
             clusterNodes: clusterNodes,
             nodeToIpMap: nodeToIpMap,
             hostsFile: hostsData,

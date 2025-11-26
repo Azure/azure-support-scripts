@@ -7,7 +7,7 @@
 </head>
 <body class="dark-mode">
     <button id="theme-toggle" aria-label="Toggle dark mode">
-        <span id="theme-icon">🌙</span>
+        <span id="theme-icon">THEME</span>
     </button>
     
     <div class="container">
@@ -52,15 +52,15 @@
             // Apply current theme
             if (currentTheme === 'dark') {
                 document.body.classList.add('dark-mode');
-                themeIcon.textContent = '🌙';
+                themeIcon.textContent = 'DARK';
                 themeToggle.setAttribute('aria-label', 'Switch to color-blind friendly mode');
             } else if (currentTheme === 'colorblind') {
                 document.body.classList.add('colorblind-mode');
-                themeIcon.textContent = '🎨';
+                themeIcon.textContent = 'CB';
                 themeToggle.setAttribute('aria-label', 'Switch to light mode');
             } else {
                 // light mode (no class)
-                themeIcon.textContent = '☀️';
+                themeIcon.textContent = 'LIGHT';
                 themeToggle.setAttribute('aria-label', 'Switch to dark mode');
             }
             
@@ -89,7 +89,7 @@
             updateTheme(); // Apply default
         }
         
-        // Check for debug mode via URL parameter (?debug=on or ?debug=true or ?debug=cluster)
+        // Check for debug mode via URL parameter (?debug=on or ?debug=true or ?debug=cluster or ?debug=host or ?debug=app)
         const urlParams = new URLSearchParams(window.location.search);
         const debugParam = urlParams.get('debug');
         let DEBUG_MODE = false;
@@ -99,6 +99,12 @@
         } else if (debugParam === 'cluster') {
             DEBUG_MODE = 'cluster';
             console.log('Cluster debug mode enabled via URL parameter');
+        } else if (debugParam === 'host') {
+            DEBUG_MODE = 'host';
+            console.log('Host debug mode enabled via URL parameter');
+        } else if (debugParam === 'app') {
+            DEBUG_MODE = 'app';
+            console.log('App debug mode enabled via URL parameter');
         }
         
         let lzmaLoaded = false;
@@ -660,6 +666,97 @@
             }
             
             const { fileCount, directories, fileTypes, files, totalParsed, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, kernelReboots, oomKiller, corosyncConfig, rpmPackages, antivirus, kernelTuning } = analysis;
+
+            // Compute a reusable SAP detection flag early so UI sections can be gated
+            const dirListGlobal = (directories || []).map(d => (d || '').toLowerCase());
+            const fileListGlobal = (files || []).map(f => (f && f.name ? f.name : '').toLowerCase());
+            const sapIndicators = ['usr/sap', 'sapmnt', 'hana/shared', 'hana/data', 'hana/log', 'usr/sap/*/sys/exe'];
+            const foundSapIndicator = sapIndicators.some(p => dirListGlobal.some(d => d.includes(p)) || fileListGlobal.some(fn => fn.includes(p)));
+            let hanaResGlobal = [];
+            if (analysis.pacemakerResources && analysis.pacemakerResources.resources) {
+                hanaResGlobal = analysis.pacemakerResources.resources.filter(r => {
+                    const name = (r.name || '').toString().toLowerCase();
+                    const type = (r.type || '').toString().toLowerCase();
+                    const provider = (r.provider || '').toString().toLowerCase();
+                    return name.includes('hana') || name.includes('hdb') || type.includes('saphana') || provider.includes('saphana');
+                }).map(r => r.name);
+            }
+            // Detect SAP-related pacemaker resources (e.g., type 'SAPInstance' or names containing SAP identifiers)
+            const sapPacemakerResources = (analysis.pacemakerResources && analysis.pacemakerResources.resources)
+                ? analysis.pacemakerResources.resources.filter(r => {
+                    const t = (r.type || '').toString();
+                    const p = (r.provider || '').toString();
+                    const n = (r.name || '').toString();
+                    return /sap/i.test(t) || /sap/i.test(p) || /sap/i.test(n) || /SAPInstance/i.test(t);
+                })
+                : [];
+            const sapPackagesGlobal = (analysis.rpmPackages && analysis.rpmPackages.found && analysis.rpmPackages.packages)
+                ? Object.keys(analysis.rpmPackages.packages).filter(n => /sap|hana|hdb|saptune/i.test(n))
+                : [];
+            const serviceFilesGlobal = fileListGlobal.filter(fn => fn.endsWith('.service') || fn.includes('/etc/systemd/') || fn.includes('systemctl') || fn.includes('sapstart') || fn.includes('sapstartsrv') || fn.includes('saposcol'));
+
+            // Additional SAP detection via basic-environment supportconfig dump
+            const basicEnvSap = Boolean(
+                analysis.basicEnvironment && analysis.basicEnvironment.found && (
+                    analysis.basicEnvironment.sapProductDetected ||
+                    (/sap/i.test(analysis.basicEnvironment.product || '')) ||
+                    (/sap/i.test(analysis.basicEnvironment.prettyName || '')) ||
+                    (/sap/i.test(analysis.basicEnvironment.name || ''))
+                )
+            );
+
+            const sapDetected = Boolean(
+                foundSapIndicator ||
+                (hanaResGlobal && hanaResGlobal.length) ||
+                (sapPacemakerResources && sapPacemakerResources.length) ||
+                (sapPackagesGlobal && sapPackagesGlobal.length) ||
+                (serviceFilesGlobal && serviceFilesGlobal.length) ||
+                basicEnvSap
+            );
+
+            // SAP EPIC detection: Look for SAP EPIC-specific packages and pacemaker resources
+            const basicEnvEpic = analysis.basicEnvironment && analysis.basicEnvironment.found && analysis.basicEnvironment.epicProductDetected;
+            const epicPackagesGlobal = [];
+            if (analysis.rpmPackages && analysis.rpmPackages.packages) {
+                const epicPatterns = ['sap-instance-', 'sapstartsrv', 'sap-saptune', 'sap-host-agent', 'lvm2-clvm'];
+                for (const [pkgName, version] of Object.entries(analysis.rpmPackages.packages)) {
+                    if (epicPatterns.some(pattern => pkgName.includes(pattern))) {
+                        epicPackagesGlobal.push(`${pkgName}-${version}`);
+                    }
+                }
+            }
+            const epicPacemakerResources = (analysis.pacemakerResources && analysis.pacemakerResources.resources) ? 
+                analysis.pacemakerResources.resources.filter(r => {
+                    const name = (r.name || '').toString().toLowerCase();
+                    const type = (r.type || '').toString().toLowerCase();
+                    return (name.includes('epic') || name.includes('sap') || type.includes('saphana') || type.includes('sapinstance'));
+                }) : [];
+
+            const epicDetected = Boolean(
+                basicEnvEpic ||
+                (epicPackagesGlobal && epicPackagesGlobal.length) ||
+                (epicPacemakerResources && epicPacemakerResources.length)
+            );
+
+            // App debug mode: log SAP and EPIC detection internals
+            if (DEBUG_MODE === 'app') {
+                console.log('[APP DEBUG] SAP detection details:', {
+                    foundSapIndicator: foundSapIndicator,
+                    hanaResources: hanaResGlobal,
+                    sapPacemakerResources: sapPacemakerResources,
+                    sapPackages: sapPackagesGlobal,
+                    serviceFiles: serviceFilesGlobal,
+                    basicEnvironment: analysis.basicEnvironment,
+                    basicEnvSap: basicEnvSap,
+                    sapDetected: sapDetected
+                });
+                console.log('[APP DEBUG] SAP EPIC detection details:', {
+                    basicEnvEpic: basicEnvEpic,
+                    epicPackages: epicPackagesGlobal,
+                    epicPacemakerResources: epicPacemakerResources,
+                    epicDetected: epicDetected
+                });
+            }
             
             let html = '';
             
@@ -720,6 +817,9 @@
                     
                     if (os.prettyName) {
                         html += `<p style="margin: 5px 0;"><strong>Distribution:</strong> <code>${os.prettyName}</code></p>`;
+                    } else if (os.distribution) {
+                        // Fallback when sysinfo.txt provided a Distribution line
+                        html += `<p style="margin: 5px 0;"><strong>Distribution:</strong> <code>${os.distribution}</code></p>`;
                     } else if (os.name) {
                         html += `<p style="margin: 5px 0;"><strong>Distribution:</strong> <code>${os.name}</code></p>`;
                     }
@@ -738,81 +838,65 @@
                 
                 html += `</div></details>`;
             }
-            
-            // SCC Report Information (if detected) - Collapsible
-            if (isSCCReport) {
-                const allNodesValid = clusterNodes && clusterNodes.length > 0 && 
-                                     (!hostsFile || (nodesMissingFromHosts && nodesMissingFromHosts.length === 0));
-                const statusIcon = allNodesValid ? '✓' : '✗';
-                const blockClass = allNodesValid ? 'success-block' : 'warning-block';
-                
-                html += `<details class="${blockClass}">`;
-                html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
-                html += `<span style="font-size: 20px; margin-right: 8px;">${statusIcon}</span>`;
-                html += `Cluster nodes in ha.txt and hosts file`;
-                html += ` <span style="font-size: 12px; font-weight: normal;">(${sccReportName || 'Detected'})`;
-                if (hostsFile && clusterNodes && clusterNodes.length > 0) {
-                    html += ` - ${nodesInHosts ? nodesInHosts.length : 0}/${clusterNodes.length} nodes in hosts`;
-                }
-                html += `</span>`;
-                html += `</summary>`;
+
+            // If Azure VM Properties are not available, still show Operating System info if present
+            // Always show Operating System info (use osRelease or fallbacks: sysinfo, basicEnvironment)
+            const osInfoFallback = (analysis.osRelease && analysis.osRelease.found)
+                ? analysis.osRelease
+                : (analysis.sysinfo && analysis.sysinfo.found)
+                    ? analysis.sysinfo
+                    : (analysis.basicEnvironment && analysis.basicEnvironment.found)
+                        ? analysis.basicEnvironment
+                        : null;
+
+            if (DEBUG_MODE === 'host') {
+                console.log('[HOST DEBUG] osInfoFallback evaluation:', {
+                    osRelease: analysis.osRelease,
+                    sysinfo: analysis.sysinfo,
+                    basicEnvironment: analysis.basicEnvironment,
+                    osInfoFallback: osInfoFallback,
+                    show: !!osInfoFallback
+                });
+            }
+
+            if (osInfoFallback) {
+                const os = osInfoFallback;
+                html += `<details open class="info-block">`;
+                html += `<summary>Operating System</summary>`;
                 html += `<div style="margin-top: 15px;">`;
-                
-                if (clusterNodes && clusterNodes.length > 0) {
-                    html += '<p><strong>Cluster Nodes:</strong></p>';
-                    html += '<ul style="margin: 10px 0;">';
-                    clusterNodes.forEach(node => {
-                        const inHosts = nodesInHosts && nodesInHosts.includes(node);
-                        const badge = inHosts 
-                            ? '<span class="badge badge-success">✓ in hosts</span>'
-                            : (hostsFile ? '<span class="badge badge-danger">✗ not in hosts</span>' : '');
-                        
-                        html += `<li><code>${node}</code>${badge}`;
-                        
-                        // Show IP mapping if available
-                        if (nodeToIpMap && nodeToIpMap[node]) {
-                            html += `<br><span class="text-muted" style="font-size: 11px; margin-left: 5px;">IP: ${nodeToIpMap[node]}</span>`;
-                        }
-                        
-                        html += `</li>`;
-                    });
-                    html += '</ul>';
-                    
-                    // Show validation summary if hosts file was found
-                    if (hostsFile) {
-                        html += '<div class="subsection">';
-                        html += '<p style="margin: 0;"><strong>Hosts File Validation:</strong></p>';
-                        if (nodesInHosts && nodesInHosts.length > 0) {
-                            html += `<p style="margin: 5px 0;" class="text-success">✓ ${nodesInHosts.length} node(s) found in /etc/hosts</p>`;
-                        }
-                        if (nodesMissingFromHosts && nodesMissingFromHosts.length > 0) {
-                            html += `<p style="margin: 5px 0;" class="text-danger">✗ ${nodesMissingFromHosts.length} node(s) missing from /etc/hosts</p>`;
-                            html += '<p style="margin: 5px 0; font-size: 13px;"><strong>Missing nodes:</strong></p>';
-                            html += '<ul style="margin: 5px 0 5px 20px;">';
-                            nodesMissingFromHosts.forEach(node => {
-                                html += `<li style="font-size: 13px;"><code>${node}</code></li>`;
-                            });
-                            html += '</ul>';
-                        }
-                        html += `<p style="margin: 5px 0; font-size: 12px;" class="text-muted">Total hostnames in /etc/hosts: ${hostsFile.allHostnames.length}</p>`;
-                        html += '</div>';
-                    }
-                } else {
-                    html += '<p><em>No cluster nodes detected (ha.txt not found or no HA configuration)</em></p>';
+
+                if (os.prettyName) {
+                    html += `<p style="margin: 5px 0;"><strong>Distribution:</strong> <code>${os.prettyName}</code></p>`;
+                } else if (os.distribution) {
+                    html += `<p style="margin: 5px 0;"><strong>Distribution:</strong> <code>${os.distribution}</code></p>`;
+                } else if (os.name) {
+                    html += `<p style="margin: 5px 0;"><strong>Distribution:</strong> <code>${os.name}</code></p>`;
                 }
+
+                if (os.versionId) {
+                    html += `<p style="margin: 5px 0;"><strong>Version:</strong> <code>${os.versionId}</code></p>`;
+                } else if (os.majorVersion || os.minorVersion) {
+                    const versionParts = [];
+                    if (os.majorVersion) versionParts.push(os.majorVersion);
+                    if (os.minorVersion) versionParts.push(os.minorVersion);
+                    html += `<p style="margin: 5px 0;"><strong>Version:</strong> <code>${versionParts.join('.')}</code></p>`;
+                }
+
                 html += `</div></details>`;
             }
+            
+            // (Cluster nodes in ha.txt and hosts will be shown under Cluster Configuration)
             
             // Corosync Configuration - Collapsible
             if (corosyncConfig && corosyncConfig.found) {
                 const hasWarnings = corosyncConfig.warnings && corosyncConfig.warnings.length > 0;
-                const statusIcon = hasWarnings ? '✗' : '✓';
+                const statusIcon = hasWarnings ? 'ERROR' : 'OK';
                 const blockClass = hasWarnings ? 'danger-block' : 'success-block';
                 
                 html += `<details class="${blockClass}">`;
                 html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
-                html += `<span style="font-size: 20px; margin-right: 8px;">${statusIcon}</span>`;
-                html += `Corosync Configuration`;
+                html += `<span style="font-weight: bold; margin-right: 8px;">[${statusIcon}]</span>`;
+                html += `Cluster Configuration`;
                 html += ` <span style="font-size: 12px; font-weight: normal;">`;
                 if (hasWarnings) {
                     html += `(${corosyncConfig.warnings.length} warning${corosyncConfig.warnings.length > 1 ? 's' : ''})`;
@@ -830,7 +914,7 @@
                 if (corosyncConfig.totemToken !== null) {
                     html += `<p style="margin: 5px 0;"><strong>token:</strong> <code>${corosyncConfig.totemToken}</code>`;
                     if (corosyncConfig.totemToken === 30000) {
-                        html += ` <span class="text-success" style="margin-left: 5px;">✓</span>`;
+                        html += ` <span class="text-success" style="margin-left: 5px;">[OK]</span>`;
                     }
                     html += `</p>`;
                 }
@@ -838,7 +922,7 @@
                 if (corosyncConfig.totemRetransmits !== null) {
                     html += `<p style="margin: 5px 0;"><strong>token_retransmits_before_loss_const:</strong> <code>${corosyncConfig.totemRetransmits}</code>`;
                     if (corosyncConfig.totemRetransmits === 10) {
-                        html += ` <span class="text-success" style="margin-left: 5px;">✓</span>`;
+                        html += ` <span class="text-success" style="margin-left: 5px;">[OK]</span>`;
                     }
                     html += `</p>`;
                 }
@@ -846,7 +930,7 @@
                 if (corosyncConfig.totemJoin !== null) {
                     html += `<p style="margin: 5px 0;"><strong>join:</strong> <code>${corosyncConfig.totemJoin}</code>`;
                     if (corosyncConfig.totemJoin === 60) {
-                        html += ` <span class="text-success" style="margin-left: 5px;">✓</span>`;
+                        html += ` <span class="text-success" style="margin-left: 5px;">[OK]</span>`;
                     }
                     html += `</p>`;
                 }
@@ -854,7 +938,7 @@
                 if (corosyncConfig.totemConsensus !== null) {
                     html += `<p style="margin: 5px 0;"><strong>consensus:</strong> <code>${corosyncConfig.totemConsensus}</code>`;
                     if (corosyncConfig.totemConsensus === 36000) {
-                        html += ` <span class="text-success" style="margin-left: 5px;">✓</span>`;
+                        html += ` <span class="text-success" style="margin-left: 5px;">[OK]</span>`;
                     }
                     html += `</p>`;
                 }
@@ -862,7 +946,7 @@
                 if (corosyncConfig.totemMaxMessages !== null) {
                     html += `<p style="margin: 5px 0;"><strong>max_messages:</strong> <code>${corosyncConfig.totemMaxMessages}</code>`;
                     if (corosyncConfig.totemMaxMessages === 20) {
-                        html += ` <span class="text-success" style="margin-left: 5px;">✓</span>`;
+                        html += ` <span class="text-success" style="margin-left: 5px;">[OK]</span>`;
                     }
                     html += `</p>`;
                 }
@@ -870,7 +954,7 @@
                 if (corosyncConfig.totemTransport !== null) {
                     html += `<p style="margin: 5px 0;"><strong>transport:</strong> <code>${corosyncConfig.totemTransport}</code>`;
                     if (corosyncConfig.totemTransport === 'udpu') {
-                        html += ` <span class="text-success" style="margin-left: 5px;">✓</span>`;
+                        html += ` <span class="text-success" style="margin-left: 5px;">[OK]</span>`;
                     }
                     html += `</p>`;
                 }
@@ -883,7 +967,7 @@
                 if (corosyncConfig.quorumProvider !== null) {
                     html += `<p style="margin: 5px 0;"><strong>provider:</strong> <code>${corosyncConfig.quorumProvider}</code>`;
                     if (corosyncConfig.quorumProvider === 'corosync_votequorum') {
-                        html += ` <span class="text-success" style="margin-left: 5px;">✓</span>`;
+                        html += ` <span class="text-success" style="margin-left: 5px;">[OK]</span>`;
                     }
                     html += `</p>`;
                 }
@@ -891,7 +975,7 @@
                 if (corosyncConfig.quorumExpectedVotes !== null) {
                     html += `<p style="margin: 5px 0;"><strong>expected_votes:</strong> <code>${corosyncConfig.quorumExpectedVotes}</code>`;
                     if (corosyncConfig.quorumExpectedVotes === 2) {
-                        html += ` <span class="text-success" style="margin-left: 5px;">✓</span>`;
+                        html += ` <span class="text-success" style="margin-left: 5px;">[OK]</span>`;
                     }
                     html += `</p>`;
                 }
@@ -899,7 +983,7 @@
                 if (corosyncConfig.quorumTwoNode !== null) {
                     html += `<p style="margin: 5px 0;"><strong>two_node:</strong> <code>${corosyncConfig.quorumTwoNode}</code>`;
                     if (corosyncConfig.quorumTwoNode === 1) {
-                        html += ` <span class="text-success" style="margin-left: 5px;">✓</span>`;
+                        html += ` <span class="text-success" style="margin-left: 5px;">[OK]</span>`;
                     }
                     html += `</p>`;
                 }
@@ -945,6 +1029,70 @@
                     html += '</div>';
                 }
                 
+                // Cluster nodes in ha.txt and hosts file (show here under Cluster Configuration)
+                if (isSCCReport) {
+                    const allNodesValid = clusterNodes && clusterNodes.length > 0 && 
+                                         (!hostsFile || (nodesMissingFromHosts && nodesMissingFromHosts.length === 0));
+                    const statusIcon = allNodesValid ? 'OK' : 'ERROR';
+                    const blockClass = allNodesValid ? 'success-block' : 'warning-block';
+
+                    html += `<details class="${blockClass}">`;
+                    html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
+                    html += `<span style="font-weight: bold; margin-right: 8px;">[${statusIcon}]</span>`;
+                    html += `Cluster nodes in ha.txt and hosts file`;
+                    html += ` <span style="font-size: 12px; font-weight: normal;">(${sccReportName || 'Detected'})`;
+                    if (hostsFile && clusterNodes && clusterNodes.length > 0) {
+                        html += ` - ${nodesInHosts ? nodesInHosts.length : 0}/${clusterNodes.length} nodes in hosts`;
+                    }
+                    html += `</span>`;
+                    html += `</summary>`;
+                    html += `<div style="margin-top: 15px;">`;
+
+                    if (clusterNodes && clusterNodes.length > 0) {
+                        html += '<p><strong>Cluster Nodes:</strong></p>';
+                        html += '<ul style="margin: 10px 0;">';
+                        clusterNodes.forEach(node => {
+                            const inHosts = nodesInHosts && nodesInHosts.includes(node);
+                            const badge = inHosts 
+                                ? '<span class="badge badge-success">[OK] in hosts</span>'
+                                : (hostsFile ? '<span class="badge badge-danger">[ERROR] not in hosts</span>' : '');
+                            
+                            html += `<li><code>${node}</code>${badge}`;
+
+                            // Show IP mapping if available
+                            if (nodeToIpMap && nodeToIpMap[node]) {
+                                html += `<br><span class="text-muted" style="font-size: 11px; margin-left: 5px;">IP: ${nodeToIpMap[node]}</span>`;
+                            }
+
+                            html += `</li>`;
+                        });
+                        html += '</ul>';
+
+                        // Show validation summary if hosts file was found
+                        if (hostsFile) {
+                            html += '<div class="subsection">';
+                            html += '<p style="margin: 0;"><strong>Hosts File Validation:</strong></p>';
+                            if (nodesInHosts && nodesInHosts.length > 0) {
+                                html += `<p style="margin: 5px 0;" class="text-success">[OK] ${nodesInHosts.length} node(s) found in /etc/hosts</p>`;
+                            }
+                            if (nodesMissingFromHosts && nodesMissingFromHosts.length > 0) {
+                                html += `<p style="margin: 5px 0;" class="text-danger">[ERROR] ${nodesMissingFromHosts.length} node(s) missing from /etc/hosts</p>`;
+                                html += '<p style="margin: 5px 0; font-size: 13px;"><strong>Missing nodes:</strong></p>';
+                                html += '<ul style="margin: 5px 0 5px 20px;">';
+                                nodesMissingFromHosts.forEach(node => {
+                                    html += `<li style="font-size: 13px;"><code>${node}</code></li>`;
+                                });
+                                html += '</ul>';
+                            }
+                            html += `<p style="margin: 5px 0; font-size: 12px;" class="text-muted">Total hostnames in /etc/hosts: ${hostsFile.allHostnames.length}</p>`;
+                            html += '</div>';
+                        }
+                    } else {
+                        html += '<p><em>No cluster nodes detected (ha.txt not found or no HA configuration)</em></p>';
+                    }
+                    html += `</div></details>`;
+                }
+
                 // Show Failed Resource Actions if available
                 if (analysis.pacemakerResources && analysis.pacemakerResources.failedActionsCount > 0) {
                     const failedActions = analysis.pacemakerResources.failedActions;
@@ -1211,7 +1359,7 @@
                         // Error case
                         html += `<div class="warning-box">`;
                         html += `<p style="margin: 0 0 8px 0; font-weight: bold;"><strong>Runtime Status:</strong></p>`;
-                        html += `<p style="margin: 0;" class="text-danger"><strong>⚠ Corosync Configuration Error</strong></p>`;
+                        html += `<p style="margin: 0;" class="text-danger"><strong>⚠ Cluster Configuration Error</strong></p>`;
                         html += `<p style="margin: 10px 0 0 0; font-size: 13px;"><code class="text-danger" style="padding: 4px 8px;">${status.error}</code></p>`;
                         html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-danger-dark">The corosync service cannot initialize its configuration. This indicates a critical configuration issue that prevents cluster communication.</p>`;
                         html += `</div>`;
@@ -1253,6 +1401,115 @@
                 html += `</div></details>`;
             }
             
+            // Applications Detection - Show when SAP or EPIC is detected
+            if (sapDetected || epicDetected) {
+                html += `<details open class="success-block">`;
+                html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">[OK] Applications</summary>`;
+                html += `<div style="margin-top: 15px;">`;
+                
+                // SAP section
+                if (sapDetected) {
+                    html += `<div style="margin-bottom: 20px;">`;
+                    html += `<p class="text-success"><strong>SAP Applications Detected</strong></p>`;
+                    html += `<p style="margin-top: 5px; font-size: 13px;">The analysis detected SAP-related components:</p>`;
+                    
+                    const detectionSources = [];
+                    if (foundSapIndicator) {
+                        detectionSources.push('SAP directory structure (/usr/sap, /hana/*, /sapmnt)');
+                    }
+                    if (hanaResGlobal && hanaResGlobal.length > 0) {
+                        detectionSources.push(`HANA resources (${hanaResGlobal.join(', ')})`);
+                    }
+                    if (sapPacemakerResources && sapPacemakerResources.length > 0) {
+                        detectionSources.push(`SAP pacemaker resources (${sapPacemakerResources.map(r => r.name).join(', ')})`);
+                    }
+                    if (sapPackagesGlobal && sapPackagesGlobal.length > 0) {
+                        detectionSources.push(`SAP packages (${sapPackagesGlobal.join(', ')})`);
+                    }
+                    if (serviceFilesGlobal && serviceFilesGlobal.length > 0) {
+                        detectionSources.push('SAP service files');
+                    }
+                    if (basicEnvSap) {
+                        detectionSources.push('SAP product identification in OS metadata');
+                    }
+                    
+                    if (detectionSources.length > 0) {
+                        html += `<ul style="margin: 10px 0; padding-left: 20px;">`;
+                        detectionSources.forEach(source => {
+                            html += `<li style="margin: 5px 0; font-size: 13px;">✓ ${source}</li>`;
+                        });
+                        html += `</ul>`;
+                    }
+                    html += `</div>`;
+                }
+                
+                // SAP EPIC section
+                if (epicDetected) {
+                    html += `<div style="margin-bottom: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2);">`;
+                    html += `<p class="text-success"><strong>SAP EPIC Applications Detected</strong></p>`;
+                    html += `<p style="margin-top: 5px; font-size: 13px;">The analysis detected SAP EPIC-related components:</p>`;
+                    
+                    const epicSources = [];
+                    if (basicEnvEpic) {
+                        epicSources.push('EPIC product identification in OS metadata');
+                    }
+                    if (epicPacemakerResources && epicPacemakerResources.length > 0) {
+                        epicSources.push(`EPIC pacemaker resources (${epicPacemakerResources.map(r => r.name).join(', ')})`);
+                    }
+                    if (epicPackagesGlobal && epicPackagesGlobal.length > 0) {
+                        epicSources.push(`EPIC packages (${epicPackagesGlobal.join(', ')})`);
+                    }
+                    
+                    if (epicSources.length > 0) {
+                        html += `<ul style="margin: 10px 0; padding-left: 20px;">`;
+                        epicSources.forEach(source => {
+                            html += `<li style="margin: 5px 0; font-size: 13px;">✓ ${source}</li>`;
+                        });
+                        html += `</ul>`;
+                    }
+                    html += `</div>`;
+                }
+                
+                // Azure Packages section
+                if (analysis.rpmPackages && analysis.rpmPackages.found) {
+                    const pkgs = analysis.rpmPackages;
+                    html += `<div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2);">`;
+                    html += `<p style="margin: 0 0 10px 0; font-weight: bold;">Azure Packages:</p>`;
+                    
+                    if (pkgs.warnings && pkgs.warnings.length > 0) {
+                        html += `<div class="warning-block" style="margin-bottom: 10px;">`;
+                        html += `<p style="margin: 0 0 5px 0; color: #ff9800;"><strong>⚠ Package Warnings (${pkgs.warnings.length}):</strong></p>`;
+                        html += `<ul style="margin: 5px 0; padding-left: 20px; font-size: 12px;">`;
+                        pkgs.warnings.forEach(warning => {
+                            html += `<li>${warning}</li>`;
+                        });
+                        html += `</ul>`;
+                        html += `</div>`;
+                    }
+                    
+                    if (pkgs.packages && Object.keys(pkgs.packages).length > 0) {
+                        html += `<details class="subsection">`;
+                        html += `<summary style="cursor: pointer; font-weight: bold;">Installed Packages (${Object.keys(pkgs.packages).length})</summary>`;
+                        html += `<ul style="margin: 10px 0; padding-left: 20px; font-size: 12px;">`;
+                        Object.entries(pkgs.packages).forEach(([pkgName, version]) => {
+                            html += `<li><code>${pkgName}</code>: ${version}</li>`;
+                        });
+                        html += `</ul>`;
+                        html += `</details>`;
+                    } else {
+                        html += `<p style="font-size: 13px;" class="text-muted"><em>No Azure packages found</em></p>`;
+                    }
+                    html += `</div>`;
+                }
+                
+                html += `</div></details>`;
+            }
+            
+            // Events - group Live Migration, Kernel Reboots and OOM (collapsed by default)
+            html += `<details class="content-details">`;
+            html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">Events</summary>`;
+            html += `<div style="margin-top: 15px;">`;
+
             // Live Migration Events - Collapsible
             // Live Migration - Always show
             const hasLiveMigration = liveMigration && liveMigration.count > 0;
@@ -1288,7 +1545,7 @@
                 html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection pattern: hv_utils: Heartbeat IC → hv_balloon → hv_netvsc within 100 lines</em></p>`;
             }
             html += `</div></details>`;
-            
+
             // Kernel Reboots - Always show
             const hasKernelReboots = kernelReboots && kernelReboots.count > 0;
             const kernelRebootsCount = kernelReboots ? kernelReboots.count : 0;
@@ -1327,7 +1584,7 @@
                 html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection patterns: "Linux version" (kernel boot), systemd shutdown/reboot messages, kernel reboot messages</em></p>`;
             }
             html += `</div></details>`;
-            
+
             // OOM Killer Events - Always show
             const hasOOMKiller = oomKiller && oomKiller.count > 0;
             const oomKillerCount = oomKiller ? oomKiller.count : 0;
@@ -1398,98 +1655,31 @@
                 html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection patterns: "Out of memory: Kill process", "oom-killer: invoked", "oom_reaper:", "Cannot allocate memory"</em></p>`;
             }
             html += `</div></details>`;
-            
-            // RPM Packages Validation - Collapsible
-            if (analysis.rpmPackages && analysis.rpmPackages.found) {
-                const rpmPackages = analysis.rpmPackages;
-                const hasErrors = rpmPackages.warnings && rpmPackages.warnings.length > 0;
-                const allValid = !hasErrors;
-                
-                const blockClass = allValid ? 'success-block' : 'danger-block';
-                const icon = allValid ? '✓' : '⚠';
-                const statusText = allValid ? 'All Azure Packages Valid' : 'Azure Package Issues Detected';
-                
-                html += `<details class="${blockClass}">`;
-                html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
-                html += `${icon} ${statusText}`;
-                html += ` <span style="font-size: 12px; font-weight: normal;">(${Object.keys(rpmPackages.packages).length} packages found)</span>`;
-                html += `</summary>`;
-                html += `<div style="margin-top: 15px;">`;
-                
-                // Show found packages
-                html += '<p><strong>Azure Packages:</strong></p>';
-                html += '<div class="subsection" style="margin-bottom: 15px;">';
-                html += '<ul style="margin: 0; list-style: none; padding: 0;">';
-                
-                const requiredPackageNames = [
-                    'fence-agents',
-                    'python3-azure-mgmt-compute',
-                    'python3-azure-identity',
-                    'cloud-netconfig-azure',
-                    'resource-agents',
-                    'python3-azure-core'
-                ];
-                
-                requiredPackageNames.forEach(pkgName => {
-                    const version = rpmPackages.packages[pkgName];
-                    if (version) {
-                        html += `<li style="padding: 5px 0; border-bottom: 1px solid var(--code-border);">`;
-                        html += `<code class="text-info">${pkgName}</code>: `;
-                        html += `<span class="text-success">${version}</span>`;
-                        html += `</li>`;
-                    } else {
-                        html += `<li style="padding: 5px 0; border-bottom: 1px solid var(--code-border);">`;
-                        html += `<code class="text-info">${pkgName}</code>: `;
-                        html += `<span class="text-danger">not found</span>`;
-                        html += `</li>`;
-                    }
-                });
-                
-                html += '</ul>';
-                html += '</div>';
-                
-                // Show errors/warnings
-                if (hasErrors) {
-                    html += '<div class="warning-box">';
-                    rpmPackages.warnings.forEach(warning => {
-                        html += `<div style="margin-bottom: 10px;">`;
-                        html += `<p style="margin: 0;" class="text-danger"><strong>⚠ ${warning.message}</strong></p>`;
-                        html += `<p style="margin: 5px 0 0 0; font-size: 13px;">`;
-                        html += `Expected: <code>${warning.expected}</code>, `;
-                        html += `Found: <code>${warning.actual}</code>`;
-                        html += `</p>`;
-                        if (warning.documentationUrl) {
-                            html += `<p style="margin: 5px 0 0 0; font-size: 13px;">`;
-                            html += `<a href="${warning.documentationUrl}" target="_blank" class="text-info">📘 View Documentation</a>`;
-                            html += `</p>`;
-                        }
-                        html += `</div>`;
-                    });
-                    html += '</div>';
-                }
-                
-                html += `</div></details>`;
-            }
+
+            // Close Events grouping
+            html += `</div></details>`;
             
             // Antivirus and Security Software - Always show
             const antivirusData = analysis.antivirus || { anyDetected: false, allHaveExceptions: false };
             const hasAntivirus = antivirusData.anyDetected;
-            const hasExceptions = antivirusData.allHaveExceptions && hasAntivirus;
-            
-            // Determine block class based on state
+            // Only treat 'allHaveExceptions' as meaningful when SAP is detected
+            const hasExceptions = antivirusData.allHaveExceptions && hasAntivirus && sapDetected;
+
+            // Determine block class based on state. If SAP is not detected, avoid raising SAP-specific warnings.
             let avBlockClass, avStatusText;
             if (!hasAntivirus) {
-                // Not detected - info
                 avBlockClass = 'info-block';
                 avStatusText = 'Antivirus and Security Software';
+            } else if (!sapDetected) {
+                // Antivirus present but system not identified as SAP: show neutral/info status
+                avBlockClass = 'info-block';
+                avStatusText = 'Antivirus Detected';
             } else if (hasExceptions) {
-                // Detected with exceptions - success
                 avBlockClass = 'success-block';
-                avStatusText = '✓ Antivirus Detected with SAP Exceptions';
+                avStatusText = '[OK] Antivirus Detected with SAP Exceptions';
             } else {
-                // Detected without exceptions - danger
                 avBlockClass = 'danger-block';
-                avStatusText = '⚠ Antivirus Detected - SAP Exceptions Required';
+                avStatusText = '[WARNING] Antivirus Detected - SAP Exceptions Required';
             }
             
             html += `<details class="${avBlockClass}" style="max-width: 100%; box-sizing: border-box; overflow: hidden;">`;
@@ -1509,7 +1699,7 @@
                     const statusColorClass = hasExcept ? 'text-success' : 'text-danger';
                     const statusBorderColor = hasExcept ? 'var(--success-color)' : 'var(--danger-color)';
                     const statusIcon = hasExcept ? '✓' : '✗';
-                    
+
                     html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor};">`;
                     html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} CrowdStrike Falcon Sensor</p>`;
                     if (falcon.version) {
@@ -1518,24 +1708,30 @@
                     if (falcon.runningProcess) {
                         html += `<p style="margin: 5px 0; font-size: 13px;"><span class="badge badge-success">Running</span></p>`;
                     }
-                    
-                    if (hasExcept && falcon.exclusionPaths && falcon.exclusionPaths.length > 0) {
-                        html += `<p style="margin: 10px 0 5px 0; font-size: 13px; font-weight: bold;" class="text-success">SAP Exclusions Configured:</p>`;
-                        html += `<ul style="margin: 5px 0; font-size: 12px;">`;
-                        falcon.exclusionPaths.forEach(path => {
-                            html += `<li><code>${path}</code></li>`;
-                        });
-                        html += `</ul>`;
+
+                    // Only show SAP-specific exclusion details or warnings when SAP is detected
+                    if (sapDetected) {
+                        if (hasExcept && falcon.exclusionPaths && falcon.exclusionPaths.length > 0) {
+                            html += `<p style="margin: 10px 0 5px 0; font-size: 13px; font-weight: bold;" class="text-success">SAP Exclusions Configured:</p>`;
+                            html += `<ul style="margin: 5px 0; font-size: 12px;">`;
+                            falcon.exclusionPaths.forEach(path => {
+                                html += `<li><code>${path}</code></li>`;
+                            });
+                            html += `</ul>`;
+                        } else {
+                            html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-danger"><strong>⚠ SAP exclusions not detected.</strong></p>`;
+                            html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
+                            html += `Required SAP paths should be excluded: /usr/sap, /hana/shared, /hana/data, /hana/log, /sapmnt`;
+                            html += `</p>`;
+                            html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
+                            html += `<a href="https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-suse-pacemaker" target="_blank" class="text-info">📘 View SAP on Azure Documentation</a>`;
+                            html += `</p>`;
+                        }
                     } else {
-                        html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-danger"><strong>⚠ SAP exclusions not detected.</strong></p>`;
-                        html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
-                        html += `Required SAP paths should be excluded: /usr/sap, /hana/shared, /hana/data, /hana/log, /sapmnt`;
-                        html += `</p>`;
-                        html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
-                        html += `<a href="https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-suse-pacemaker" target="_blank" class="text-info">📘 View SAP on Azure Documentation</a>`;
-                        html += `</p>`;
+                        // Minimal info when not SAP: do not show SAP exclusion guidance
+                        html += `<p style="margin: 8px 0 0 0; font-size: 12px;" class="text-muted">Detected CrowdStrike Falcon Sensor${falcon.version ? ' - version ' + falcon.version : ''}.</p>`;
                     }
-                    
+
                     if (falcon.message) {
                         html += `<p style="margin: 10px 0 0 0; font-size: 12px;" class="text-muted"><em>${falcon.message}</em></p>`;
                     }
@@ -1549,7 +1745,7 @@
                     const statusColorClass = hasExcept ? 'text-success' : 'text-warning-dark';
                     const statusBorderColor = hasExcept ? 'var(--success-color)' : 'var(--warning-color)';
                     const statusIcon = hasExcept ? '✓' : '⚠';
-                    
+
                     html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor}; max-width: 100%; overflow-wrap: break-word; word-break: break-word; white-space: normal;">`;
                     html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} Microsoft Defender for Endpoint</p>`;
                     if (defender.version) {
@@ -1558,54 +1754,61 @@
                     if (defender.runningProcess) {
                         html += `<p style="margin: 5px 0; font-size: 13px;"><span class="badge badge-success">Running</span></p>`;
                     }
-                    
-                    if (hasExcept && defender.exclusionPaths && defender.exclusionPaths.length > 0) {
-                        html += `<p style="margin: 10px 0 5px 0; font-size: 13px; font-weight: bold;" class="text-success">SAP Exclusions Configured:</p>`;
-                        html += `<ul style="margin: 5px 0; font-size: 12px;">`;
-                        defender.exclusionPaths.forEach(path => {
-                            html += `<li><code>${path}</code></li>`;
-                        });
-                        html += `</ul>`;
+
+                    if (sapDetected) {
+                        if (hasExcept && defender.exclusionPaths && defender.exclusionPaths.length > 0) {
+                            html += `<p style="margin: 10px 0 5px 0; font-size: 13px; font-weight: bold;" class="text-success">SAP Exclusions Configured:</p>`;
+                            html += `<ul style="margin: 5px 0; font-size: 12px;">`;
+                            defender.exclusionPaths.forEach(path => {
+                                html += `<li><code>${path}</code></li>`;
+                            });
+                            html += `</ul>`;
+                        } else {
+                            html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-warning-dark"><strong>⚠ SAP exclusions need verification</strong></p>`;
+                            html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
+                            html += `The exclusion configuration file was not found in the analyzed files. Please verify that the following SAP paths are excluded: /usr/sap, /hana/shared, /hana/data, /hana/log, /sapmnt`;
+                            html += `</p>`;
+                            html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
+                            html += `<a href="https://learn.microsoft.com/en-us/defender-endpoint/linux-exclusions" target="_blank" class="text-info">📘 Configure Defender Exclusions on Linux</a>`;
+                            html += `</p>`;
+                        }
                     } else {
-                        html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-warning-dark"><strong>⚠ SAP exclusions need verification</strong></p>`;
-                        html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
-                        html += `The exclusion configuration file was not found in the analyzed files. Please verify that the following SAP paths are excluded: /usr/sap, /hana/shared, /hana/data, /hana/log, /sapmnt`;
-                        html += `</p>`;
-                        html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
-                        html += `<a href="https://learn.microsoft.com/en-us/defender-endpoint/linux-exclusions" target="_blank" class="text-info">📘 Configure Defender Exclusions on Linux</a>`;
-                        html += `</p>`;
+                        // Minimal info when not SAP
+                        html += `<p style="margin: 8px 0 0 0; font-size: 12px;" class="text-muted">Detected Microsoft Defender${defender.version ? ' - version ' + defender.version : ''}.</p>`;
                     }
-                    
+
                     if (defender.message) {
                         html += `<p style="margin: 10px 0 0 0; font-size: 12px;" class="text-muted"><em>${defender.message}</em></p>`;
                     }
                     html += `</div>`;
                 }
                 
-                // General SAP antivirus guidance
-                html += `<div class="warning-block">`;
-                html += `<p style="margin: 0; font-size: 13px;" class="text-warning-dark"><strong>Important:</strong> When running SAP on Azure, antivirus software must exclude SAP directories to prevent performance issues and potential data corruption.</p>`;
-                html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-warning-dark">Recommended exclusions: /usr/sap, /hana/shared, /hana/data, /hana/log, /sapmnt, /usr/sap/*/SYS/exe</p>`;
-                html += `</div>`;
+                // General SAP antivirus guidance (only if SAP detected)
+                if (sapDetected) {
+                    html += `<div class="warning-block">`;
+                    html += `<p style="margin: 0; font-size: 13px;" class="text-warning-dark"><strong>Important:</strong> When running SAP on Azure, antivirus software must exclude SAP directories to prevent performance issues and potential data corruption.</p>`;
+                    html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-warning-dark">Recommended exclusions: /usr/sap, /hana/shared, /hana/data, /hana/log, /sapmnt, /usr/sap/*/SYS/exe</p>`;
+                    html += `</div>`;
+                }
             }
             
             html += `</div></details>`;
             
-            // Kernel and Tuning Section
+            // Kernel and Tuning Section (show SAP-relevant warnings only when SAP detected)
             if (kernelTuning && kernelTuning.found) {
                 html += `<details class="content-details">`;
                 html += `<summary>Kernel and Tuning`;
-                if (kernelTuning.hasWarnings) {
+                if (kernelTuning.hasWarnings && sapDetected) {
                     html += ` <span class="badge badge-warning">⚠ ${kernelTuning.warnings.length} warning${kernelTuning.warnings.length > 1 ? 's' : ''}</span>`;
                 }
                 html += `</summary>`;
                 html += `<div style="margin-top: 15px;">`;
-                
-                // Show warnings if any
-                if (kernelTuning.hasWarnings) {
+
+                // Show warnings only if SAP detected
+                if (kernelTuning.hasWarnings && sapDetected) {
                     html += `<div class="warning-block">`;
                     html += `<p style="margin: 0 0 10px 0;"><strong>⚠ Kernel Parameter Warnings</strong></p>`;
-                    
+
                     kernelTuning.warnings.forEach(warning => {
                         html += `<div style="margin-bottom: 15px;">`;
                         html += `<p style="margin: 0; font-size: 13px;"><code style="font-weight: bold;">${warning.parameter}</code></p>`;
@@ -1620,10 +1823,10 @@
                         }
                         html += `</div>`;
                     });
-                    
+
                     html += `</div>`;
                 }
-                
+
                 // Show all kernel parameters in a collapsed section
                 if (Object.keys(kernelTuning.parameters).length > 0) {
                     html += `<details style="margin-top: 15px;">`;
@@ -1637,7 +1840,7 @@
                     html += `<th style="text-align: left; padding: 8px;">Value</th>`;
                     html += `</tr></thead>`;
                     html += `<tbody>`;
-                    
+
                     // Sort parameters alphabetically
                     Object.keys(kernelTuning.parameters).sort().forEach(param => {
                         const value = kernelTuning.parameters[param];
@@ -1646,15 +1849,15 @@
                         html += `<td style="padding: 6px; font-family: monospace;">${value}</td>`;
                         html += `</tr>`;
                     });
-                    
+
                     html += `</tbody></table>`;
                     html += `</div>`;
                     html += `</details>`;
                 }
-                
+
                 html += `</div></details>`;
             }
-            
+
             // Archive Contents - Collapsible
             html += `<details class="content-details">`;
             html += `<summary>`;
@@ -1665,7 +1868,7 @@
             // Show success message and filename
             if (filename) {
                 html += `<div class="success-block" style="padding: 10px;">`;
-                html += `<p style="margin: 0;"><strong>✓ File Processed Successfully</strong></p>`;
+                html += `<p style="margin: 0;"><strong>[OK] File Processed Successfully</strong></p>`;
                 html += `<p style="margin: 5px 0 0 0; font-size: 13px;">${filename}</p>`;
                 html += `</div>`;
             }
