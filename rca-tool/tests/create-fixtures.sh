@@ -295,6 +295,28 @@ EOF
 chmod +x test-data/opt/CrowdStrike/falconctl
 create_fixture "test-antivirus"
 
+# 9a. Test for Illumio detection
+echo ""
+echo "=== Creating test-illumio.tar.xz ==="
+mkdir -p test-data/sos_commands/systemd
+cat > test-data/sos_commands/systemd/systemctl_list-units_--all << 'EOF'
+  proc-sys-fs-binfmt_misc.automount                                                                                                                          loaded    active   waiting   Arbitrary Executable File Formats File System Automount Point
+  sys-devices-pci0000:00-0000:00:03.0-virtio0-net-eth0.device                                                                                               loaded    active   plugged   Virtio network device
+  sys-devices-platform-serial8250-tty-ttyS0.device                                                                                                           loaded    active   plugged   /sys/devices/platform/serial8250/tty/ttyS0
+  -.mount                                                                                                                                                    loaded    active   mounted   Root Mount
+  boot-efi.mount                                                                                                                                             loaded    active   mounted   /boot/efi
+  illumio-ven.service                                                                                                                                        loaded    active   exited    Illumio VEN Agent top level startup
+  venAgentMgr.service                                                                                                                                        loaded    active   running   Illumio Agent Manager
+  venAgentMonitor.service                                                                                                                                    loaded    active   running   Illumio Agent Monitor
+  venPlatformHandler.service                                                                                                                                 loaded    active   running   Illumio Platform Handler
+  basic.target                                                                                                                                               loaded    active   active    Basic System
+  cryptsetup.target                                                                                                                                          loaded    active   active    Local Encrypted Volumes
+  getty.target                                                                                                                                               loaded    active   active    Login Prompts
+EOF
+mkdir -p test-data/usr/sap
+mkdir -p test-data/hana/shared
+create_fixture "test-illumio"
+
 # 10. Test for live migration events
 echo ""
 echo "=== Creating test-live-migration.tar.xz ==="

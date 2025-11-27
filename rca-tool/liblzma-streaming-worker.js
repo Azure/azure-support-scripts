@@ -2646,6 +2646,42 @@ const SCC_RULES = {
         }
     },
     
+    // Rule: Detect Illumio
+    illumio: {
+        filePattern: /sos_commands\/systemd\/systemctl_list-units_--all$/,
+        
+        parse: function(content) {
+            const lines = content.split('\n');
+            debugLog('[illumio parser] Analyzing', lines.length, 'lines for Illumio');
+            
+            let detected = false;
+            
+            // Check for Illumio in systemctl output
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                
+                if (trimmed.includes('Illumio') || trimmed.includes('illumio')) {
+                    detected = true;
+                    debugLog('[illumio parser] Found Illumio:', trimmed);
+                    break;
+                }
+            }
+            
+            if (!detected) {
+                debugLog('[illumio parser] Illumio not detected');
+                return { found: false };
+            }
+            
+            debugLog('[illumio parser] Illumio detected');
+            
+            return {
+                found: true,
+                message: 'Illumio detected. SAP exclusions should be verified in Illumio policy configuration.'
+            };
+        }
+    },
+    
     // Rule: Extract kernel tuning parameters from sysctl
     kernelTuning: {
         filePattern: /sos_commands\/kernel\/sysctl_-a$/,
@@ -3121,6 +3157,7 @@ class IncrementalTARParser {
         const falconConfigData = this.analysisResults.falconSensorConfig || { found: false };
         const msDefenderData = this.analysisResults.msDefender || { found: false };
         const msDefenderConfigData = this.analysisResults.msDefenderConfig || { found: false };
+        const illumioData = this.analysisResults.illumio || { found: false };
         
         // Combine antivirus results
         const antivirusResults = {
@@ -3140,8 +3177,12 @@ class IncrementalTARParser {
                 exclusionPaths: msDefenderConfigData.exclusions || [],
                 message: msDefenderData.message
             },
+            illumio: {
+                detected: illumioData.found,
+                message: illumioData.message
+            },
             // Overall status
-            anyDetected: falconSensorData.found || msDefenderData.found,
+            anyDetected: falconSensorData.found || msDefenderData.found || illumioData.found,
             allHaveExceptions: (falconSensorData.found ? (falconConfigData.hasExclusions || false) : true) && 
                               (msDefenderData.found ? (msDefenderConfigData.hasExclusions || false) : true)
         };

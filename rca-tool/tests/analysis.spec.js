@@ -292,6 +292,16 @@ test.describe('SAP HANA Cluster Analyzer', () => {
     }
   });
 
+  test('detects Illumio security software', async ({ page }) => {
+    const result = await uploadAndWaitForAnalysis(page, 'scc_test-illumio.tar.xz');
+    
+    // Should detect Illumio
+    expect(result).toContain('Illumio');
+    
+    // Should show SAP exclusions message
+    expect(result).toMatch(/SAP.*exclusion/i);
+  });
+
   test('detects live migration events', async ({ page }) => {
     const result = await uploadAndWaitForAnalysis(page, 'scc_test-live-migration.tar.xz');
     

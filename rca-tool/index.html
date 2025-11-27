@@ -1694,7 +1694,7 @@
             
             if (!hasAntivirus) {
                 html += `<p class="text-muted"><em>No antivirus or security software was detected in the analyzed files.</em></p>`;
-                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Checked for: CrowdStrike Falcon Sensor, Microsoft Defender for Endpoint (mdatp)</em></p>`;
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Checked for: CrowdStrike Falcon Sensor, Microsoft Defender for Endpoint (mdatp), Illumio</em></p>`;
             } else {
                 // Falcon Sensor
                 if (antivirusData.falconSensor && antivirusData.falconSensor.detected) {
@@ -1783,6 +1783,31 @@
 
                     if (defender.message) {
                         html += `<p style="margin: 10px 0 0 0; font-size: 12px;" class="text-muted"><em>${defender.message}</em></p>`;
+                    }
+                    html += `</div>`;
+                }
+                
+                // Illumio
+                if (antivirusData.illumio && antivirusData.illumio.detected) {
+                    const illumio = antivirusData.illumio;
+                    const statusColorClass = 'text-warning-dark';
+                    const statusBorderColor = 'var(--warning-color)';
+                    const statusIcon = '⚠';
+
+                    html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor};">`;
+                    html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} Illumio</p>`;
+
+                    if (sapDetected) {
+                        html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-warning-dark"><strong>⚠ SAP exclusions need verification</strong></p>`;
+                        html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
+                        html += `Please verify that SAP paths are excluded in Illumio policy configuration: /usr/sap, /hana/shared, /hana/data, /hana/log, /sapmnt`;
+                        html += `</p>`;
+                    } else {
+                        html += `<p style="margin: 8px 0 0 0; font-size: 12px;" class="text-muted">Detected Illumio.</p>`;
+                    }
+
+                    if (illumio.message) {
+                        html += `<p style="margin: 10px 0 0 0; font-size: 12px;" class="text-muted"><em>${illumio.message}</em></p>`;
                     }
                     html += `</div>`;
                 }
