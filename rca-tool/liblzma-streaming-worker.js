@@ -2682,6 +2682,42 @@ const SCC_RULES = {
         }
     },
     
+    // Rule: Detect Trend Micro Deep Security
+    trendMicro: {
+        filePattern: /sos_commands\/systemd\/systemctl_list-units_--all$/,
+        
+        parse: function(content) {
+            const lines = content.split('\n');
+            debugLog('[trendMicro parser] Analyzing', lines.length, 'lines for Trend Micro');
+            
+            let detected = false;
+            
+            // Check for Trend Micro Deep Security in systemctl output
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                
+                if (trimmed.includes('ds_agent.service') && trimmed.includes('Trend Micro')) {
+                    detected = true;
+                    debugLog('[trendMicro parser] Found Trend Micro Deep Security:', trimmed);
+                    break;
+                }
+            }
+            
+            if (!detected) {
+                debugLog('[trendMicro parser] Trend Micro not detected');
+                return { found: false };
+            }
+            
+            debugLog('[trendMicro parser] Trend Micro Deep Security detected');
+            
+            return {
+                found: true,
+                message: 'Trend Micro Deep Security detected. SAP exclusions should be verified in Deep Security Manager.'
+            };
+        }
+    },
+    
     // Rule: Extract kernel tuning parameters from sysctl
     kernelTuning: {
         filePattern: /sos_commands\/kernel\/sysctl_-a$/,
@@ -3158,6 +3194,7 @@ class IncrementalTARParser {
         const msDefenderData = this.analysisResults.msDefender || { found: false };
         const msDefenderConfigData = this.analysisResults.msDefenderConfig || { found: false };
         const illumioData = this.analysisResults.illumio || { found: false };
+        const trendMicroData = this.analysisResults.trendMicro || { found: false };
         
         // Combine antivirus results
         const antivirusResults = {
@@ -3181,8 +3218,12 @@ class IncrementalTARParser {
                 detected: illumioData.found,
                 message: illumioData.message
             },
+            trendMicro: {
+                detected: trendMicroData.found,
+                message: trendMicroData.message
+            },
             // Overall status
-            anyDetected: falconSensorData.found || msDefenderData.found || illumioData.found,
+            anyDetected: falconSensorData.found || msDefenderData.found || illumioData.found || trendMicroData.found,
             allHaveExceptions: (falconSensorData.found ? (falconConfigData.hasExclusions || false) : true) && 
                               (msDefenderData.found ? (msDefenderConfigData.hasExclusions || false) : true)
         };

@@ -1694,7 +1694,7 @@
             
             if (!hasAntivirus) {
                 html += `<p class="text-muted"><em>No antivirus or security software was detected in the analyzed files.</em></p>`;
-                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Checked for: CrowdStrike Falcon Sensor, Microsoft Defender for Endpoint (mdatp), Illumio</em></p>`;
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Checked for: CrowdStrike Falcon Sensor, Microsoft Defender for Endpoint (mdatp), Illumio, Trend Micro Deep Security</em></p>`;
             } else {
                 // Falcon Sensor
                 if (antivirusData.falconSensor && antivirusData.falconSensor.detected) {
@@ -1808,6 +1808,31 @@
 
                     if (illumio.message) {
                         html += `<p style="margin: 10px 0 0 0; font-size: 12px;" class="text-muted"><em>${illumio.message}</em></p>`;
+                    }
+                    html += `</div>`;
+                }
+                
+                // Trend Micro Deep Security
+                if (antivirusData.trendMicro && antivirusData.trendMicro.detected) {
+                    const trendMicro = antivirusData.trendMicro;
+                    const statusColorClass = 'text-warning-dark';
+                    const statusBorderColor = 'var(--warning-color)';
+                    const statusIcon = '⚠';
+
+                    html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor};">`;
+                    html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} Trend Micro Deep Security</p>`;
+
+                    if (sapDetected) {
+                        html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-warning-dark"><strong>⚠ SAP exclusions need verification</strong></p>`;
+                        html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
+                        html += `Please verify that SAP paths are excluded in Deep Security Manager: /usr/sap, /hana/shared, /hana/data, /hana/log, /sapmnt`;
+                        html += `</p>`;
+                    } else {
+                        html += `<p style="margin: 8px 0 0 0; font-size: 12px;" class="text-muted">Detected Trend Micro Deep Security.</p>`;
+                    }
+
+                    if (trendMicro.message) {
+                        html += `<p style="margin: 10px 0 0 0; font-size: 12px;" class="text-muted"><em>${trendMicro.message}</em></p>`;
                     }
                     html += `</div>`;
                 }

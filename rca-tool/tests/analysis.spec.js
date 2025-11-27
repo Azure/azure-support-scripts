@@ -302,6 +302,16 @@ test.describe('SAP HANA Cluster Analyzer', () => {
     expect(result).toMatch(/SAP.*exclusion/i);
   });
 
+  test('detects Trend Micro Deep Security', async ({ page }) => {
+    const result = await uploadAndWaitForAnalysis(page, 'scc_test-trendmicro.tar.xz');
+    
+    // Should detect Trend Micro
+    expect(result).toContain('Trend Micro');
+    
+    // Should show SAP exclusions message
+    expect(result).toMatch(/SAP.*exclusion/i);
+  });
+
   test('detects live migration events', async ({ page }) => {
     const result = await uploadAndWaitForAnalysis(page, 'scc_test-live-migration.tar.xz');
     
