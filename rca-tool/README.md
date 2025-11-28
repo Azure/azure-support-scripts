@@ -26,8 +26,8 @@ A Root Cause Analysis (RCA) tool that analyzes support and diagnostic files (hb_
 
 ## Architecture
 
-```Mermaid
-flowchart TD
+```mermaid
+flowchart TD;
 A(File stream to local browser) -->|stream decompression with wasm| B(Multiple patterns)
 B --> C{if file is fstab}
 B --> D{if file is ha.txt}
