@@ -12,16 +12,7 @@
     
     <div class="container">
         <h1>RCA Tool</h1>
-        
-        <div class="info">
-            <h3>Instructions:</h3>
-            <ul>
-                <li>Drag and drop a <strong>.tar.gz</strong>, <strong>.tar.xz</strong>, or <strong>.txz</strong> cluster file onto the drop zone below</li>
-                <li>The application will analyze and detect if it's an <strong>hb_report</strong>, <strong>supportconfig</strong>, or <strong>sosreport</strong></li>
-                <li>View the complete file listing and diagnostic information</li>
-            </ul>
-        </div>
-        
+                
         <div id="loading">
             <div>Loading WebAssembly module...</div>
             <div id="load-progress" class="text-muted" style="margin-top: 10px; font-size: 0.9em;"></div>
@@ -29,10 +20,10 @@
         
         <!-- Simple file upload UI -->
         <div id="drop-zone">
-            <h2>Select Cluster File</h2>
+            <h2>Drag and Drop Support File</h2>
             <p>Choose a .tar.gz or .tar.xz cluster file (hb_report, crm_report, supportconfig, or sosreport)</p>
             <p style='font-size: 0.9em;'>Supports both gzip and XZ compression</p>
-            <input type="file" id="file-input" accept=".txz,.tar.xz,.tar.gz,.tgz" aria-label="Select cluster file (.tar.gz or .tar.xz)">
+            <input type="file" id="file-input" accept=".txz,.tar.xz,.tar.gz,.tgz" aria-label="Drag and drop support file (.tar.gz or .tar.xz)">
         </div>
         <pre id="output"></pre>
     </div>
@@ -650,6 +641,13 @@
         function formatStreamingAnalysis(analysis, compressedSize, decompressedSize, filename) {
             // Debug: Log the entire analysis object to see what we're receiving
             console.log('[DEBUG] Full analysis object:', analysis);
+            
+            // Check for corruption
+            if (analysis.corruptionDetected) {
+                return formatCorruptedArchiveAnalysis(analysis, compressedSize, decompressedSize, filename);
+            }
+            
+            // Always show full analysis (verify-only mode removed)
             console.log('[DEBUG] osRelease:', analysis.osRelease);
             console.log('[DEBUG] azureVMProperties:', analysis.azureVMProperties);
             console.log('[DEBUG] hostsFile:', analysis.hostsFile);
@@ -1977,6 +1975,149 @@
             }
             
             html += `</div></details>`;
+            
+            return html;
+        }
+        
+        // Format analysis for corrupted/truncated archives
+        function formatCorruptedArchiveAnalysis(analysis, compressedSize, decompressedSize, filename) {
+            const { fileCount, directories, fileTypes, files, totalParsed, corruptionMessage, xzBlocksProcessed, bytesProcessed, totalInputBytes } = analysis;
+            const dirArray = Array.isArray(directories) ? directories : Array.from(directories || []);
+            const filesArray = Array.isArray(files) ? files : [];
+            
+            let html = '<div class="analysis-section">';
+            
+            // Corruption warning banner
+            html += `<div style="background-color: var(--warning-bg, #fff3cd); border: 2px solid var(--warning-border, #ffc107); border-radius: 4px; padding: 15px; margin-bottom: 20px;">`;
+            html += `<h3 style="margin: 0 0 10px 0; color: var(--warning-text, #856404);">⚠️ Corrupted or Incomplete Archive Detected</h3>`;
+            html += `<p style="margin: 0;"><strong>Issue:</strong> ${corruptionMessage || 'File appears to be corrupted or truncated'}</p>`;
+            html += `<p style="margin: 10px 0 0 0;"><strong>Partial Analysis:</strong> Successfully extracted and analyzed ${fileCount || 0} files before encountering the corruption.</p>`;
+            html += `</div>`;
+            
+            // Processing statistics
+            html += `<details class="content-details" open>`;
+            html += `<summary>Processing Statistics</summary>`;
+            html += `<div style="margin-top: 15px;">`;
+            
+            if (filename) {
+                html += `<p><strong>File:</strong> ${filename}</p>`;
+            }
+            
+            if (compressedSize && totalInputBytes) {
+                const percentProcessed = ((bytesProcessed / totalInputBytes) * 100).toFixed(1);
+                html += `<p><strong>Archive Size:</strong> ${(compressedSize / 1024 / 1024).toFixed(1)} MB (compressed)</p>`;
+                html += `<p><strong>XZ Blocks Processed:</strong> ${xzBlocksProcessed || 0}</p>`;
+                html += `<p><strong>Bytes Processed:</strong> ${(bytesProcessed / 1024).toFixed(1)} KB of ${(totalInputBytes / 1024).toFixed(1)} KB (${percentProcessed}%)</p>`;
+            }
+            
+            if (decompressedSize) {
+                html += `<p><strong>Data Decompressed:</strong> ${(decompressedSize / 1024 / 1024).toFixed(1)} MB</p>`;
+            }
+            
+            html += `<p><strong>TAR Entries Parsed:</strong> ${totalParsed || 0}</p>`;
+            html += `<p><strong>Files Extracted:</strong> ${fileCount || 0}</p>`;
+            html += `<p><strong>Directories Found:</strong> ${dirArray.length}</p>`;
+            html += `</div></details>`;
+            
+            // Partial archive contents
+            if (filesArray && filesArray.length > 0) {
+                html += `<details class="content-details" style="margin-top: 15px;">`;
+                html += `<summary>Partial Archive Contents (${fileCount || 0} files recovered)</summary>`;
+                html += `<div style="margin-top: 15px;">`;
+                
+                // File types
+                if (fileTypes && Object.keys(fileTypes).length > 0) {
+                    html += '<p><strong>File Types:</strong></p><ul style="columns: 2;">';
+                    Object.entries(fileTypes)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 10)
+                        .forEach(([type, count]) => {
+                            html += `<li>${type}: ${count}</li>`;
+                        });
+                    html += '</ul>';
+                }
+                
+                // Sample files
+                html += `<details style="margin-top: 10px;">`;
+                html += `<summary style="cursor: pointer; user-select: none;"><strong>Recovered Files (${filesArray.length} total)</strong></summary>`;
+                html += '<ul style="max-height: 300px; overflow-y: auto; margin-top: 10px;">';
+                filesArray.forEach(file => {
+                    html += `<li style="font-size: 13px;"><code>${file.name}</code> <span class="text-muted">(${(file.size / 1024).toFixed(1)} KB)</span></li>`;
+                });
+                html += '</ul>';
+                html += `</details>`;
+                
+                html += `</div></details>`;
+            }
+            
+            html += '</div>';
+            
+            return html;
+        }
+        
+        // Format only archive contents for verify-only mode
+        function formatArchiveContentsOnly(analysis, compressedSize, decompressedSize, filename) {
+            if (!analysis) {
+                return '<div class="error">No analysis data available</div>';
+            }
+            
+            const { fileCount, directories, fileTypes, files, totalParsed } = analysis;
+            const dirArray = Array.isArray(directories) ? directories : Array.from(directories || []);
+            const filesArray = Array.isArray(files) ? files : [];
+            
+            let html = '<div class="analysis-section">';
+            
+            // Archive Contents - Expanded by default in verify-only mode
+            html += `<details class="content-details" open>`;
+            html += `<summary>`;
+            html += `Archive Contents <span style="font-size: 12px; font-weight: normal;">(${fileCount || 0} files, ${dirArray.length} directories)</span>`;
+            html += `</summary>`;
+            html += `<div style="margin-top: 15px;">`;
+            
+            // Show success message and filename
+            if (filename) {
+                html += `<div class="success-block" style="padding: 10px;">`;
+                html += `<p style="margin: 0;"><strong>[OK] File Processed Successfully</strong></p>`;
+                html += `<p style="margin: 5px 0 0 0; font-size: 13px;">${filename}</p>`;
+                html += `</div>`;
+            }
+            
+            // Show compressed/decompressed sizes if available
+            if (compressedSize && decompressedSize) {
+                html += `<p><strong>Archive Size:</strong> ${(compressedSize / 1024 / 1024).toFixed(1)} MB (compressed) → ${(decompressedSize / 1024 / 1024).toFixed(1)} MB (decompressed)</p>`;
+            }
+            
+            html += `<p><strong>Total Entries Parsed:</strong> ${totalParsed || 0}</p>`;
+            
+            // File types
+            if (fileTypes && Object.keys(fileTypes).length > 0) {
+                html += '<p><strong>File Types:</strong></p><ul style="columns: 2;">';
+                Object.entries(fileTypes)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 10)
+                    .forEach(([type, count]) => {
+                        html += `<li>${type}: ${count}</li>`;
+                    });
+                html += '</ul>';
+            }
+            
+            // Sample files - nested collapsible, open by default
+            if (filesArray && filesArray.length > 0) {
+                html += `<details style="margin-top: 10px;" open>`;
+                html += `<summary style="cursor: pointer; user-select: none;"><strong>Sample Files (${filesArray.length} total)</strong></summary>`;
+                html += '<ul style="max-height: 400px; overflow-y: auto; margin-top: 10px;">';
+                filesArray.slice(0, 100).forEach(file => {
+                    html += `<li style="font-size: 13px;"><code>${file.name}</code> <span class="text-muted">(${(file.size / 1024).toFixed(1)} KB)</span></li>`;
+                });
+                if (filesArray.length > 100) {
+                    html += `<li><em>...and ${filesArray.length - 100} more files</em></li>`;
+                }
+                html += '</ul>';
+                html += `</details>`;
+            }
+            
+            html += `</div></details>`;
+            html += '</div>';
             
             return html;
         }

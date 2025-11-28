@@ -507,6 +507,66 @@ EOF
 
 create_fixture "test-fstab"
 
+################################################################################
+# Test 20: Corrupted/Truncated Archive
+# Tests handling of corrupted tar.xz files (truncated at end)
+################################################################################
+echo ""
+echo "=== Creating test-corrupted.tar.xz ==="
+mkdir -p test-data/etc
+cat > test-data/etc/hostname << 'EOF'
+test-corrupted-host
+EOF
+
+mkdir -p test-data/var/log
+cat > test-data/var/log/messages << 'EOF'
+Nov 28 10:00:01 test-host kernel: Linux version 5.14.0
+Nov 28 10:00:02 test-host systemd[1]: Started Session 1 of user root.
+Nov 28 10:00:03 test-host sshd[1234]: Accepted publickey for root
+EOF
+
+# Create the archive normally first
+create_fixture "test-corrupted"
+
+# Now truncate it by removing some blocks from the end
+# Remove last 200 bytes to simulate corruption
+CORRUPTED_FILE="$FIXTURES_DIR/scc_test-corrupted.tar.xz"
+if [ -f "$CORRUPTED_FILE" ]; then
+    FILE_SIZE=$(stat -f%z "$CORRUPTED_FILE" 2>/dev/null || stat -c%s "$CORRUPTED_FILE" 2>/dev/null)
+    # Truncate to 60% of original size to ensure corruption in compressed data
+    TRUNCATE_SIZE=$((FILE_SIZE * 60 / 100))
+    
+    # Only truncate if file is large enough
+    if [ $FILE_SIZE -gt 200 ]; then
+        echo "  Truncating from $FILE_SIZE to $TRUNCATE_SIZE bytes (60%) to simulate corruption..."
+        dd if="$CORRUPTED_FILE" of="${CORRUPTED_FILE}.tmp" bs=1 count=$TRUNCATE_SIZE 2>/dev/null
+        mv "${CORRUPTED_FILE}.tmp" "$CORRUPTED_FILE"
+        echo "✓ Created corrupted test fixture"
+    else
+        echo "  File too small to truncate, creating larger test data..."
+        # Add more content to make file larger
+        mkdir -p test-data/usr/share/doc
+        for i in {1..20}; do
+            cat > test-data/usr/share/doc/file$i.txt << EOF
+This is test file number $i
+It contains some dummy data to make the archive larger
+So we can properly test corruption handling
+Line 4
+Line 5
+EOF
+        done
+        # Recreate with more data
+        create_fixture "test-corrupted"
+        FILE_SIZE=$(stat -f%z "$CORRUPTED_FILE" 2>/dev/null || stat -c%s "$CORRUPTED_FILE" 2>/dev/null)
+        # Truncate to 60% of original size to ensure corruption in compressed data
+        TRUNCATE_SIZE=$((FILE_SIZE * 60 / 100))
+        echo "  Truncating from $FILE_SIZE to $TRUNCATE_SIZE bytes (60%) to simulate corruption..."
+        dd if="$CORRUPTED_FILE" of="${CORRUPTED_FILE}.tmp" bs=1 count=$TRUNCATE_SIZE 2>/dev/null
+        mv "${CORRUPTED_FILE}.tmp" "$CORRUPTED_FILE"
+        echo "✓ Created corrupted test fixture"
+    fi
+fi
+
 echo ""
 echo "========================================="
 echo "✓ All test fixtures created successfully!"

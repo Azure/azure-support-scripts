@@ -2873,6 +2873,7 @@ class IncrementalTARParser {
         this.fileTypes = {};
         this.offset = 0;
         this.totalParsed = 0;
+        this.foundEndMarker = false;
         
         // SCC report analysis state
         this.isSCCReport = false;
@@ -2896,6 +2897,8 @@ class IncrementalTARParser {
         while (this.buffer.length - this.offset >= 512) {
             // Check for end marker (two consecutive zero blocks)
             if (this.isEndMarker(this.offset)) {
+                this.foundEndMarker = true;
+                debugLog('[TAR Parser] Found TAR end marker');
                 break;
             }
 
@@ -3188,6 +3191,7 @@ class IncrementalTARParser {
     }
 
     getAnalysis() {
+        // Full analysis mode (always enabled)
         // Get raw cluster nodes (may be IPs or hostnames)
         const clusterNodesData = this.analysisResults.clusterNodes || { nodes: [], nodeToIpMap: {} };
         let clusterNodes = clusterNodesData.nodes || [];
@@ -3452,6 +3456,8 @@ self.onmessage = async function(e) {
             let inputOffset = 0;
             let totalDecompressed = 0;
             let chunkCount = 0;
+            let streamComplete = false;
+            let lastStatus = 0;
 
             while (inputOffset < inputSize) {
                 // Get next chunk of input
@@ -3481,8 +3487,9 @@ self.onmessage = async function(e) {
 
                 const outLen = Module.getValue(outLenPtr, 'i32');
                 const status = Module.getValue(statusPtr, 'i32');
+                lastStatus = status;
 
-                debugLog(`[XZ Streaming Worker] Chunk ${chunkCount}: input=${currentChunkSize}, output=${outLen}, status=${status}`);
+                debugLog(`[XZ Streaming Worker] Chunk ${chunkCount}: input=${currentChunkSize}, output=${outLen}, status=${status}, isLast=${isLastChunk}`);
 
                 // Free input and status buffers
                 Module._free(inputPtr);
@@ -3527,6 +3534,7 @@ self.onmessage = async function(e) {
 
                 if (status === 1) {
                     // Stream finished
+                    streamComplete = true;
                     debugLog('[XZ Streaming Worker] Stream finished');
                     break;
                 }
@@ -3553,6 +3561,28 @@ self.onmessage = async function(e) {
             // Final analysis
             const finalAnalysis = tarParser.finish();
 
+            // Check if TAR archive is complete (has end marker)
+            // An incomplete TAR (from truncated XZ) won't have the end marker
+            if (!tarParser.foundEndMarker && finalAnalysis.fileCount > 0) {
+                debugLog('[XZ Streaming Worker] WARNING: TAR archive missing end marker - file may be truncated');
+                
+                self.postMessage({
+                    success: true,
+                    partialSuccess: true,
+                    totalDecompressed,
+                    analysis: {
+                        ...finalAnalysis,
+                        corruptionDetected: true,
+                        corruptionMessage: 'TAR archive is incomplete - file appears to be truncated or corrupted',
+                        xzBlocksProcessed: chunkCount,
+                        bytesProcessed: inputOffset,
+                        totalInputBytes: inputSize,
+                        percentProcessed: Math.floor((inputOffset / inputSize) * 100)
+                    }
+                });
+                return;
+            }
+
             debugLog(`[XZ Streaming Worker] Complete: ${totalDecompressed} bytes decompressed, ${finalAnalysis.fileCount} files`);
 
             self.postMessage({
@@ -3563,9 +3593,33 @@ self.onmessage = async function(e) {
 
         } catch (error) {
             console.error('[XZ Streaming Worker] Error:', error);
-            self.postMessage({
-                error: error.message || 'Unknown streaming decompression error'
-            });
+            
+            // Check if we got partial data before the error
+            const partialAnalysis = tarParser ? tarParser.getAnalysis() : null;
+            
+            if (partialAnalysis && partialAnalysis.fileCount > 0) {
+                // We have partial data - report it along with the error
+                debugLog(`[XZ Streaming Worker] Partial success: ${totalDecompressed} bytes decompressed, ${partialAnalysis.fileCount} files before error`);
+                
+                self.postMessage({
+                    success: true,
+                    partialSuccess: true,
+                    totalDecompressed,
+                    analysis: {
+                        ...partialAnalysis,
+                        corruptionDetected: true,
+                        corruptionMessage: error.message || 'File appears to be corrupted or truncated',
+                        xzBlocksProcessed: chunkCount,
+                        bytesProcessed: inputOffset,
+                        totalInputBytes: inputSize
+                    }
+                });
+            } else {
+                // Complete failure
+                self.postMessage({
+                    error: error.message || 'Unknown streaming decompression error'
+                });
+            }
         }
     }
 };

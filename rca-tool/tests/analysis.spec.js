@@ -48,7 +48,7 @@ test.describe('SAP HANA Cluster Analyzer', () => {
 
   test('page loads correctly', async ({ page }) => {
     await expect(page.locator('#drop-zone')).toBeVisible();
-    await expect(page.locator('#drop-zone')).toContainText('Select Cluster File');
+    await expect(page.locator('#drop-zone')).toContainText('Drag and Drop Support File');
   });
 
   test('detects systemd false positives are filtered out', async ({ page }) => {
@@ -457,5 +457,45 @@ test.describe('SAP HANA Cluster Analyzer', () => {
     const hasError = result.includes('error') || result.includes('invalid');
     
     expect(isEmpty || hasError).toBeTruthy();
+  });
+
+  test('handles corrupted/truncated tar.xz file gracefully', async ({ page }) => {
+    // Capture console logs to verify error handling
+    const logs = [];
+    page.on('console', msg => logs.push(msg.text()));
+    
+    const fileInput = await page.locator('input[type="file"]');
+    
+    // Use corrupted fixture
+    await fileInput.setInputFiles(
+      path.join(__dirname, 'fixtures', 'scc_test-corrupted.tar.xz')
+    );
+    
+    // Wait for processing attempt
+    await page.waitForTimeout(5000);
+    
+    // Check that page didn't crash and shows some content
+    const content = await page.locator('#output').textContent();
+    
+    // Should not be completely empty
+    expect(content.length).toBeGreaterThan(0);
+    
+    // Should indicate corruption or error
+    const hasCorruptionIndicator = 
+      content.toLowerCase().includes('corrupt') ||
+      content.toLowerCase().includes('error') ||
+      content.toLowerCase().includes('fail') ||
+      content.toLowerCase().includes('incomplete');
+    
+    expect(hasCorruptionIndicator).toBeTruthy();
+    
+    // Should show some progress (blocks/bytes processed)
+    const contentLower = content.toLowerCase();
+    const showsProgress = 
+      contentLower.includes('block') ||
+      contentLower.includes('byte') ||
+      contentLower.includes('decompressed');
+    
+    expect(showsProgress).toBeTruthy();
   });
 });
