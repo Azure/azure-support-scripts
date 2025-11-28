@@ -665,7 +665,7 @@
                 console.log('[DEBUG] Resources detail:', analysis.pacemakerResources.resources);
             }
             
-            const { fileCount, directories, fileTypes, files, totalParsed, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, kernelReboots, oomKiller, corosyncConfig, rpmPackages, antivirus, kernelTuning } = analysis;
+            const { fileCount, directories, fileTypes, files, totalParsed, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, kernelReboots, oomKiller, corosyncConfig, rpmPackages, antivirus, kernelTuning, fstab } = analysis;
 
             // Compute a reusable SAP detection flag early so UI sections can be gated
             const dirListGlobal = (directories || []).map(d => (d || '').toLowerCase());
@@ -1848,63 +1848,78 @@
             
             html += `</div></details>`;
             
-            // Kernel and Tuning Section (show SAP-relevant warnings only when SAP detected)
-            if (kernelTuning && kernelTuning.found) {
+            // Kernel and System Parameters Section (show SAP-relevant warnings only when SAP detected)
+            if ((kernelTuning && kernelTuning.found) || (fstab && fstab.found)) {
                 html += `<details class="content-details">`;
-                html += `<summary>Kernel and Tuning`;
-                if (kernelTuning.hasWarnings && sapDetected) {
+                html += `<summary>Kernel and System Parameters`;
+                if (kernelTuning && kernelTuning.hasWarnings && sapDetected) {
                     html += ` <span class="badge badge-warning">⚠ ${kernelTuning.warnings.length} warning${kernelTuning.warnings.length > 1 ? 's' : ''}</span>`;
                 }
                 html += `</summary>`;
                 html += `<div style="margin-top: 15px;">`;
 
-                // Show warnings only if SAP detected
-                if (kernelTuning.hasWarnings && sapDetected) {
-                    html += `<div class="warning-block">`;
-                    html += `<p style="margin: 0 0 10px 0;"><strong>⚠ Kernel Parameter Warnings</strong></p>`;
+                // Kernel Tuning section
+                if (kernelTuning && kernelTuning.found) {
+                    // Show warnings only if SAP detected
+                    if (kernelTuning.hasWarnings && sapDetected) {
+                        html += `<div class="warning-block">`;
+                        html += `<p style="margin: 0 0 10px 0;"><strong>⚠ Kernel Parameter Warnings</strong></p>`;
 
-                    kernelTuning.warnings.forEach(warning => {
-                        html += `<div style="margin-bottom: 15px;">`;
-                        html += `<p style="margin: 0; font-size: 13px;"><code style="font-weight: bold;">${warning.parameter}</code></p>`;
-                        html += `<p style="margin: 5px 0; font-size: 12px;">`;
-                        html += `Expected: <code class="text-success">${warning.expected}</code>, `;
-                        html += `Found: <code class="text-danger">${warning.actual}</code>`;
-                        html += `</p>`;
-                        if (warning.documentationUrl) {
-                            html += `<p style="margin: 5px 0 0 0; font-size: 12px;">`;
-                            html += `<a href="${warning.documentationUrl}" target="_blank" class="text-info">📘 View Documentation</a>`;
+                        kernelTuning.warnings.forEach(warning => {
+                            html += `<div style="margin-bottom: 15px;">`;
+                            html += `<p style="margin: 0; font-size: 13px;"><code style="font-weight: bold;">${warning.parameter}</code></p>`;
+                            html += `<p style="margin: 5px 0; font-size: 12px;">`;
+                            html += `Expected: <code class="text-success">${warning.expected}</code>, `;
+                            html += `Found: <code class="text-danger">${warning.actual}</code>`;
                             html += `</p>`;
-                        }
-                        html += `</div>`;
-                    });
+                            if (warning.documentationUrl) {
+                                html += `<p style="margin: 5px 0 0 0; font-size: 12px;">`;
+                                html += `<a href="${warning.documentationUrl}" target="_blank" class="text-info">📘 View Documentation</a>`;
+                                html += `</p>`;
+                            }
+                            html += `</div>`;
+                        });
 
-                    html += `</div>`;
+                        html += `</div>`;
+                    }
+
+                    // Show all kernel parameters in a collapsed section
+                    if (Object.keys(kernelTuning.parameters).length > 0) {
+                        html += `<details style="margin-top: 15px;">`;
+                        html += `<summary style="font-size: 14px; cursor: pointer;">`;
+                        html += `All Kernel Parameters <span style="font-size: 12px; font-weight: normal;">(${Object.keys(kernelTuning.parameters).length} parameters)</span>`;
+                        html += `</summary>`;
+                        html += `<div style="margin-top: 10px; max-height: 400px; overflow-y: auto;">`;
+                        html += `<table style="width: 100%; font-size: 12px; border-collapse: collapse;">`;
+                        html += `<thead><tr style="background: var(--code-bg); border-bottom: 2px solid var(--border-color);">`;
+                        html += `<th style="text-align: left; padding: 8px;">Parameter</th>`;
+                        html += `<th style="text-align: left; padding: 8px;">Value</th>`;
+                        html += `</tr></thead>`;
+                        html += `<tbody>`;
+
+                        // Sort parameters alphabetically
+                        Object.keys(kernelTuning.parameters).sort().forEach(param => {
+                            const value = kernelTuning.parameters[param];
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 6px; font-family: monospace;"><code>${param}</code></td>`;
+                            html += `<td style="padding: 6px; font-family: monospace;">${value}</td>`;
+                            html += `</tr>`;
+                        });
+
+                        html += `</tbody></table>`;
+                        html += `</div>`;
+                        html += `</details>`;
+                    }
                 }
 
-                // Show all kernel parameters in a collapsed section
-                if (Object.keys(kernelTuning.parameters).length > 0) {
+                // fstab section
+                if (fstab && fstab.found && fstab.content) {
                     html += `<details style="margin-top: 15px;">`;
-                    html += `<summary style="font-size: 14px; cursor: pointer;">`;
-                    html += `All Kernel Parameters <span style="font-size: 12px; font-weight: normal;">(${Object.keys(kernelTuning.parameters).length} parameters)</span>`;
-                    html += `</summary>`;
-                    html += `<div style="margin-top: 10px; max-height: 400px; overflow-y: auto;">`;
-                    html += `<table style="width: 100%; font-size: 12px; border-collapse: collapse;">`;
-                    html += `<thead><tr style="background: var(--code-bg); border-bottom: 2px solid var(--border-color);">`;
-                    html += `<th style="text-align: left; padding: 8px;">Parameter</th>`;
-                    html += `<th style="text-align: left; padding: 8px;">Value</th>`;
-                    html += `</tr></thead>`;
-                    html += `<tbody>`;
-
-                    // Sort parameters alphabetically
-                    Object.keys(kernelTuning.parameters).sort().forEach(param => {
-                        const value = kernelTuning.parameters[param];
-                        html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
-                        html += `<td style="padding: 6px; font-family: monospace;"><code>${param}</code></td>`;
-                        html += `<td style="padding: 6px; font-family: monospace;">${value}</td>`;
-                        html += `</tr>`;
-                    });
-
-                    html += `</tbody></table>`;
+                    html += `<summary style="font-size: 14px; cursor: pointer;">Filesystem Table (/etc/fstab)</summary>`;
+                    html += `<div style="margin-top: 10px;">`;
+                    html += `<pre style="background: var(--code-bg); padding: 10px; border: 1px solid var(--code-border); border-radius: 4px; overflow-x: auto; font-size: 12px; white-space: pre-wrap;">`;
+                    html += fstab.content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    html += `</pre>`;
                     html += `</div>`;
                     html += `</details>`;
                 }

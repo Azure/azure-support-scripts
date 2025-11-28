@@ -480,6 +480,33 @@ EOF
 
 create_fixture "test-kernel-tuning-warnings"
 
+################################################################################
+# Test 19: fstab Display
+# Tests detection and display of /etc/fstab file
+################################################################################
+echo ""
+echo "=== Creating test-fstab.tar.xz ==="
+mkdir -p test-data/etc
+cat > test-data/etc/fstab << 'EOF'
+#
+# /etc/fstab
+# Created by anaconda on Wed Oct 12 14:23:45 2022
+#
+# Accessible filesystems, by reference, are maintained under '/dev/disk/'.
+# See man pages fstab(5), findfs(8), mount(8) and/or blkid(8) for more info.
+#
+# After editing this file, run 'systemctl daemon-reload' to update systemd
+# units generated from this file.
+#
+UUID=12345678-1234-1234-1234-123456789abc /                       xfs     defaults        0 0
+UUID=87654321-4321-4321-4321-cba987654321 /boot                   xfs     defaults        0 0
+UUID=abcdef12-3456-7890-abcd-ef1234567890 /data                   xfs     defaults,noatime 0 0
+/dev/mapper/vg_data-lv_backup             /backup                 ext4    defaults        1 2
+tmpfs                                     /dev/shm                tmpfs   defaults        0 0
+EOF
+
+create_fixture "test-fstab"
+
 echo ""
 echo "========================================="
 echo "✓ All test fixtures created successfully!"

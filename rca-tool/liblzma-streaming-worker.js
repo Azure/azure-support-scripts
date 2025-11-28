@@ -2781,6 +2781,20 @@ const SCC_RULES = {
                 hasWarnings: warnings.length > 0
             };
         }
+    },
+    
+    // Rule: Extract fstab file
+    fstab: {
+        filePattern: /\/etc\/fstab$/,
+        
+        parse: function(content, filename) {
+            debugLog('[fstab parser] Analyzing fstab in:', filename);
+            
+            return {
+                found: true,
+                content: content
+            };
+        }
     }
     
     // ADD MORE RULES HERE
@@ -3343,6 +3357,7 @@ class IncrementalTARParser {
             clusterEvents: clusterEventsData,
             antivirus: antivirusResults,
             kernelTuning: this.analysisResults.kernelTuning || null,
+            fstab: this.analysisResults.fstab || null,
             // Cross-validation results
             nodesInHosts: nodesInHosts,
             nodesMissingFromHosts: nodesMissingFromHosts

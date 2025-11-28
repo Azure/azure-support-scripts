@@ -358,14 +358,14 @@ test.describe('SAP HANA Cluster Analyzer', () => {
     await page.waitForFunction(
       () => {
         const output = document.getElementById('output');
-        return output && output.textContent.includes('Kernel and Tuning');
+        return output && output.textContent.includes('Kernel and System Parameters');
       },
       { timeout: 60000 }
     );
     
     // Check that kernel tuning section exists
     const content = await page.locator('#output').textContent();
-    expect(content).toContain('Kernel and Tuning');
+    expect(content).toContain('Kernel and System Parameters');
     
     // Should have parameters table
     expect(content).toMatch(/vm\.dirty_bytes.*629145600/);
@@ -391,17 +391,49 @@ test.describe('SAP HANA Cluster Analyzer', () => {
     await page.waitForFunction(
       () => {
         const output = document.getElementById('output');
-        return output && output.textContent.includes('Kernel and Tuning');
+        return output && output.textContent.includes('Kernel and System Parameters');
       },
       { timeout: 60000 }
     );
     
     // Check that kernel tuning section exists
     const content = await page.locator('#output').textContent();
-    expect(content).toContain('Kernel and Tuning');
+    expect(content).toContain('Kernel and System Parameters');
     
     // Verify kernel parameters are displayed
     expect(content).toContain('All Kernel Parameters');
+  });
+
+  test('detects and displays fstab configuration', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    
+    // Use fstab fixture
+    await fileInput.setInputFiles(
+      path.join(__dirname, 'fixtures', 'scc_test-fstab.tar.xz')
+    );
+    
+    // Wait for analysis to complete
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('Kernel and System Parameters');
+      },
+      { timeout: 60000 }
+    );
+    
+    // Check that section exists
+    const content = await page.locator('#output').textContent();
+    expect(content).toContain('Kernel and System Parameters');
+    
+    // Verify fstab subsection exists
+    expect(content).toContain('Filesystem Table (/etc/fstab)');
+    
+    // Verify fstab content is displayed
+    expect(content).toContain('UUID=12345678-1234-1234-1234-123456789abc');
+    expect(content).toContain('/boot');
+    expect(content).toContain('/data');
+    expect(content).toContain('xfs');
+    expect(content).toContain('defaults');
   });
 
   test('handles invalid file format gracefully', async ({ page }) => {
