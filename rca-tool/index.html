@@ -758,9 +758,12 @@
             
             let html = '';
             
-            // Azure VM Properties - Show at the top if available
-            if (azureVMProperties && azureVMProperties.found) {
-                const vm = azureVMProperties;
+            // Azure VM Properties - Show if we have VM properties OR OS distribution info
+            const hasAzureVMInfo = azureVMProperties && azureVMProperties.found;
+            const hasOSInfo = analysis.osRelease && analysis.osRelease.found;
+            
+            if (hasAzureVMInfo || hasOSInfo) {
+                const vm = azureVMProperties || {};
                 
                 html += `<details open class="success-block">`;
                 html += `<summary>Azure VM Properties</summary>`;
@@ -786,29 +789,31 @@
                     html += `<p style="margin: 5px 0;"><strong>Billing Code:</strong> <code>${vm.billingCode}</code></p>`;
                 }
                 
-                // BYOS/PAYG subsection
-                html += `<div class="subsection">`;
-                html += `<p style="margin: 0 0 5px 0; font-weight: bold;">Billing Model:</p>`;
-                
-                if (vm.billingModel) {
-                    const modelClass = vm.billingModel === 'BYOS' ? 'warning' : 'info';
+                // BYOS/PAYG subsection (only if we have VM info)
+                if (hasAzureVMInfo) {
+                    html += `<div class="subsection">`;
+                    html += `<p style="margin: 0 0 5px 0; font-weight: bold;">Billing Model:</p>`;
                     
-                    html += `<p style="margin: 5px 0;"><strong>Type:</strong> <span class="badge badge-${modelClass}">${vm.billingModel}</span></p>`;
-                    
-                    if (vm.detectionMethod) {
-                        html += `<p style="margin: 5px 0; font-size: 12px;" class="text-muted"><em>Detected via: ${vm.detectionMethod}</em></p>`;
+                    if (vm.billingModel) {
+                        const modelClass = vm.billingModel === 'BYOS' ? 'warning' : 'info';
+                        
+                        html += `<p style="margin: 5px 0;"><strong>Type:</strong> <span class="badge badge-${modelClass}">${vm.billingModel}</span></p>`;
+                        
+                        if (vm.detectionMethod) {
+                            html += `<p style="margin: 5px 0; font-size: 12px;" class="text-muted"><em>Detected via: ${vm.detectionMethod}</em></p>`;
+                        }
+                    } else {
+                        html += `<p style="margin: 5px 0;" class="text-muted"><em>Unable to determine billing model</em></p>`;
                     }
-                } else {
-                    html += `<p style="margin: 5px 0;" class="text-muted"><em>Unable to determine billing model</em></p>`;
+                    
+                    if (vm.licenseType) {
+                        html += `<p style="margin: 5px 0;"><strong>License Type:</strong> <code>${vm.licenseType}</code></p>`;
+                    }
+                    html += `</div>`;
                 }
                 
-                if (vm.licenseType) {
-                    html += `<p style="margin: 5px 0;"><strong>License Type:</strong> <code>${vm.licenseType}</code></p>`;
-                }
-                html += `</div>`;
-                
-                // OS Distribution subsection (if osRelease data is available)
-                if (analysis.osRelease && analysis.osRelease.found) {
+                // OS Distribution subsection (always show if osRelease data is available)
+                if (hasOSInfo) {
                     const os = analysis.osRelease;
                     html += `<div class="subsection">`;
                     html += `<p style="margin: 0 0 5px 0; font-weight: bold;">Operating System:</p>`;
@@ -837,51 +842,7 @@
                 html += `</div></details>`;
             }
 
-            // If Azure VM Properties are not available, still show Operating System info if present
-            // Always show Operating System info (use osRelease or fallbacks: sysinfo, basicEnvironment)
-            const osInfoFallback = (analysis.osRelease && analysis.osRelease.found)
-                ? analysis.osRelease
-                : (analysis.sysinfo && analysis.sysinfo.found)
-                    ? analysis.sysinfo
-                    : (analysis.basicEnvironment && analysis.basicEnvironment.found)
-                        ? analysis.basicEnvironment
-                        : null;
 
-            if (DEBUG_MODE === 'host') {
-                console.log('[HOST DEBUG] osInfoFallback evaluation:', {
-                    osRelease: analysis.osRelease,
-                    sysinfo: analysis.sysinfo,
-                    basicEnvironment: analysis.basicEnvironment,
-                    osInfoFallback: osInfoFallback,
-                    show: !!osInfoFallback
-                });
-            }
-
-            if (osInfoFallback) {
-                const os = osInfoFallback;
-                html += `<details open class="info-block">`;
-                html += `<summary>Operating System</summary>`;
-                html += `<div style="margin-top: 15px;">`;
-
-                if (os.prettyName) {
-                    html += `<p style="margin: 5px 0;"><strong>Distribution:</strong> <code>${os.prettyName}</code></p>`;
-                } else if (os.distribution) {
-                    html += `<p style="margin: 5px 0;"><strong>Distribution:</strong> <code>${os.distribution}</code></p>`;
-                } else if (os.name) {
-                    html += `<p style="margin: 5px 0;"><strong>Distribution:</strong> <code>${os.name}</code></p>`;
-                }
-
-                if (os.versionId) {
-                    html += `<p style="margin: 5px 0;"><strong>Version:</strong> <code>${os.versionId}</code></p>`;
-                } else if (os.majorVersion || os.minorVersion) {
-                    const versionParts = [];
-                    if (os.majorVersion) versionParts.push(os.majorVersion);
-                    if (os.minorVersion) versionParts.push(os.minorVersion);
-                    html += `<p style="margin: 5px 0;"><strong>Version:</strong> <code>${versionParts.join('.')}</code></p>`;
-                }
-
-                html += `</div></details>`;
-            }
             
             // (Cluster nodes in ha.txt and hosts will be shown under Cluster Configuration)
             

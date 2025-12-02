@@ -53,12 +53,21 @@ const SCC_RULES = {
         }
     },
     
-    // Rule: Extract Azure VM properties from instance_metadata.json
+    // Rule: Extract Azure VM properties from instance_metadata.json or public_cloud/metadata.txt
     azureVMProperties: {
-        filePattern: /instance_metadata\.json$/,
+        filePattern: /(?:instance_metadata\.json|public_cloud\/metadata\.txt)$/,
         
         parse: function(content, filename) {
             debugLog('[azureVMProperties parser] Analyzing Azure VM metadata in:', filename);
+            
+            // Check if this is a key-value text file (SCC format) or JSON (sosreport format)
+            if (filename.endsWith('metadata.txt')) {
+                // Parse SCC format: key: value pairs
+                debugLog('[azureVMProperties parser] Parsing SCC metadata.txt format');
+                return this.parseSCCMetadata(content);
+            }
+            
+            // Parse JSON format (sosreport)
             try {
                 const metadata = JSON.parse(content);
                 // Extract properties from root
@@ -75,7 +84,6 @@ const SCC_RULES = {
                 
                 // Normalize licenseType: treat empty or whitespace-only strings as not-available
                 const licenseTypeUpper = (typeof licenseType === 'string' && licenseType.trim() !== '') ? licenseType.trim().toUpperCase() : null;
-                const billingCodeNormalized = (typeof billingCode === 'string' && billingCode.trim() !== '') ? billingCode.trim() : null;
                 
                 // Rule 1: License Type takes precedence (highest confidence)
                 if (licenseTypeUpper) {
@@ -170,38 +178,145 @@ const SCC_RULES = {
                 return { found: false };
             }
         },
-        // Rule: Extract Distribution information from sysinfo.txt (some reports)
-        sysinfo: {
-            filePattern: /sysinfo\.txt$/,
-
-            parse: function(content, filename) {
-                debugLog('[sysinfo parser] Analyzing sysinfo in:', filename);
-                const lines = content.split('\n');
-                let distribution = null;
-
-                for (const line of lines) {
-                    const trimmed = line.trim();
-                    if (!trimmed) continue;
-
-                    // Look for lines like: Distribution: SUSE Linux Enterprise Server 12 SP3
-                    const distMatch = trimmed.match(/^Distribution:\s*(.+)$/i);
-                    if (distMatch) {
-                        distribution = distMatch[1].trim();
-                        debugLog('[sysinfo parser] Found Distribution:', distribution);
-                        break;
+        
+        // Helper function to parse SCC metadata.txt format (key: value pairs)
+        parseSCCMetadata: function(content) {
+            debugLog('[azureVMProperties parser] Parsing SCC metadata key-value format');
+            const lines = content.split('\n');
+            
+            let vmSize = null;
+            let offer = null;
+            let publisher = null;
+            let sku = null;
+            let licenseType = null;
+            let billingCode = null;
+            
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                
+                // Parse key: value format
+                const match = trimmed.match(/^(\w+):\s*(.+)$/);
+                if (match) {
+                    const key = match[1];
+                    const value = match[2].trim();
+                    
+                    switch (key) {
+                        case 'vmSize':
+                            vmSize = value;
+                            break;
+                        case 'offer':
+                            offer = value;
+                            break;
+                        case 'publisher':
+                            publisher = value;
+                            break;
+                        case 'sku':
+                            sku = value;
+                            break;
+                        case 'licenseType':
+                            licenseType = value;
+                            break;
+                        case 'billingCode':
+                            billingCode = value;
+                            break;
                     }
                 }
-
-                if (!distribution) {
-                    debugLog('[sysinfo parser] No Distribution line found in sysinfo.txt');
-                    return { found: false };
-                }
-
-                return {
-                    found: true,
-                    distribution: distribution
-                };
             }
+            
+            // Determine PAYG vs BYOS based on official Azure rules
+            let billingModel = null;
+            let detectionMethod = null;
+            
+            // Normalize licenseType: treat empty or whitespace-only strings as not-available
+            const licenseTypeUpper = (typeof licenseType === 'string' && licenseType.trim() !== '') ? licenseType.trim().toUpperCase() : null;
+            
+            // Rule 1: License Type takes precedence (highest confidence)
+            if (licenseTypeUpper) {
+                // BYOS License Types
+                if (licenseTypeUpper === 'RHEL_BYOS' || 
+                    licenseTypeUpper === 'SLES_BYOS') {
+                    billingModel = 'BYOS';
+                    detectionMethod = `License Type: ${licenseType}`;
+                }
+                // PAYG License Types - RHEL
+                else if (licenseTypeUpper === 'RHEL_BASE' ||
+                         licenseTypeUpper === 'RHEL_SAPAPPS' ||
+                         licenseTypeUpper === 'RHEL_BASESAPHA' ||
+                         licenseTypeUpper === 'RHEL_SAPHA' ||
+                         licenseTypeUpper === 'RHEL_EUS') {
+                    billingModel = 'PAYG';
+                    detectionMethod = `License Type: ${licenseType}`;
+                }
+                // PAYG License Types - SLES
+                else if (licenseTypeUpper === 'SLES' ||
+                         licenseTypeUpper === 'SLES_SAP' ||
+                         licenseTypeUpper === 'SLES_STANDARD' ||
+                         licenseTypeUpper === 'SLES_HPC') {
+                    billingModel = 'PAYG';
+                    detectionMethod = `License Type: ${licenseType}`;
+                }
+                // PAYG License Types - Ubuntu Pro
+                else if (licenseTypeUpper === 'UBUNTU_PRO') {
+                    billingModel = 'PAYG';
+                    detectionMethod = `License Type: ${licenseType}`;
+                }
+            }
+            
+            // Rule 2: Billing Code (if no license type or license type is N/A/NONE)
+            if (!billingModel || !licenseTypeUpper || licenseTypeUpper === 'N/A' || licenseTypeUpper === 'NONE') {
+                if (billingCode) {
+                    // BYOS Billing Codes
+                    if (billingCode === 'Linux_IaaS' ||
+                        billingCode === 'Linux_IaaS_Canonical' ||
+                        billingCode === 'Linux_IaaS_Software_Store' ||
+                        billingCode === 'Linux_IaaS_Oracle' ||
+                        billingCode === 'Linux_IaaS_OpenLogic' ||
+                        billingCode === 'Linux_IaaS_Software_RedHat_Support_on_Store' ||
+                        billingCode === 'Linux_IaaS_Software_suse_sles_hpc_byos' ||
+                        billingCode === 'Linux_IaaS_Software_suse_sles_sap_byos' ||
+                        billingCode === 'Linux_IaaS_Software_SUSE_BYOS') {
+                        billingModel = 'BYOS';
+                        detectionMethod = `Billing Code: ${billingCode}`;
+                    }
+                    // PAYG Billing Codes
+                    else if (billingCode === 'Linux_IaaS_SUSE' ||
+                             billingCode === 'Linux_IaaS_RedHat_Support' ||
+                             billingCode === 'Linux_IaaS_Software_SLES_Basic' ||
+                             billingCode === 'Linux_IaaS_Software_SUSE_Support' ||
+                             billingCode === 'Linux_IaaS_Software_RedHat_Support' ||
+                             billingCode === 'Linux_IaaS_Software_RedHat_HA' ||
+                             billingCode === 'Linux_IaaS_Software_RedHat_SAP_HA' ||
+                             billingCode === 'Linux_IaaS_Software_SLES_for_HPC_Priority' ||
+                             billingCode === 'Linux_IaaS_Software_SLES_for_SAP' ||
+                             billingCode === 'Linux_IaaS_Software_SLES_Standard' ||
+                             billingCode === 'Linux_IaaS_Software_RedHat-SAP_BusApp') {
+                        billingModel = 'PAYG';
+                        detectionMethod = `Billing Code: ${billingCode}`;
+                    }
+                }
+            }
+            
+            debugLog('[azureVMProperties parser] VM Size:', vmSize);
+            debugLog('[azureVMProperties parser] Publisher:', publisher);
+            debugLog('[azureVMProperties parser] Offer:', offer);
+            debugLog('[azureVMProperties parser] SKU:', sku);
+            debugLog('[azureVMProperties parser] Billing Code:', billingCode);
+            debugLog('[azureVMProperties parser] License Type:', licenseType);
+            debugLog('[azureVMProperties parser] Billing Model:', billingModel);
+            debugLog('[azureVMProperties parser] Detection Method:', detectionMethod);
+            
+            return {
+                found: true,
+                vmSize: vmSize,
+                publisher: publisher,
+                offer: offer,
+                sku: sku,
+                billingCode: billingCode,
+                licenseType: licenseType,
+                billingModel: billingModel,
+                detectionMethod: detectionMethod
+            };
         }
     },
     
@@ -297,10 +412,20 @@ const SCC_RULES = {
     
     // Rule: Extract OS release information from /etc/os-release
     osRelease: {
-        filePattern: /\/(etc|usr\/lib)\/os-release$/,
+        // Match os-release files from various report types:
+        // - /etc/os-release or /usr/lib/os-release (sosreport, crm_report)
+        // - sysinfo.txt (supportconfig SUSE)
+        filePattern: /\/(?:etc|usr\/lib)\/os-release$|sysinfo\.txt$/,
         
         parse: function(content, filename) {
             debugLog('[osRelease parser] Analyzing OS release information in:', filename);
+            
+            // Check if this is sysinfo.txt (supportconfig SUSE format)
+            if (filename.endsWith('sysinfo.txt')) {
+                return this.parseSysinfo(content, filename);
+            }
+            
+            // Parse os-release format (sosreport, crm_report)
             const lines = content.split('\n');
             let name = null;
             let version = null;
@@ -366,6 +491,41 @@ const SCC_RULES = {
                 prettyName: prettyName,
                 majorVersion: majorVersion,
                 minorVersion: minorVersion
+            };
+        },
+        
+        // Helper function to parse sysinfo.txt (SUSE supportconfig format)
+        parseSysinfo: function(content, filename) {
+            debugLog('[osRelease parser] Parsing sysinfo.txt format');
+            const lines = content.split('\n');
+            let distribution = null;
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+
+                // Look for lines like: Distribution: SUSE Linux Enterprise Server 12 SP3
+                const distMatch = trimmed.match(/^Distribution:\s*(.+)$/i);
+                if (distMatch) {
+                    distribution = distMatch[1].trim();
+                    debugLog('[osRelease parser] Found Distribution:', distribution);
+                    break;
+                }
+            }
+
+            if (!distribution) {
+                debugLog('[osRelease parser] No Distribution line found in sysinfo.txt');
+                return { found: false };
+            }
+
+            return {
+                found: true,
+                name: null,
+                version: null,
+                versionId: null,
+                prettyName: distribution,
+                majorVersion: null,
+                minorVersion: null
             };
         }
     },
@@ -2022,9 +2182,9 @@ const SCC_RULES = {
     // Rule: Detect Linux kernel reboots from message logs
     kernelReboots: {
         // Target file path patterns (same as liveMigration)
-        // supportconfig: */messages or */localmessages (with optional suffixes)
+        // supportconfig: */messages or */localmessages or */ha-log.txt (with optional suffixes)
         // sosreport: */var/log/messages or */sos_commands/logs/journalctl*
-        filePattern: /\/(messages|localmessages|journalctl[^\/]*)(?:[.-]\d+)?(?:\.txt)?$/,
+        filePattern: /\/(messages|localmessages|ha-log|journalctl[^\/]*)(?:[.-]\d+)?(?:\.txt)?$/,
         
         // Parse function receives file content as string
         // Detects kernel reboots by finding patterns:
@@ -2042,7 +2202,10 @@ const SCC_RULES = {
                 const line = lines[i];
                 
                 // Pattern 1: "Linux version X.Y.Z" - primary boot message
-                const kernelMatch = line.match(/kernel:\s*Linux version\s+([\d\.\-\w]+)/i);
+                // Match both formats:
+                // - "kernel: Linux version 5.14.0"
+                // - "kernel: [    0.000000][    T0] Linux version 5.14.21-150400.24.103-default"
+                const kernelMatch = line.match(/kernel:\s*(?:\[\s*[\d\.]+\]\s*(?:\[\s*T\d+\]\s*)?)?Linux version\s+([\d\.\-\w]+)/i);
                 if (kernelMatch) {
                     const timestamp = this.extractTimestamp(line);
                     const kernelVersion = kernelMatch[1];

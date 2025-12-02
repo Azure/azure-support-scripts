@@ -92,3 +92,42 @@ After each change in the source code, it's a good idea to run automated testing 
    # Accessibility testing
    node accessibility-check.js
    ```
+
+## TODO
+
+If you want to contribute to the project, the current priority is not to add more functionality, but to have parity and testing of the 4 supported type of files, since they contain different information, packaged in different ways, it is possible that (as an example, this used to happen but is not fixed) you are able to find a kernel reboot on an sos report, but not on an scc file from the same server.
+
+1. Parity for all types of files, with testing
+2. Adding detection from cases or from cluster specialist's recommendations
+3. Adding more detectors: automation platforms, better cluster resources and events, package history, others
+
+If possible, moving the rules to a rust WASM code would make the analysis of the files even faster. (see Limitations)
+
+## Limitations
+
+Due to the need to run with streaming, we currently support only gzip and xz files, using a C library compiled for WASM.
+
+If other mature libraries for compression can be compiled and used with streaming, it should be possible to support other types for files like ZIP, or zstd.
+
+## Functionality
+
+Currently, the tool manages:
+
+|Function|Description|Mature|crm/hb|scc|sos|
+|--------|-----------|------|------|---|---|
+|Azure vm size|Extract Azure VM Size, from wireserver metadata|🗸|n.a.|🗸|🗸|
+|Azure BYOS/PAYG|Licensing source for Azure, from wireserver metadata.|𐄂|n.a.|🗸|🗸|
+|Distro detection|It finds distribution mayor and minor version from OS files or wireserver metadata|🗸|🗸|🗸|🗸|
+|Cluster node detection and validation|Detects if a node name is declared in both cluster config and hosts file|🗸|🗸|🗸|🗸|
+|Corosync configuration and validation|Azure best practices are compared. Needs improvement for non-Suse|𐄂|🗸|🗸|🗸|
+|Cluster resource extraction|List resources, active node for each. Adding constains would be useful.|🗸|🗸|🗸|🗸|
+|Corosync runtime status|Details which nodes are active, which is localhost|🗸|🗸|🗸|🗸|
+|Fencing detection|Azure fencing or SDB. Needs warning if two are active at the same time.|🗸|🗸|🗸|🗸|
+|Cluster events|Migrations are detected and listed|🗸|🗸|🗸|🗸|
+|Live migration|Azure Live Migrations are detected and listed|🗸|🗸|🗸|🗸|
+|Kernel reboot events|Shutdown, reboots and kernel starts are listed. Shows kernel version when boots|🗸|🗸|🗸|🗸|
+|Out of memory/oomk events|If the system cannot allocate memory for processes or has out of memory events, they are detected and listed.|🗸|n.a.|🗸|🗸|
+|(WIP)||𐄂|n.a.|🗸|🗸|
+
+
+Note: "n.a." in this table, means that some data is not present on all type of debug files.

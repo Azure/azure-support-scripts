@@ -200,6 +200,54 @@ test.describe('SAP HANA Cluster Analyzer', () => {
     expect(content).toContain('License Type: UBUNTU_PRO');
   });
 
+  test('detects Azure VM from SCC metadata.txt format', async ({ page }) => {
+    await page.setInputFiles(
+      'input[type="file"]',
+      path.join(__dirname, 'fixtures', 'scc_test-azure-vm-scc-metadata.tar.xz')
+    );
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('Azure VM Properties');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+    
+    // Should detect VM size from SCC metadata.txt
+    expect(content).toContain('Standard_M64ds_v2');
+    // Should detect PAYG
+    expect(content).toContain('PAYG');
+    // Should detect SLES SAP
+    expect(content).toContain('SUSE');
+  });
+
+  test('detects distribution from crm_report sysinfo.txt', async ({ page }) => {
+    await page.setInputFiles(
+      'input[type="file"]',
+      path.join(__dirname, 'fixtures', 'scc_test-crm-report-sysinfo.tar.xz')
+    );
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('Azure VM Properties');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+    
+    // Should show in Azure VM Properties section
+    expect(content).toContain('Azure VM Properties');
+    // Should detect SLES 15 SP5 from sysinfo.txt
+    expect(content).toContain('SUSE Linux Enterprise Server 15 SP5');
+    // Should show under Operating System subsection
+    expect(content).toContain('Operating System');
+  });
+
   test('detects cluster nodes and validates /etc/hosts', async ({ page }) => {
     const result = await uploadAndWaitForAnalysis(page, 'scc_test-cluster-nodes.tar.xz');
     const sapDetected = isSapDetectedFromResult(result);

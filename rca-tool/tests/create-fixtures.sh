@@ -147,6 +147,47 @@ cat > test-data/instance_metadata.json << 'EOF'
 EOF
 create_fixture "test-azure-vm-ubuntu-pro"
 
+################################################################################
+# Test 2f: Azure VM from SCC metadata.txt format (SLES SAP)
+################################################################################
+echo ""
+echo "=== Creating test-azure-vm-scc-metadata.tar.xz ==="
+mkdir -p test-data/public_cloud
+cat > test-data/public_cloud/metadata.txt << 'EOF'
+vmSize: Standard_M64ds_v2
+publisher: SUSE
+offer: sles-sap-15-sp5
+sku: gen2
+billingCode: Linux_IaaS_Software_SLES_for_SAP
+licenseType: SLES_SAP
+EOF
+create_fixture "test-azure-vm-scc-metadata"
+
+################################################################################
+# Test 2g: Distribution detection from crm_report sysinfo.txt
+################################################################################
+echo ""
+echo "=== Creating test-crm-report-sysinfo.tar.xz ==="
+mkdir -p test-data
+cat > test-data/sysinfo.txt << 'EOF'
+#####Cluster info:
+Corosync Cluster Engine, version '2.4.6'
+Copyright (c) 2006-2009 Red Hat, Inc.
+resource-agents: UNKnown
+
+#####Cluster related packages:
+pacemaker 2.1.5+20221208.a3f44794f-150500.6.17.1 - SUSE Linux Enterprise 15 x86_64
+corosync 2.4.6-150300.12.10.1 - SUSE Linux Enterprise 15 x86_64
+resource-agents 4.12.0+git30.7fd7c8fa-150500.3.12.2 - SUSE Linux Enterprise 15 x86_64
+
+#####System info:
+Platform: Linux
+Kernel release: 5.14.21-150500.55.83-default
+Architecture: x86_64
+Distribution: SUSE Linux Enterprise Server 15 SP5
+EOF
+create_fixture "test-crm-report-sysinfo"
+
 # 3. Test for cluster nodes and /etc/hosts validation
 echo ""
 echo "=== Creating test-cluster-nodes.tar.xz ==="
@@ -250,7 +291,7 @@ primitive stonith-fence_azure_arm stonith:fence_azure_arm \
 EOF
 create_fixture "test-fencing"
 
-# 7. Test for kernel reboots
+# 7. Test for kernel reboot detection
 echo ""
 echo "=== Creating test-kernel-reboots.tar.xz ==="
 mkdir -p test-data
@@ -260,6 +301,7 @@ cat > test-data/messages << 'EOF'
 2025-11-13T00:00:15.000000+01:00 node1 kernel: Command line: BOOT_IMAGE=(hd0,gpt2)/boot/vmlinuz-5.14.0-284.30.1.el9_2.x86_64 root=/dev/mapper/vg_root-lv_root
 2025-11-14T15:30:45.000000+01:00 node1 systemd[1]: Shutting down.
 2025-11-14T15:31:00.000000+01:00 node1 kernel: Linux version 5.14.0-284.30.1.el9_2.x86_64 (mockbuild@x86-64) (gcc version 11.3.0) #1 SMP PREEMPT_DYNAMIC
+2025-11-20T11:32:57.199160-05:00 azlsapzlwdb01 kernel: [    0.000000][    T0] Linux version 5.14.21-150400.24.103-default (geeko@buildhost) (gcc (SUSE Linux) 7.5.0, GNU ld (GNU Binutils; SUSE Linux Enterprise 15) 2.41.0.20230908-150100.7.46) #1 SMP PREEMPT_DYNAMIC Wed Jan 10 13:40:49 UTC 2024 (8afebed)
 EOF
 create_fixture "test-kernel-reboots"
 
