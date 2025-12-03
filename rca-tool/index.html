@@ -848,7 +848,10 @@
             
             // Corosync Configuration - Collapsible
             if (corosyncConfig && corosyncConfig.found) {
-                const hasWarnings = corosyncConfig.warnings && corosyncConfig.warnings.length > 0;
+                // Check for both corosync warnings and cluster services issues
+                const clusterServicesCheck = analysis.clusterServices || {};
+                const hasClusterServiceErrors = clusterServicesCheck.dlmService && clusterServicesCheck.dlmService.detected && clusterServicesCheck.dlmService.severity === 'error';
+                const hasWarnings = (corosyncConfig.warnings && corosyncConfig.warnings.length > 0) || hasClusterServiceErrors;
                 const statusIcon = hasWarnings ? 'ERROR' : 'OK';
                 const blockClass = hasWarnings ? 'danger-block' : 'success-block';
                 
@@ -858,7 +861,10 @@
                 html += `Cluster Configuration`;
                 html += ` <span style="font-size: 12px; font-weight: normal;">`;
                 if (hasWarnings) {
-                    html += `(${corosyncConfig.warnings.length} warning${corosyncConfig.warnings.length > 1 ? 's' : ''})`;
+                    const corosyncWarningCount = (corosyncConfig.warnings && corosyncConfig.warnings.length) || 0;
+                    const clusterServiceErrorCount = hasClusterServiceErrors ? 1 : 0;
+                    const totalIssues = corosyncWarningCount + clusterServiceErrorCount;
+                    html += `(${totalIssues} issue${totalIssues > 1 ? 's' : ''})`;
                 } else {
                     html += `(validated)`;
                 }
@@ -1289,8 +1295,8 @@
                     }
                 }
                 
-                // Show warnings
-                if (hasWarnings) {
+                // Show corosync configuration warnings (only if there are actual warnings)
+                if (corosyncConfig.warnings && corosyncConfig.warnings.length > 0) {
                     html += '<div class="warning-box">';
                     corosyncConfig.warnings.forEach(warning => {
                         html += `<div style="margin-bottom: 10px;">`;

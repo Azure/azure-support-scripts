@@ -3417,6 +3417,21 @@ class IncrementalTARParser {
         const fencingConfigData = this.analysisResults.fencingConfig || null;
         const clusterEventsData = this.analysisResults.clusterEvents || null;
         
+        // Get OS information to filter distribution-specific checks
+        const osReleaseData = this.analysisResults.osRelease || this.analysisResults.sysinfo || this.analysisResults.basicEnvironment || null;
+        const isSUSE = osReleaseData && osReleaseData.name && 
+                      (osReleaseData.name.toLowerCase().includes('suse') || 
+                       (osReleaseData.prettyName && osReleaseData.prettyName.toLowerCase().includes('suse')));
+        
+        // Filter corosync warnings for SUSE-specific checks
+        if (corosyncData && corosyncData.warnings && !isSUSE) {
+            // Remove the transport warning for non-SUSE distributions
+            corosyncData.warnings = corosyncData.warnings.filter(warning => 
+                warning.parameter !== 'totem.transport'
+            );
+            debugLog('[TAR Parser] Filtered totem.transport warning for non-SUSE distribution');
+        }
+        
         // Antivirus detection results
         const falconSensorData = this.analysisResults.falconSensor || { found: false };
         const falconConfigData = this.analysisResults.falconSensorConfig || { found: false };
