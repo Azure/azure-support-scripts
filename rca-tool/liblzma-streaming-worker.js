@@ -2881,6 +2881,54 @@ const SCC_RULES = {
         }
     },
     
+    // Rule: Detect DLM (Distributed Lock Manager) service
+    dlmService: {
+        filePattern: /sos_commands\/systemd\/systemctl_list-unit-files$/,
+        
+        parse: function(content, filename) {
+            const lines = content.split('\n');
+            debugLog('[dlmService parser] Analyzing', lines.length, 'lines for DLM service in:', filename);
+            
+            let enabled = false;
+            let lineNumber = 0;
+            let matchedLine = '';
+            
+            // Check for dlm.service enabled in systemctl list-unit-files
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                
+                // Match pattern: dlm.service followed by whitespace and "enabled"
+                if (trimmed.match(/^dlm\.service\s+enabled/)) {
+                    enabled = true;
+                    lineNumber = i + 1; // Line numbers are 1-based
+                    matchedLine = trimmed;
+                    debugLog('[dlmService parser] Found DLM service enabled at line', lineNumber, ':', trimmed);
+                    break;
+                }
+            }
+            
+            if (!enabled) {
+                debugLog('[dlmService parser] DLM service not enabled');
+                return { found: false };
+            }
+            
+            debugLog('[dlmService parser] DLM service is enabled - triggering alert');
+            
+            return {
+                found: true,
+                enabled: true,
+                severity: 'error',
+                message: 'DLM (Distributed Lock Manager) service is enabled in systemd. This can cause issues with Pacemaker clusters, and should be managed as a cluster resource as defined in the documentation below.',
+                documentationUrl: 'https://access.redhat.com/solutions/878023',
+                detectionFile: filename,
+                detectionLine: lineNumber,
+                detectionContent: matchedLine
+            };
+        }
+    },
+    
     // Rule: Extract kernel tuning parameters from sysctl
     kernelTuning: {
         filePattern: /sos_commands\/kernel\/sysctl_-a$/,
@@ -3409,6 +3457,21 @@ class IncrementalTARParser {
                               (msDefenderData.found ? (msDefenderConfigData.hasExclusions || false) : true)
         };
         
+        // Cluster services results (separate from antivirus)
+        const dlmServiceData = this.analysisResults.dlmService || { found: false };
+        const clusterServicesResults = {
+            dlmService: {
+                detected: dlmServiceData.found,
+                enabled: dlmServiceData.enabled || false,
+                severity: dlmServiceData.severity,
+                message: dlmServiceData.message,
+                documentationUrl: dlmServiceData.documentationUrl,
+                detectionFile: dlmServiceData.detectionFile,
+                detectionLine: dlmServiceData.detectionLine,
+                detectionContent: dlmServiceData.detectionContent
+            }
+        };
+        
         debugLog('[TAR Parser] getAnalysis() called');
         debugLog('[TAR Parser] analysisResults:', this.analysisResults);
         debugLog('[TAR Parser] Raw cluster nodes:', clusterNodes);
@@ -3523,6 +3586,7 @@ class IncrementalTARParser {
             fencingConfig: fencingConfigData,
             clusterEvents: clusterEventsData,
             antivirus: antivirusResults,
+            clusterServices: clusterServicesResults,
             kernelTuning: this.analysisResults.kernelTuning || null,
             fstab: this.analysisResults.fstab || null,
             // Cross-validation results

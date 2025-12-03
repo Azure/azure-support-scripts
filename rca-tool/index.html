@@ -1357,6 +1357,69 @@
                     }
                 }
                 
+                // Cluster Services subsection (inside Cluster Configuration)
+                const clusterServicesData = analysis.clusterServices || {};
+                const hasClusterServiceIssues = clusterServicesData.dlmService && clusterServicesData.dlmService.detected;
+                
+                if (hasClusterServiceIssues) {
+                    html += `<div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2);">`;
+                    html += `<p style="margin: 0 0 10px 0; font-weight: bold;">Cluster Services:</p>`;
+                    
+                    const dlmService = clusterServicesData.dlmService;
+                    html += `<div class="danger-block">`;
+                    html += `<p style="margin: 0; font-weight: bold;" class="text-danger">DLM Service Enabled</p>`;
+                    html += `<p style="margin: 10px 0 0 0; font-size: 13px;">${dlmService.message}</p>`;
+                    if (dlmService.detectionFile && dlmService.detectionLine) {
+                        html += `<p style="margin: 10px 0 0 0; font-size: 12px;" class="text-muted">`;
+                        html += `<strong>Detected in:</strong> <code>${dlmService.detectionFile}</code> at line ${dlmService.detectionLine}`;
+                        html += `</p>`;
+                        if (dlmService.detectionContent) {
+                            html += `<p style="margin: 5px 0 0 0; font-size: 11px;" class="text-muted">`;
+                            html += `<code>${dlmService.detectionContent}</code>`;
+                            html += `</p>`;
+                        }
+                    }
+                    if (dlmService.documentationUrl) {
+                        html += `<p style="margin: 10px 0 0 0; font-size: 12px;">`;
+                        html += `<a href="${dlmService.documentationUrl}" target="_blank" class="text-info">📘 View Documentation</a>`;
+                        html += `</p>`;
+                    }
+                    html += `</div>`;
+                    html += `</div>`;
+                }
+                
+                html += `</div></details>`;
+            }
+            
+            // Cluster Services as standalone section (when no Cluster Configuration exists)
+            const clusterServicesData2 = analysis.clusterServices || {};
+            const hasClusterServiceIssues2 = clusterServicesData2.dlmService && clusterServicesData2.dlmService.detected;
+            const hasCorosyncConfig = corosyncConfig && corosyncConfig.found;
+            
+            if (hasClusterServiceIssues2 && !hasCorosyncConfig) {
+                html += `<details open class="danger-block">`;
+                html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">[WARNING] Cluster Services</summary>`;
+                html += `<div style="margin-top: 15px;">`;
+                
+                const dlmService = clusterServicesData2.dlmService;
+                html += `<p style="margin: 0; font-weight: bold;" class="text-danger">DLM Service Enabled</p>`;
+                html += `<p style="margin: 10px 0 0 0; font-size: 13px;">${dlmService.message}</p>`;
+                if (dlmService.detectionFile && dlmService.detectionLine) {
+                    html += `<p style="margin: 10px 0 0 0; font-size: 12px;" class="text-muted">`;
+                    html += `<strong>Detected in:</strong> <code>${dlmService.detectionFile}</code> at line ${dlmService.detectionLine}`;
+                    html += `</p>`;
+                    if (dlmService.detectionContent) {
+                        html += `<p style="margin: 5px 0 0 0; font-size: 11px;" class="text-muted">`;
+                        html += `<code>${dlmService.detectionContent}</code>`;
+                        html += `</p>`;
+                    }
+                }
+                if (dlmService.documentationUrl) {
+                    html += `<p style="margin: 10px 0 0 0; font-size: 12px;">`;
+                    html += `<a href="${dlmService.documentationUrl}" target="_blank" class="text-info">📘 View Documentation</a>`;
+                    html += `</p>`;
+                }
+                
                 html += `</div></details>`;
             }
             
@@ -1653,7 +1716,7 @@
             
             if (!hasAntivirus) {
                 html += `<p class="text-muted"><em>No antivirus or security software was detected in the analyzed files.</em></p>`;
-                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Checked for: CrowdStrike Falcon Sensor, Microsoft Defender for Endpoint (mdatp), Illumio, Trend Micro Deep Security</em></p>`;
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Checked for: CrowdStrike Falcon Sensor, Microsoft Defender for Endpoint (mdatp), Illumio, Trend Micro Deep Security, DLM Service</em></p>`;
             } else {
                 // Falcon Sensor
                 if (antivirusData.falconSensor && antivirusData.falconSensor.detected) {

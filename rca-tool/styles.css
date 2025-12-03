@@ -456,6 +456,16 @@ code {
     border-left: 3px solid var(--danger-color);
 }
 
+/* Experimental CSS for text wrapping */
+pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.danger-block p {
+    white-space: normal;
+}
+
 /* Warning Box */
 .warning-box {
     margin-top: 15px;

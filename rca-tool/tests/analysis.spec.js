@@ -360,6 +360,18 @@ test.describe('SAP HANA Cluster Analyzer', () => {
     expect(result).toMatch(/SAP.*exclusion/i);
   });
 
+  test('detects DLM service enabled', async ({ page }) => {
+    const result = await uploadAndWaitForAnalysis(page, 'scc_test-dlm-service.tar.xz');
+    
+    // Should detect DLM service
+    expect(result).toContain('DLM Service');
+    expect(result).toContain('Cluster Services');
+    
+    // Should show error message and documentation link
+    expect(result).toMatch(/DLM.*enabled/i);
+    expect(result).toContain('https://access.redhat.com/solutions/878023');
+  });
+
   test('detects live migration events', async ({ page }) => {
     const result = await uploadAndWaitForAnalysis(page, 'scc_test-live-migration.tar.xz');
     

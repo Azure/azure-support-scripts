@@ -378,6 +378,41 @@ mkdir -p test-data/usr/sap
 mkdir -p test-data/hana/shared
 create_fixture "test-trendmicro"
 
+# 9c. Test for DLM service detection
+echo ""
+echo "=== Creating test-dlm-service.tar.xz ==="
+mkdir -p test-data/sos_commands/systemd
+cat > test-data/sos_commands/systemd/systemctl_list-unit-files << 'EOF'
+UNIT FILE                                     STATE
+accounts-daemon.service                       enabled
+acpid.service                                 disabled
+alsa-restore.service                          static
+alsa-state.service                            static
+apparmor.service                              enabled
+auditd.service                                enabled
+autovt@.service                               enabled
+blk-availability.service                      disabled
+cgroup-init.service                           enabled
+chronyd.service                               enabled
+cloud-config.service                          enabled
+cloud-final.service                           enabled
+cloud-init-local.service                      enabled
+cloud-init.service                            enabled
+dlm.service                                   enabled
+getty@.service                                enabled
+grub2-once.service                            static
+haveged.service                               enabled
+EOF
+mkdir -p test-data/etc
+cat > test-data/etc/os-release << 'EOF'
+NAME="Red Hat Enterprise Linux"
+VERSION="8.6 (Ootpa)"
+ID="rhel"
+VERSION_ID="8.6"
+PRETTY_NAME="Red Hat Enterprise Linux 8.6 (Ootpa)"
+EOF
+create_fixture "test-dlm-service"
+
 # 10. Test for live migration events
 echo ""
 echo "=== Creating test-live-migration.tar.xz ==="
