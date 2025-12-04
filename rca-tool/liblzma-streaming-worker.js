@@ -2929,6 +2929,110 @@ const SCC_RULES = {
         }
     },
     
+    // Rule: Detect Azure Site Recovery (ASR) service
+    azureSiteRecovery: {
+        filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
+        
+        parse: function(content, filename) {
+            const lines = content.split('\n');
+            debugLog('[azureSiteRecovery parser] Analyzing', lines.length, 'lines for Azure Site Recovery in:', filename);
+            
+            let enabled = false;
+            let lineNumber = 0;
+            let matchedLine = '';
+            
+            // Check for involflt_start.service enabled
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                
+                // Match patterns for different formats:
+                // 1. systemctl list-unit-files (sosreport): involflt_start.service enabled
+                // 2. systemctl list-unit-files (SCC): involflt_start.service; enabled
+                // 3. systemctl status output: Loaded: loaded (/path/involflt_start.service; enabled; ...)
+                if (trimmed.match(/^involflt_start\.service[;\s]+enabled/i) ||
+                    trimmed.match(/involflt_start\.service;\s*enabled/i) ||
+                    trimmed.match(/Loaded:.*involflt_start\.service;\s*enabled/i)) {
+                    enabled = true;
+                    lineNumber = i + 1; // Line numbers are 1-based
+                    matchedLine = trimmed;
+                    debugLog('[azureSiteRecovery parser] Found Azure Site Recovery service enabled at line', lineNumber, ':', trimmed);
+                    break;
+                }
+            }
+            
+            if (!enabled) {
+                debugLog('[azureSiteRecovery parser] Azure Site Recovery service not detected');
+                return { found: false };
+            }
+            
+            debugLog('[azureSiteRecovery parser] Azure Site Recovery service is enabled');
+            
+            return {
+                found: true,
+                enabled: true,
+                severity: 'info',
+                message: 'Azure Site Recovery (ASR) is enabled on this system. The involflt driver is used for replication.',
+                detectionFile: filename,
+                detectionLine: lineNumber,
+                detectionContent: matchedLine
+            };
+        }
+    },
+    
+    // Rule: Detect Guardicore agent (security software)
+    guardicoreAgent: {
+        filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
+        
+        parse: function(content, filename) {
+            const lines = content.split('\n');
+            debugLog('[guardicoreAgent parser] Analyzing', lines.length, 'lines for Guardicore agent in:', filename);
+            
+            let enabled = false;
+            let lineNumber = 0;
+            let matchedLine = '';
+            
+            // Check for gc-agent.service enabled
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                
+                // Match patterns for different formats:
+                // 1. systemctl list-unit-files (sosreport): gc-agent.service enabled
+                // 2. systemctl list-unit-files (SCC): gc-agent.service; enabled
+                // 3. systemctl status output: Loaded: loaded (/path/gc-agent.service; enabled; ...)
+                if (trimmed.match(/^gc-agent\.service[;\s]+enabled/i) ||
+                    trimmed.match(/gc-agent\.service;\s*enabled/i) ||
+                    trimmed.match(/Loaded:.*gc-agent\.service;\s*enabled/i)) {
+                    enabled = true;
+                    lineNumber = i + 1; // Line numbers are 1-based
+                    matchedLine = trimmed;
+                    debugLog('[guardicoreAgent parser] Found Guardicore agent enabled at line', lineNumber, ':', trimmed);
+                    break;
+                }
+            }
+            
+            if (!enabled) {
+                debugLog('[guardicoreAgent parser] Guardicore agent not detected');
+                return { found: false };
+            }
+            
+            debugLog('[guardicoreAgent parser] Guardicore agent is enabled');
+            
+            return {
+                found: true,
+                enabled: true,
+                severity: 'warning',
+                message: 'Guardicore agent is enabled on this system. This security software provides micro-segmentation and may require exclusions for SAP workloads.',
+                detectionFile: filename,
+                detectionLine: lineNumber,
+                detectionContent: matchedLine
+            };
+        }
+    },
+    
     // Rule: Extract kernel tuning parameters from sysctl
     kernelTuning: {
         filePattern: /sos_commands\/kernel\/sysctl_-a$/,
@@ -3439,8 +3543,10 @@ class IncrementalTARParser {
         const msDefenderConfigData = this.analysisResults.msDefenderConfig || { found: false };
         const illumioData = this.analysisResults.illumio || { found: false };
         const trendMicroData = this.analysisResults.trendMicro || { found: false };
+        const azureSiteRecoveryData = this.analysisResults.azureSiteRecovery || { found: false };
+        const guardicoreAgentData = this.analysisResults.guardicoreAgent || { found: false };
         
-        // Combine antivirus results
+        // Combine antivirus and Azure services results
         const antivirusResults = {
             falconSensor: {
                 detected: falconSensorData.found,
@@ -3466,13 +3572,31 @@ class IncrementalTARParser {
                 detected: trendMicroData.found,
                 message: trendMicroData.message
             },
+            guardicoreAgent: {
+                detected: guardicoreAgentData.found,
+                enabled: guardicoreAgentData.enabled || false,
+                severity: guardicoreAgentData.severity,
+                message: guardicoreAgentData.message,
+                detectionFile: guardicoreAgentData.detectionFile,
+                detectionLine: guardicoreAgentData.detectionLine,
+                detectionContent: guardicoreAgentData.detectionContent
+            },
+            azureSiteRecovery: {
+                detected: azureSiteRecoveryData.found,
+                enabled: azureSiteRecoveryData.enabled || false,
+                severity: azureSiteRecoveryData.severity,
+                message: azureSiteRecoveryData.message,
+                detectionFile: azureSiteRecoveryData.detectionFile,
+                detectionLine: azureSiteRecoveryData.detectionLine,
+                detectionContent: azureSiteRecoveryData.detectionContent
+            },
             // Overall status
-            anyDetected: falconSensorData.found || msDefenderData.found || illumioData.found || trendMicroData.found,
+            anyDetected: falconSensorData.found || msDefenderData.found || illumioData.found || trendMicroData.found || azureSiteRecoveryData.found || guardicoreAgentData.found,
             allHaveExceptions: (falconSensorData.found ? (falconConfigData.hasExclusions || false) : true) && 
                               (msDefenderData.found ? (msDefenderConfigData.hasExclusions || false) : true)
         };
         
-        // Cluster services results (separate from antivirus)
+        // Cluster services results (separate from antivirus and Azure services)
         const dlmServiceData = this.analysisResults.dlmService || { found: false };
         const clusterServicesResults = {
             dlmService: {

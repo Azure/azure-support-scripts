@@ -128,10 +128,11 @@ Currently, the tool manages:
 |Kernel reboot events|Shutdown, reboots and kernel starts are listed. Shows kernel version when boots|🗸|🗸|🗸|🗸|
 |Out of memory/oomk events|If the system cannot allocate memory for processes or has out of memory events, they are detected and listed.|🗸|n.a.|🗸|🗸|
 |Cluster packages|Validation of packages install in specific version ranges. Needs improvement for non-Suse.|||||
-|AV Detection|MS Defender, Cloudstrike Falcon, Illumio, Trend Micro|||||
+|AV Detection|MS Defender, Cloudstrike Falcon, Illumio, Trend Micro, Guardicore|||||
 |DLM Service Detection|Detects if DLM (Distributed Lock Manager) service is enabled and alerts|🗸|n.a.|🗸|🗸|
-|Kernel parameters and validation||||||
-|fstab||||||
+|Kernel parameters and validation|It grabs kernel parameters (sysctl) and displays them raw. If SAP Hana is found, it also validates best practices.|🗸||||
+|Raw fstab|It grab the raw fstab.|🗸||||
+|Azure Site Recovery|It detects if the involflt_start service is enabled.|🗸||🗸||
 |(WIP)||𐄂|n.a.|🗸|🗸|
 
 

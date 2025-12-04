@@ -1701,14 +1701,14 @@
             let avBlockClass, avStatusText;
             if (!hasAntivirus) {
                 avBlockClass = 'info-block';
-                avStatusText = 'Antivirus and Security Software';
+                avStatusText = 'Azure Services or Antivirus';
             } else if (!sapDetected) {
                 // Antivirus present but system not identified as SAP: show neutral/info status
                 avBlockClass = 'info-block';
-                avStatusText = 'Antivirus Detected';
+                avStatusText = 'Azure Services or Antivirus Detected';
             } else if (hasExceptions) {
                 avBlockClass = 'success-block';
-                avStatusText = '[OK] Antivirus Detected with SAP Exceptions';
+                avStatusText = '[OK] Azure Services or Antivirus Detected with SAP Exceptions';
             } else {
                 avBlockClass = 'danger-block';
                 avStatusText = '[WARNING] Antivirus Detected - SAP Exceptions Required';
@@ -1721,8 +1721,8 @@
             html += `<div style="margin-top: 15px; max-width: 100%; box-sizing: border-box; overflow-wrap: break-word;">`;
             
             if (!hasAntivirus) {
-                html += `<p class="text-muted"><em>No antivirus or security software was detected in the analyzed files.</em></p>`;
-                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Checked for: CrowdStrike Falcon Sensor, Microsoft Defender for Endpoint (mdatp), Illumio, Trend Micro Deep Security, DLM Service</em></p>`;
+                html += `<p class="text-muted"><em>No Azure services, antivirus or security software was detected in the analyzed files.</em></p>`;
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Checked for: Azure Site Recovery, CrowdStrike Falcon Sensor, Microsoft Defender for Endpoint (mdatp), Illumio, Trend Micro Deep Security, Guardicore Agent</em></p>`;
             } else {
                 // Falcon Sensor
                 if (antivirusData.falconSensor && antivirusData.falconSensor.detected) {
@@ -1861,6 +1861,61 @@
 
                     if (trendMicro.message) {
                         html += `<p style="margin: 10px 0 0 0; font-size: 12px;" class="text-muted"><em>${trendMicro.message}</em></p>`;
+                    }
+                    html += `</div>`;
+                }
+                
+                // Guardicore Agent
+                if (antivirusData.guardicoreAgent && antivirusData.guardicoreAgent.detected) {
+                    const guardicore = antivirusData.guardicoreAgent;
+                    const statusColorClass = 'text-warning-dark';
+                    const statusBorderColor = 'var(--warning-color)';
+                    const statusIcon = '⚠';
+
+                    html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor};">`;
+                    html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} Guardicore Agent</p>`;
+                    html += `<p style="margin: 8px 0 0 0; font-size: 13px;">${guardicore.message}</p>`;
+                    
+                    if (sapDetected) {
+                        html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-warning-dark"><strong>⚠ SAP exclusions need verification</strong></p>`;
+                        html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
+                        html += `Please verify that SAP paths are excluded in Guardicore policy configuration: /usr/sap, /hana/shared, /hana/data, /hana/log, /sapmnt`;
+                        html += `</p>`;
+                    }
+                    
+                    if (guardicore.detectionFile && guardicore.detectionLine) {
+                        html += `<p style="margin: 10px 0 0 0; font-size: 12px;" class="text-muted">`;
+                        html += `<strong>Detected in:</strong> <code>${guardicore.detectionFile}</code> at line ${guardicore.detectionLine}`;
+                        html += `</p>`;
+                        if (guardicore.detectionContent) {
+                            html += `<p style="margin: 5px 0 0 0; font-size: 11px;" class="text-muted">`;
+                            html += `<code>${guardicore.detectionContent}</code>`;
+                            html += `</p>`;
+                        }
+                    }
+                    html += `</div>`;
+                }
+                
+                // Azure Site Recovery
+                if (antivirusData.azureSiteRecovery && antivirusData.azureSiteRecovery.detected) {
+                    const asr = antivirusData.azureSiteRecovery;
+                    const statusColorClass = 'text-info';
+                    const statusBorderColor = 'var(--info-color)';
+                    const statusIcon = 'ℹ';
+
+                    html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor};">`;
+                    html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} Azure Site Recovery</p>`;
+                    html += `<p style="margin: 8px 0 0 0; font-size: 13px;">${asr.message}</p>`;
+                    
+                    if (asr.detectionFile && asr.detectionLine) {
+                        html += `<p style="margin: 10px 0 0 0; font-size: 12px;" class="text-muted">`;
+                        html += `<strong>Detected in:</strong> <code>${asr.detectionFile}</code> at line ${asr.detectionLine}`;
+                        html += `</p>`;
+                        if (asr.detectionContent) {
+                            html += `<p style="margin: 5px 0 0 0; font-size: 11px;" class="text-muted">`;
+                            html += `<code>${asr.detectionContent}</code>`;
+                            html += `</p>`;
+                        }
                     }
                     html += `</div>`;
                 }
