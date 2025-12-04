@@ -12,7 +12,7 @@ export default defineConfig({
     ['list']
   ],
   use: {
-    baseURL: 'http://localhost:8080',
+    baseURL: process.env.BASE_URL || 'http://localhost:8080',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -27,7 +27,7 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
+  webServer: process.env.BASE_URL ? undefined : {
     command: 'npx http-server ../ -p 8080',
     port: 8080,
     reuseExistingServer: !process.env.CI,

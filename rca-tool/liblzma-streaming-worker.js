@@ -91,70 +91,11 @@ const SCC_RULES = {
     },
     
     detectSystemdService: function(content, filename, serviceName, severity, message) {
-        if (typeof RCA_UTILITIES !== 'undefined') {
-            return RCA_UTILITIES.detectSystemdService(content, filename, serviceName, severity, message, debugLog);
-        }
-        
-        // Inline fallback
-        const pattern = new RegExp(`(?:^|Loaded:.*)${serviceName}\\.service[;\\s]+enabled`, 'i');
-        const result = this.grepLines(content, pattern, { firstMatchOnly: true });
-        
-        if (!result.found) {
-            return { found: false };
-        }
-        
-        debugLog(`[detectSystemdService] Found ${serviceName}.service enabled at line ${result.lineNumber}`);
-        
-        return {
-            found: true,
-            enabled: true,
-            severity: severity,
-            message: message,
-            detectionFile: filename,
-            detectionLine: result.lineNumber,
-            detectionContent: result.line
-        };
+        return RCA_UTILITIES.detectSystemdService(content, filename, serviceName, severity, message, debugLog);
     },
     
     checkSAPExclusions: function(content, parserName, exclusionKeywords = ['exclude', 'exclusion']) {
-        if (typeof RCA_UTILITIES !== 'undefined') {
-            return RCA_UTILITIES.checkSAPExclusions(content, parserName, exclusionKeywords, debugLog);
-        }
-        
-        // Inline fallback
-        debugLog(`[${parserName}] Checking config for SAP exclusions`);
-        
-        const sapPaths = [
-            '/usr/sap',
-            '/hana/shared',
-            '/hana/data',
-            '/hana/log',
-            '/sapmnt',
-            '/usr/sap/*/SYS/exe'
-        ];
-        
-        const foundExclusions = [];
-        const lines = content.split('\n');
-        
-        for (const line of lines) {
-            const lower = line.toLowerCase();
-            const hasExclusionKeyword = exclusionKeywords.some(keyword => lower.includes(keyword));
-            
-            if (hasExclusionKeyword) {
-                for (const sapPath of sapPaths) {
-                    if (line.includes(sapPath)) {
-                        foundExclusions.push(sapPath);
-                        debugLog(`[${parserName}] Found SAP exclusion:`, sapPath);
-                    }
-                }
-            }
-        }
-        
-        return {
-            found: true,
-            exclusions: foundExclusions,
-            hasExclusions: foundExclusions.length > 0
-        };
+        return RCA_UTILITIES.checkSAPExclusions(content, parserName, exclusionKeywords, debugLog);
     },
     
     detectRPMPackage: function(content, packagePrefix, parserName = '') {
@@ -211,143 +152,19 @@ const SCC_RULES = {
     },
     
     detectSecuritySoftware: function(content, parserName, packagePrefix, processIndicators, displayName, message) {
-        if (typeof RCA_UTILITIES !== 'undefined') {
-            return RCA_UTILITIES.detectSecuritySoftware(content, parserName, packagePrefix, processIndicators, displayName, message, debugLog);
-        }
-        
-        // Inline fallback
-        debugLog(`[${parserName}] Analyzing for ${displayName}`);
-        
-        const rpmResult = this.detectRPMPackage(content, packagePrefix, parserName);
-        const processResult = this.detectProcess(content, processIndicators, parserName);
-        
-        if (!rpmResult.found) {
-            debugLog(`[${parserName}] ${displayName} not detected`);
-            return { found: false };
-        }
-        
-        debugLog(`[${parserName}] ${displayName} detected, version:`, rpmResult.version);
-        
-        return {
-            found: true,
-            version: rpmResult.version,
-            runningProcess: processResult.found,
-            sapExceptionsConfigured: null,
-            message: message
-        };
+        return RCA_UTILITIES.detectSecuritySoftware(content, parserName, packagePrefix, processIndicators, displayName, message, debugLog);
     },
     
     extractSection: function(content, filename, sectionMarker, directFilePattern) {
-        if (typeof RCA_UTILITIES !== 'undefined') {
-            return RCA_UTILITIES.extractSection(content, filename, sectionMarker, directFilePattern, debugLog);
-        }
-        
-        // Inline fallback
-        const lines = content.split('\n');
-        const extractedLines = [];
-        const isDirectFile = filename && filename.includes(directFilePattern);
-        
-        if (isDirectFile) {
-            debugLog(`[extractSection] Direct file detected (${directFilePattern}), returning full content`);
-            return {
-                found: true,
-                lines: lines,
-                content: content
-            };
-        }
-        
-        let inSection = false;
-        
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            
-            if (inSection && line.trim().startsWith('#==[ Configuration File ]===')) {
-                debugLog(`[extractSection] Found section end marker at line ${i + 1}`);
-                break;
-            }
-            
-            if (!inSection && line.includes(sectionMarker)) {
-                inSection = true;
-                debugLog(`[extractSection] Found section start marker at line ${i + 1}: ${sectionMarker}`);
-                continue;
-            }
-            
-            if (inSection) {
-                extractedLines.push(line);
-            }
-        }
-        
-        if (extractedLines.length === 0) {
-            debugLog(`[extractSection] Section not found: ${sectionMarker}`);
-            return {
-                found: false,
-                lines: [],
-                content: ''
-            };
-        }
-        
-        debugLog(`[extractSection] Extracted ${extractedLines.length} lines from section: ${sectionMarker}`);
-        
-        return {
-            found: true,
-            lines: extractedLines,
-            content: extractedLines.join('\n')
-        };
+        return RCA_UTILITIES.extractSection(content, filename, sectionMarker, directFilePattern, debugLog);
     },
     
     parseKeyValueFile: function(content, options = {}) {
-        if (typeof RCA_UTILITIES !== 'undefined') {
-            return RCA_UTILITIES.parseKeyValueFile(content, options, debugLog);
-        }
-        
-        // Inline fallback
-        const {
-            pattern = /^([^\s=:]+)\s*[=:]\s*(.+)$/,
-            skipComments = true,
-            skipEmpty = true
-        } = options;
-        
-        const lines = content.split('\n');
-        const parameters = {};
-        let parsedCount = 0;
-        
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (skipEmpty && !trimmed) continue;
-            if (skipComments && trimmed.startsWith('#')) continue;
-            
-            const match = trimmed.match(pattern);
-            if (match && match.length >= 3) {
-                const key = match[1].trim();
-                const value = match[2].trim();
-                parameters[key] = value;
-                parsedCount++;
-            }
-        }
-        
-        debugLog(`[parseKeyValueFile] Parsed ${parsedCount} key-value pairs`);
-        
-        return {
-            found: true,
-            parameters: parameters,
-            raw: content,
-            count: parsedCount
-        };
+        return RCA_UTILITIES.parseKeyValueFile(content, options, debugLog);
     },
     
     extractRawFile: function(content, filename) {
-        if (typeof RCA_UTILITIES !== 'undefined') {
-            return RCA_UTILITIES.extractRawFile(content, filename, debugLog);
-        }
-        
-        // Inline fallback
-        debugLog(`[extractRawFile] Extracted raw file: ${filename}`);
-        
-        return {
-            found: true,
-            content: content,
-            filename: filename
-        };
+        return RCA_UTILITIES.extractRawFile(content, filename, debugLog);
     },
     
     // ========================================================================

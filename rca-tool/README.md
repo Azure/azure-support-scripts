@@ -37,7 +37,6 @@ C --> F(extract raw) --> I
 D --> G(extract cluster config) --> I
 K --> L(extract cluster nodes) --> I
 E --> H(extract Azure VM properties) --> I
-
 I(data structure) --> J(Web render)
 ```
 
