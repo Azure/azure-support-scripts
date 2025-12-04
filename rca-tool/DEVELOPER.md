@@ -69,6 +69,186 @@ It's important that in order to push code to GitHub all of the tests must pass, 
 
 4. Render the data in index.html by making CSS sections visible, and adding alerts and color changes as needed.
 
+### Special parsers
+
+The codebase includes utility functions to simplify common parsing tasks. Here are some practical examples:
+
+#### Extract sections from supportconfig .txt files
+
+Use `extractSection` to extract embedded configuration files from supportconfig .txt files (e.g., network.txt, ha.txt). It automatically handles both supportconfig embedded sections and direct files (sosreport).
+
+```js
+// Example: Extract /etc/hosts from network.txt (supportconfig) or /etc/hosts (sosreport)
+hostsFile: {
+    filePattern: /\/(network\.txt|\/etc\/hosts)$/,
+    
+    parse: function(content, filename) {
+        // Extract section - works for both formats automatically
+        const section = SCC_RULES.extractSection(
+            content,
+            filename,
+            '# /etc/hosts',        // Section marker in supportconfig
+            '/etc/hosts'           // Direct file pattern for sosreport
+        );
+        
+        if (!section.found) {
+            return { entries: [], allHostnames: [] };
+        }
+        
+        // Now process the extracted lines
+        const hosts = [];
+        for (const line of section.lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) continue;
+            
+            const parts = trimmed.split(/\s+/);
+            if (parts.length >= 2) {
+                hosts.push({
+                    ip: parts[0],
+                    hostnames: parts.slice(1)
+                });
+            }
+        }
+        
+        return { entries: hosts };
+    }
+}
+```
+
+#### Detect a systemd service
+
+Use `detectSystemdService` to check if a service is enabled. It handles multiple file formats automatically.
+
+```js
+// Example: Detect Azure Site Recovery service
+azureSiteRecovery: {
+    filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
+    
+    parse: function(content, filename) {
+        return SCC_RULES.detectSystemdService(
+            content,
+            filename,
+            'involflt_start',  // Service name without .service extension
+            'info',            // Severity: 'info', 'warning', or 'error'
+            'Azure Site Recovery (ASR) is enabled on this system.'
+        );
+    }
+}
+```
+
+#### Search for a pattern in file content
+
+Use `grepLines` to search for text patterns, similar to the Unix `grep` command.
+
+```js
+// Example: Detect Illumio software
+illumio: {
+    filePattern: /sos_commands\/systemd\/systemctl_list-units_--all$/,
+    
+    parse: function(content) {
+        const result = SCC_RULES.grepLines(content, /illumio/i, { firstMatchOnly: true });
+        
+        if (!result.found) {
+            return { found: false };
+        }
+        
+        return {
+            found: true,
+            message: 'Illumio detected. SAP exclusions should be verified.'
+        };
+    }
+}
+```
+
+#### Detect installed RPM packages and processes
+
+Use `detectRPMPackage` to find installed packages, `detectProcess` to check for running processes, or `detectSecuritySoftware` to check both.
+
+```js
+// Example 1: Check if a package is installed
+const rpmResult = SCC_RULES.detectRPMPackage(content, 'mdatp', 'myParser');
+if (rpmResult.found) {
+    console.log(`Found version: ${rpmResult.version}`);
+}
+
+// Example 2: Check for running process
+const processResult = SCC_RULES.detectProcess(content, ['mdatp', 'wdavdaemon'], 'myParser');
+if (processResult.found) {
+    console.log(`Process found: ${processResult.line}`);
+}
+
+// Example 3: Detect Microsoft Defender (RPM + process combined)
+msDefender: {
+    filePattern: /\/(rpm\.txt|installed-rpms|ps\.txt)$/,
+    
+    parse: function(content) {
+        return SCC_RULES.detectSecuritySoftware(
+            content,
+            'msDefender parser',     // Parser name for logging
+            'mdatp',                 // RPM package name prefix
+            ['mdatp', 'wdavdaemon'], // Process names to search for
+            'MS Defender',           // Display name
+            'Microsoft Defender detected. SAP exclusions should be verified.'
+        );
+    }
+}
+```
+
+#### Parse key-value configuration files
+
+Use `parseKeyValueFile` to parse configuration files with key-value pairs (e.g., sysctl output, kernel parameters).
+
+```js
+// Example: Parse sysctl kernel parameters
+kernelTuning: {
+    filePattern: /sos_commands\/kernel\/sysctl_-a$/,
+    
+    parse: function(content, filename) {
+        // Parse sysctl output
+        const parsed = SCC_RULES.parseKeyValueFile(content, {
+            pattern: /^([^\s=]+)\s*=\s*(.+)$/,  // Match "key = value"
+            skipComments: true,
+            skipEmpty: true
+        });
+        
+        // Now validate specific parameters
+        const parameters = parsed.parameters;
+        const warnings = [];
+        
+        if (parameters['vm.swappiness'] !== '10') {
+            warnings.push({
+                parameter: 'vm.swappiness',
+                expected: '10',
+                actual: parameters['vm.swappiness']
+            });
+        }
+        
+        return {
+            found: true,
+            parameters: parameters,
+            warnings: warnings
+        };
+    }
+}
+```
+
+#### Extract raw configuration files
+
+Use `extractRawFile` to extract full file content for later analysis or display.
+
+```js
+// Example: Extract fstab for display
+fstab: {
+    filePattern: /\/etc\/fstab$/,
+    
+    parse: function(content, filename) {
+        // Simply extract the raw file content
+        return SCC_RULES.extractRawFile(content, filename);
+        // Returns: { found: true, content: "...", filename: "/etc/fstab" }
+    }
+}
+```
+
 ## Debug mode
 
 For reviewing the rules, you can run the web page with the following parameters, so that more data is logged into the browser console, which you can view using Developer Tools in MS Edge.

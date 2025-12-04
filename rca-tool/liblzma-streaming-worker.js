@@ -3,6 +3,11 @@
 
 const CACHE_BUST = '?v=' + Date.now();
 
+// Import utility functions (only in Web Worker context)
+if (typeof importScripts === 'function') {
+    importScripts('rca-utilities.js' + CACHE_BUST);
+}
+
 // Debug flag - will be set from main thread via message
 // Can be true (all), false (none), or 'cluster' (cluster-related only)
 let DEBUG_MODE = false;
@@ -36,6 +41,319 @@ function debugLog(...args) {
 // Each rule defines which file to extract and how to parse it
 
 const SCC_RULES = {
+    // ========================================================================
+    // UTILITY FUNCTIONS - Wrappers that call imported utilities with debugLog
+    // ========================================================================
+    
+    grepLines: function(content, patterns, options = {}) {
+        // Use imported utilities if available, otherwise use inline fallback
+        if (typeof RCA_UTILITIES !== 'undefined') {
+            return RCA_UTILITIES.grepLines(content, patterns, options);
+        }
+        
+        // Inline fallback for Node.js/test context
+        const {
+            firstMatchOnly = true,
+            returnAllMatches = false
+        } = options;
+        
+        const lines = content.split('\n');
+        const patternArray = Array.isArray(patterns) ? patterns : [patterns];
+        const matches = [];
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            
+            for (const pattern of patternArray) {
+                if (pattern.test(trimmed)) {
+                    const match = {
+                        found: true,
+                        lineNumber: i + 1,
+                        line: trimmed,
+                        matchedPattern: pattern
+                    };
+                    
+                    if (firstMatchOnly) {
+                        return match;
+                    }
+                    
+                    matches.push(match);
+                    break;
+                }
+            }
+        }
+        
+        return returnAllMatches 
+            ? { found: matches.length > 0, matches }
+            : { found: false };
+    },
+    
+    detectSystemdService: function(content, filename, serviceName, severity, message) {
+        if (typeof RCA_UTILITIES !== 'undefined') {
+            return RCA_UTILITIES.detectSystemdService(content, filename, serviceName, severity, message, debugLog);
+        }
+        
+        // Inline fallback
+        const pattern = new RegExp(`(?:^|Loaded:.*)${serviceName}\\.service[;\\s]+enabled`, 'i');
+        const result = this.grepLines(content, pattern, { firstMatchOnly: true });
+        
+        if (!result.found) {
+            return { found: false };
+        }
+        
+        debugLog(`[detectSystemdService] Found ${serviceName}.service enabled at line ${result.lineNumber}`);
+        
+        return {
+            found: true,
+            enabled: true,
+            severity: severity,
+            message: message,
+            detectionFile: filename,
+            detectionLine: result.lineNumber,
+            detectionContent: result.line
+        };
+    },
+    
+    checkSAPExclusions: function(content, parserName, exclusionKeywords = ['exclude', 'exclusion']) {
+        if (typeof RCA_UTILITIES !== 'undefined') {
+            return RCA_UTILITIES.checkSAPExclusions(content, parserName, exclusionKeywords, debugLog);
+        }
+        
+        // Inline fallback
+        debugLog(`[${parserName}] Checking config for SAP exclusions`);
+        
+        const sapPaths = [
+            '/usr/sap',
+            '/hana/shared',
+            '/hana/data',
+            '/hana/log',
+            '/sapmnt',
+            '/usr/sap/*/SYS/exe'
+        ];
+        
+        const foundExclusions = [];
+        const lines = content.split('\n');
+        
+        for (const line of lines) {
+            const lower = line.toLowerCase();
+            const hasExclusionKeyword = exclusionKeywords.some(keyword => lower.includes(keyword));
+            
+            if (hasExclusionKeyword) {
+                for (const sapPath of sapPaths) {
+                    if (line.includes(sapPath)) {
+                        foundExclusions.push(sapPath);
+                        debugLog(`[${parserName}] Found SAP exclusion:`, sapPath);
+                    }
+                }
+            }
+        }
+        
+        return {
+            found: true,
+            exclusions: foundExclusions,
+            hasExclusions: foundExclusions.length > 0
+        };
+    },
+    
+    detectRPMPackage: function(content, packagePrefix, parserName = '') {
+        if (typeof RCA_UTILITIES !== 'undefined') {
+            return RCA_UTILITIES.detectRPMPackage(content, packagePrefix, parserName, debugLog);
+        }
+        
+        // Inline fallback
+        const rpmPattern = new RegExp(`^${packagePrefix}-([\\.\\d.]+)`);
+        const result = this.grepLines(content, rpmPattern, { firstMatchOnly: true });
+        
+        if (!result.found) {
+            if (parserName) debugLog(`[${parserName}] RPM package ${packagePrefix} not found`);
+            return { found: false };
+        }
+        
+        const match = result.line.match(rpmPattern);
+        if (match) {
+            const version = match[1];
+            if (parserName) debugLog(`[${parserName}] Found RPM package ${packagePrefix}:`, version);
+            return {
+                found: true,
+                version: version,
+                packageName: packagePrefix,
+                line: result.line,
+                lineNumber: result.lineNumber
+            };
+        }
+        
+        return { found: false };
+    },
+    
+    detectProcess: function(content, processIndicators, parserName = '') {
+        if (typeof RCA_UTILITIES !== 'undefined') {
+            return RCA_UTILITIES.detectProcess(content, processIndicators, parserName, debugLog);
+        }
+        
+        // Inline fallback
+        const processArray = Array.isArray(processIndicators) ? processIndicators : [processIndicators];
+        const processPattern = new RegExp(processArray.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'));
+        const result = this.grepLines(content, processPattern, { firstMatchOnly: true });
+        
+        if (!result.found) {
+            if (parserName) debugLog(`[${parserName}] Process not found:`, processIndicators);
+            return { found: false };
+        }
+        
+        if (parserName) debugLog(`[${parserName}] Found process:`, result.line);
+        return {
+            found: true,
+            line: result.line,
+            lineNumber: result.lineNumber
+        };
+    },
+    
+    detectSecuritySoftware: function(content, parserName, packagePrefix, processIndicators, displayName, message) {
+        if (typeof RCA_UTILITIES !== 'undefined') {
+            return RCA_UTILITIES.detectSecuritySoftware(content, parserName, packagePrefix, processIndicators, displayName, message, debugLog);
+        }
+        
+        // Inline fallback
+        debugLog(`[${parserName}] Analyzing for ${displayName}`);
+        
+        const rpmResult = this.detectRPMPackage(content, packagePrefix, parserName);
+        const processResult = this.detectProcess(content, processIndicators, parserName);
+        
+        if (!rpmResult.found) {
+            debugLog(`[${parserName}] ${displayName} not detected`);
+            return { found: false };
+        }
+        
+        debugLog(`[${parserName}] ${displayName} detected, version:`, rpmResult.version);
+        
+        return {
+            found: true,
+            version: rpmResult.version,
+            runningProcess: processResult.found,
+            sapExceptionsConfigured: null,
+            message: message
+        };
+    },
+    
+    extractSection: function(content, filename, sectionMarker, directFilePattern) {
+        if (typeof RCA_UTILITIES !== 'undefined') {
+            return RCA_UTILITIES.extractSection(content, filename, sectionMarker, directFilePattern, debugLog);
+        }
+        
+        // Inline fallback
+        const lines = content.split('\n');
+        const extractedLines = [];
+        const isDirectFile = filename && filename.includes(directFilePattern);
+        
+        if (isDirectFile) {
+            debugLog(`[extractSection] Direct file detected (${directFilePattern}), returning full content`);
+            return {
+                found: true,
+                lines: lines,
+                content: content
+            };
+        }
+        
+        let inSection = false;
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
+            if (inSection && line.trim().startsWith('#==[ Configuration File ]===')) {
+                debugLog(`[extractSection] Found section end marker at line ${i + 1}`);
+                break;
+            }
+            
+            if (!inSection && line.includes(sectionMarker)) {
+                inSection = true;
+                debugLog(`[extractSection] Found section start marker at line ${i + 1}: ${sectionMarker}`);
+                continue;
+            }
+            
+            if (inSection) {
+                extractedLines.push(line);
+            }
+        }
+        
+        if (extractedLines.length === 0) {
+            debugLog(`[extractSection] Section not found: ${sectionMarker}`);
+            return {
+                found: false,
+                lines: [],
+                content: ''
+            };
+        }
+        
+        debugLog(`[extractSection] Extracted ${extractedLines.length} lines from section: ${sectionMarker}`);
+        
+        return {
+            found: true,
+            lines: extractedLines,
+            content: extractedLines.join('\n')
+        };
+    },
+    
+    parseKeyValueFile: function(content, options = {}) {
+        if (typeof RCA_UTILITIES !== 'undefined') {
+            return RCA_UTILITIES.parseKeyValueFile(content, options, debugLog);
+        }
+        
+        // Inline fallback
+        const {
+            pattern = /^([^\s=:]+)\s*[=:]\s*(.+)$/,
+            skipComments = true,
+            skipEmpty = true
+        } = options;
+        
+        const lines = content.split('\n');
+        const parameters = {};
+        let parsedCount = 0;
+        
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (skipEmpty && !trimmed) continue;
+            if (skipComments && trimmed.startsWith('#')) continue;
+            
+            const match = trimmed.match(pattern);
+            if (match && match.length >= 3) {
+                const key = match[1].trim();
+                const value = match[2].trim();
+                parameters[key] = value;
+                parsedCount++;
+            }
+        }
+        
+        debugLog(`[parseKeyValueFile] Parsed ${parsedCount} key-value pairs`);
+        
+        return {
+            found: true,
+            parameters: parameters,
+            raw: content,
+            count: parsedCount
+        };
+    },
+    
+    extractRawFile: function(content, filename) {
+        if (typeof RCA_UTILITIES !== 'undefined') {
+            return RCA_UTILITIES.extractRawFile(content, filename, debugLog);
+        }
+        
+        // Inline fallback
+        debugLog(`[extractRawFile] Extracted raw file: ${filename}`);
+        
+        return {
+            found: true,
+            content: content,
+            filename: filename
+        };
+    },
+    
+    // ========================================================================
+    // DETECTION RULES
+    // ========================================================================
+    
     // Rule: Detect if archive is an SCC report, hb_report, crm_report, or sosreport
     detection: {
         // Patterns to identify reports by filename
@@ -727,36 +1045,17 @@ const SCC_RULES = {
         // 2. sosreport: direct /etc/hosts file
         // Returns object with hosts entries and validation info
         parse: function(content, filename) {
-            const lines = content.split('\n');
+            // Extract the /etc/hosts section
+            const section = SCC_RULES.extractSection(content, filename, '# /etc/hosts', '/etc/hosts');
+            
+            if (!section.found) {
+                return { entries: [], allHostnames: [] };
+            }
+            
             const hosts = [];
             const hostnames = new Set();
             
-            // Check if this is a direct /etc/hosts file (sosreport) or network.txt (supportconfig)
-            const isDirectHostsFile = filename && filename.includes('/etc/hosts');
-            
-            let inHostsSection = isDirectHostsFile; // If direct hosts file, we're already in the section
-            
-            for (const line of lines) {
-                // For supportconfig network.txt, detect /etc/hosts section boundaries
-                if (!isDirectHostsFile) {
-                    // If we're in the hosts section, check for end marker
-                    if (inHostsSection && line.trim().startsWith('#==[ Configuration File ]===')) {
-                        debugLog('[hostsFile parser] Found end marker, stopping');
-                        break;
-                    }
-                    
-                    // Detect start of /etc/hosts section
-                    if (!inHostsSection) {
-                        if (line.includes('# /etc/hosts')) {
-                            inHostsSection = true;
-                            debugLog('[hostsFile parser] Found /etc/hosts section start');
-                            continue;
-                        }
-                        continue; // Skip lines until we find the start
-                    }
-                }
-                
-                // Now we're in the hosts section (or processing direct hosts file)
+            for (const line of section.lines) {
                 const trimmed = line.trim();
                 
                 // Skip empty lines and comment lines
@@ -803,7 +1102,6 @@ const SCC_RULES = {
         // Extracts corosync.conf section and validates totem token parameter
         // Returns object with configuration and validation warnings
         parse: function(content, filename) {
-            const lines = content.split('\n');
             const warnings = [];
             let corosyncConf = null;
             let totemToken = null;
@@ -818,49 +1116,20 @@ const SCC_RULES = {
             
             debugLog('[corosyncConfig parser] Analyzing for corosync.conf');
             
-            // Check if this is a direct corosync.conf file (sosreport) or ha.txt (supportconfig)
-            const isDirectCorosyncFile = filename && filename.includes('corosync.conf');
+            // Extract the corosync.conf section
+            const section = SCC_RULES.extractSection(content, filename, '# /etc/corosync/corosync.conf', 'corosync.conf');
             
-            // Find the corosync.conf section
-            let inCorosyncSection = isDirectCorosyncFile; // If direct file, we're already in the section
-            let corosyncLines = [];
-            
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                
-                // For supportconfig ha.txt, detect section boundaries
-                if (!isDirectCorosyncFile) {
-                    // Check for end marker if we're in the section
-                    if (inCorosyncSection && line.trim().startsWith('#==[ Configuration File ]===')) {
-                        debugLog('[corosyncConfig parser] Found end marker at line', i + 1);
-                        break;
-                    }
-                    
-                    // Detect start of corosync.conf section
-                    if (!inCorosyncSection) {
-                        if (line.includes('# /etc/corosync/corosync.conf')) {
-                            inCorosyncSection = true;
-                            debugLog('[corosyncConfig parser] Found corosync.conf section at line', i + 1);
-                            continue;
-                        }
-                        continue;
-                    }
-                }
-                
-                // We're in the corosync.conf section (or processing direct file)
-                corosyncLines.push(line);
-            }
-            
-            if (corosyncLines.length === 0) {
-                debugLog('[corosyncConfig parser] No corosync.conf found in ha.txt');
+            if (!section.found) {
+                debugLog('[corosyncConfig parser] No corosync.conf found');
                 return {
                     found: false,
                     warnings: []
                 };
             }
             
-            debugLog('[corosyncConfig parser] Extracted', corosyncLines.length, 'lines from corosync.conf');
-            corosyncConf = corosyncLines.join('\n');
+            debugLog('[corosyncConfig parser] Extracted', section.lines.length, 'lines from corosync.conf');
+            corosyncConf = section.content;
+            const corosyncLines = section.lines;
             
             // Parse both totem and quorum blocks in a single pass
             let inTotemBlock = false;
@@ -2625,54 +2894,14 @@ const SCC_RULES = {
         filePattern: /\/(rpm\.txt|installed-rpms|package-data|ps\.txt|ps_.*\.txt)$/,
         
         parse: function(content) {
-            const lines = content.split('\n');
-            debugLog('[falconSensor parser] Analyzing', lines.length, 'lines for Falcon Sensor');
-            
-            let detected = false;
-            let version = null;
-            let runningProcess = false;
-            const sapExceptions = {
-                checked: false,
-                paths: []
-            };
-            
-            // Check for Falcon Sensor package or process
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed) continue;
-                
-                // Check RPM package: falcon-sensor-X.Y.Z
-                const rpmMatch = trimmed.match(/^falcon-sensor-([\d.]+)/);
-                if (rpmMatch) {
-                    detected = true;
-                    version = rpmMatch[1];
-                    debugLog('[falconSensor parser] Found Falcon Sensor RPM:', version);
-                }
-                
-                // Check running process
-                if (trimmed.includes('falcon-sensor') || trimmed.includes('/opt/CrowdStrike')) {
-                    runningProcess = true;
-                    debugLog('[falconSensor parser] Found Falcon Sensor process');
-                }
-            }
-            
-            if (!detected) {
-                debugLog('[falconSensor parser] Falcon Sensor not detected');
-                return { found: false };
-            }
-            
-            // If detected, check for SAP exclusions in config files
-            // Common Falcon config locations: /opt/CrowdStrike/falconctl or policy files
-            // For now, we'll mark as needing manual verification
-            debugLog('[falconSensor parser] Falcon Sensor detected, version:', version);
-            
-            return {
-                found: true,
-                version: version,
-                runningProcess: runningProcess,
-                sapExceptionsConfigured: null, // null = unknown, needs config file check
-                message: 'Falcon Sensor detected. SAP exclusions should be verified manually in /opt/CrowdStrike configuration.'
-            };
+            return SCC_RULES.detectSecuritySoftware(
+                content,
+                'falconSensor parser',
+                'falcon-sensor',
+                ['falcon-sensor', '/opt/CrowdStrike'],
+                'Falcon Sensor',
+                'Falcon Sensor detected. SAP exclusions should be verified manually in /opt/CrowdStrike configuration.'
+            );
         }
     },
     
@@ -2681,40 +2910,11 @@ const SCC_RULES = {
         filePattern: /\/(falconctl|CrowdStrike.*config|falcon.*conf)$/i,
         
         parse: function(content) {
-            debugLog('[falconSensorConfig parser] Checking Falcon config for SAP exclusions');
-            
-            // SAP paths that should be excluded
-            const sapPaths = [
-                '/usr/sap',
-                '/hana/shared',
-                '/hana/data',
-                '/hana/log',
-                '/sapmnt',
-                '/usr/sap/*/SYS/exe'
-            ];
-            
-            const foundExclusions = [];
-            const lines = content.split('\n');
-            
-            for (const line of lines) {
-                const lower = line.toLowerCase();
-                
-                // Check for exclusion configurations
-                if (lower.includes('exclude') || lower.includes('exception')) {
-                    for (const sapPath of sapPaths) {
-                        if (line.includes(sapPath)) {
-                            foundExclusions.push(sapPath);
-                            debugLog('[falconSensorConfig parser] Found SAP exclusion:', sapPath);
-                        }
-                    }
-                }
-            }
-            
-            return {
-                found: true,
-                exclusions: foundExclusions,
-                hasExclusions: foundExclusions.length > 0
-            };
+            return SCC_RULES.checkSAPExclusions(
+                content,
+                'falconSensorConfig parser',
+                ['exclude', 'exception']
+            );
         }
     },
     
@@ -2723,47 +2923,14 @@ const SCC_RULES = {
         filePattern: /\/(rpm\.txt|installed-rpms|package-data|ps\.txt|ps_.*\.txt)$/,
         
         parse: function(content) {
-            const lines = content.split('\n');
-            debugLog('[msDefender parser] Analyzing', lines.length, 'lines for MS Defender');
-            
-            let detected = false;
-            let version = null;
-            let runningProcess = false;
-            
-            // Check for Microsoft Defender package or process
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed) continue;
-                
-                // Check RPM package: mdatp (Microsoft Defender ATP)
-                const rpmMatch = trimmed.match(/^mdatp-([\d.]+)/);
-                if (rpmMatch) {
-                    detected = true;
-                    version = rpmMatch[1];
-                    debugLog('[msDefender parser] Found MS Defender RPM:', version);
-                }
-                
-                // Check running process
-                if (trimmed.includes('mdatp') || trimmed.includes('wdavdaemon') || trimmed.includes('/opt/microsoft/mdatp')) {
-                    runningProcess = true;
-                    debugLog('[msDefender parser] Found MS Defender process');
-                }
-            }
-            
-            if (!detected) {
-                debugLog('[msDefender parser] MS Defender not detected');
-                return { found: false };
-            }
-            
-            debugLog('[msDefender parser] MS Defender detected, version:', version);
-            
-            return {
-                found: true,
-                version: version,
-                runningProcess: runningProcess,
-                sapExceptionsConfigured: null, // null = unknown, needs config check
-                message: 'Microsoft Defender detected. SAP exclusions should be verified with: mdatp exclusion list'
-            };
+            return SCC_RULES.detectSecuritySoftware(
+                content,
+                'msDefender parser',
+                'mdatp',
+                ['mdatp', 'wdavdaemon', '/opt/microsoft/mdatp'],
+                'MS Defender',
+                'Microsoft Defender detected. SAP exclusions should be verified with: mdatp exclusion list'
+            );
         }
     },
     
@@ -2772,40 +2939,11 @@ const SCC_RULES = {
         filePattern: /\/(mdatp.*|defender.*config)$/i,
         
         parse: function(content) {
-            debugLog('[msDefenderConfig parser] Checking MS Defender config for SAP exclusions');
-            
-            // SAP paths that should be excluded
-            const sapPaths = [
-                '/usr/sap',
-                '/hana/shared',
-                '/hana/data',
-                '/hana/log',
-                '/sapmnt',
-                '/usr/sap/*/SYS/exe'
-            ];
-            
-            const foundExclusions = [];
-            const lines = content.split('\n');
-            
-            for (const line of lines) {
-                const lower = line.toLowerCase();
-                
-                // Check for exclusion configurations
-                if (lower.includes('exclusion') || lower.includes('exclude')) {
-                    for (const sapPath of sapPaths) {
-                        if (line.includes(sapPath)) {
-                            foundExclusions.push(sapPath);
-                            debugLog('[msDefenderConfig parser] Found SAP exclusion:', sapPath);
-                        }
-                    }
-                }
-            }
-            
-            return {
-                found: true,
-                exclusions: foundExclusions,
-                hasExclusions: foundExclusions.length > 0
-            };
+            return SCC_RULES.checkSAPExclusions(
+                content,
+                'msDefenderConfig parser',
+                ['exclusion', 'exclude']
+            );
         }
     },
     
@@ -2814,29 +2952,17 @@ const SCC_RULES = {
         filePattern: /sos_commands\/systemd\/systemctl_list-units_--all$/,
         
         parse: function(content) {
-            const lines = content.split('\n');
-            debugLog('[illumio parser] Analyzing', lines.length, 'lines for Illumio');
+            debugLog('[illumio parser] Analyzing for Illumio');
             
-            let detected = false;
+            // Case-insensitive search for Illumio
+            const result = SCC_RULES.grepLines(content, /illumio/i, { firstMatchOnly: true });
             
-            // Check for Illumio in systemctl output
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed) continue;
-                
-                if (trimmed.includes('Illumio') || trimmed.includes('illumio')) {
-                    detected = true;
-                    debugLog('[illumio parser] Found Illumio:', trimmed);
-                    break;
-                }
-            }
-            
-            if (!detected) {
+            if (!result.found) {
                 debugLog('[illumio parser] Illumio not detected');
                 return { found: false };
             }
             
-            debugLog('[illumio parser] Illumio detected');
+            debugLog('[illumio parser] Found Illumio:', result.line);
             
             return {
                 found: true,
@@ -2850,29 +2976,17 @@ const SCC_RULES = {
         filePattern: /sos_commands\/systemd\/systemctl_list-units_--all$/,
         
         parse: function(content) {
-            const lines = content.split('\n');
-            debugLog('[trendMicro parser] Analyzing', lines.length, 'lines for Trend Micro');
+            debugLog('[trendMicro parser] Analyzing for Trend Micro');
             
-            let detected = false;
+            // Search for lines containing both ds_agent.service and Trend Micro
+            const result = SCC_RULES.grepLines(content, /ds_agent\.service.*Trend Micro|Trend Micro.*ds_agent\.service/i, { firstMatchOnly: true });
             
-            // Check for Trend Micro Deep Security in systemctl output
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed) continue;
-                
-                if (trimmed.includes('ds_agent.service') && trimmed.includes('Trend Micro')) {
-                    detected = true;
-                    debugLog('[trendMicro parser] Found Trend Micro Deep Security:', trimmed);
-                    break;
-                }
-            }
-            
-            if (!detected) {
+            if (!result.found) {
                 debugLog('[trendMicro parser] Trend Micro not detected');
                 return { found: false };
             }
             
-            debugLog('[trendMicro parser] Trend Micro Deep Security detected');
+            debugLog('[trendMicro parser] Found Trend Micro Deep Security:', result.line);
             
             return {
                 found: true,
@@ -2886,46 +3000,22 @@ const SCC_RULES = {
         filePattern: /sos_commands\/systemd\/systemctl_list-unit-files$/,
         
         parse: function(content, filename) {
-            const lines = content.split('\n');
-            debugLog('[dlmService parser] Analyzing', lines.length, 'lines for DLM service in:', filename);
+            debugLog('[dlmService parser] Analyzing for DLM service in:', filename);
             
-            let enabled = false;
-            let lineNumber = 0;
-            let matchedLine = '';
+            const result = SCC_RULES.detectSystemdService(
+                content,
+                filename,
+                'dlm',
+                'error',
+                'DLM (Distributed Lock Manager) service is enabled in systemd. This can cause issues with Pacemaker clusters, and should be managed as a cluster resource as defined in the documentation below.'
+            );
             
-            // Check for dlm.service enabled in systemctl list-unit-files
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                const trimmed = line.trim();
-                if (!trimmed) continue;
-                
-                // Match pattern: dlm.service followed by whitespace and "enabled"
-                if (trimmed.match(/^dlm\.service\s+enabled/)) {
-                    enabled = true;
-                    lineNumber = i + 1; // Line numbers are 1-based
-                    matchedLine = trimmed;
-                    debugLog('[dlmService parser] Found DLM service enabled at line', lineNumber, ':', trimmed);
-                    break;
-                }
+            // Add documentation URL for DLM service
+            if (result.found) {
+                result.documentationUrl = 'https://access.redhat.com/solutions/878023';
             }
             
-            if (!enabled) {
-                debugLog('[dlmService parser] DLM service not enabled');
-                return { found: false };
-            }
-            
-            debugLog('[dlmService parser] DLM service is enabled - triggering alert');
-            
-            return {
-                found: true,
-                enabled: true,
-                severity: 'error',
-                message: 'DLM (Distributed Lock Manager) service is enabled in systemd. This can cause issues with Pacemaker clusters, and should be managed as a cluster resource as defined in the documentation below.',
-                documentationUrl: 'https://access.redhat.com/solutions/878023',
-                detectionFile: filename,
-                detectionLine: lineNumber,
-                detectionContent: matchedLine
-            };
+            return result;
         }
     },
     
@@ -2934,50 +3024,15 @@ const SCC_RULES = {
         filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
         
         parse: function(content, filename) {
-            const lines = content.split('\n');
-            debugLog('[azureSiteRecovery parser] Analyzing', lines.length, 'lines for Azure Site Recovery in:', filename);
+            debugLog('[azureSiteRecovery parser] Analyzing for Azure Site Recovery in:', filename);
             
-            let enabled = false;
-            let lineNumber = 0;
-            let matchedLine = '';
-            
-            // Check for involflt_start.service enabled
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                const trimmed = line.trim();
-                if (!trimmed) continue;
-                
-                // Match patterns for different formats:
-                // 1. systemctl list-unit-files (sosreport): involflt_start.service enabled
-                // 2. systemctl list-unit-files (SCC): involflt_start.service; enabled
-                // 3. systemctl status output: Loaded: loaded (/path/involflt_start.service; enabled; ...)
-                if (trimmed.match(/^involflt_start\.service[;\s]+enabled/i) ||
-                    trimmed.match(/involflt_start\.service;\s*enabled/i) ||
-                    trimmed.match(/Loaded:.*involflt_start\.service;\s*enabled/i)) {
-                    enabled = true;
-                    lineNumber = i + 1; // Line numbers are 1-based
-                    matchedLine = trimmed;
-                    debugLog('[azureSiteRecovery parser] Found Azure Site Recovery service enabled at line', lineNumber, ':', trimmed);
-                    break;
-                }
-            }
-            
-            if (!enabled) {
-                debugLog('[azureSiteRecovery parser] Azure Site Recovery service not detected');
-                return { found: false };
-            }
-            
-            debugLog('[azureSiteRecovery parser] Azure Site Recovery service is enabled');
-            
-            return {
-                found: true,
-                enabled: true,
-                severity: 'info',
-                message: 'Azure Site Recovery (ASR) is enabled on this system. The involflt driver is used for replication.',
-                detectionFile: filename,
-                detectionLine: lineNumber,
-                detectionContent: matchedLine
-            };
+            return SCC_RULES.detectSystemdService(
+                content,
+                filename,
+                'involflt_start',
+                'info',
+                'Azure Site Recovery (ASR) is enabled on this system. The involflt driver is used for replication.'
+            );
         }
     },
     
@@ -2986,50 +3041,15 @@ const SCC_RULES = {
         filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
         
         parse: function(content, filename) {
-            const lines = content.split('\n');
-            debugLog('[guardicoreAgent parser] Analyzing', lines.length, 'lines for Guardicore agent in:', filename);
+            debugLog('[guardicoreAgent parser] Analyzing for Guardicore agent in:', filename);
             
-            let enabled = false;
-            let lineNumber = 0;
-            let matchedLine = '';
-            
-            // Check for gc-agent.service enabled
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                const trimmed = line.trim();
-                if (!trimmed) continue;
-                
-                // Match patterns for different formats:
-                // 1. systemctl list-unit-files (sosreport): gc-agent.service enabled
-                // 2. systemctl list-unit-files (SCC): gc-agent.service; enabled
-                // 3. systemctl status output: Loaded: loaded (/path/gc-agent.service; enabled; ...)
-                if (trimmed.match(/^gc-agent\.service[;\s]+enabled/i) ||
-                    trimmed.match(/gc-agent\.service;\s*enabled/i) ||
-                    trimmed.match(/Loaded:.*gc-agent\.service;\s*enabled/i)) {
-                    enabled = true;
-                    lineNumber = i + 1; // Line numbers are 1-based
-                    matchedLine = trimmed;
-                    debugLog('[guardicoreAgent parser] Found Guardicore agent enabled at line', lineNumber, ':', trimmed);
-                    break;
-                }
-            }
-            
-            if (!enabled) {
-                debugLog('[guardicoreAgent parser] Guardicore agent not detected');
-                return { found: false };
-            }
-            
-            debugLog('[guardicoreAgent parser] Guardicore agent is enabled');
-            
-            return {
-                found: true,
-                enabled: true,
-                severity: 'warning',
-                message: 'Guardicore agent is enabled on this system. This security software provides micro-segmentation and may require exclusions for SAP workloads.',
-                detectionFile: filename,
-                detectionLine: lineNumber,
-                detectionContent: matchedLine
-            };
+            return SCC_RULES.detectSystemdService(
+                content,
+                filename,
+                'gc-agent',
+                'warning',
+                'Guardicore agent is enabled on this system. This security software provides micro-segmentation and may require exclusions for SAP workloads.'
+            );
         }
     },
     
@@ -3040,8 +3060,14 @@ const SCC_RULES = {
         parse: function(content, filename) {
             debugLog('[kernelTuning parser] Analyzing kernel parameters in:', filename);
             
-            const lines = content.split('\n');
-            const parameters = {};
+            // Parse sysctl output using utility function
+            const parsed = SCC_RULES.parseKeyValueFile(content, {
+                pattern: /^([^\s=]+)\s*=\s*(.+)$/,  // sysctl uses "key = value" format
+                skipComments: true,
+                skipEmpty: true
+            });
+            
+            const parameters = parsed.parameters;
             const warnings = [];
             
             // Expected values for SAP HANA / high-performance workloads
@@ -3056,20 +3082,6 @@ const SCC_RULES = {
                 'vm.dirty_background_bytes': 'https://learn.microsoft.com/en-us/azure/sap/workloads/sap-hana-high-availability',
                 'vm.swappiness': 'https://learn.microsoft.com/en-us/azure/sap/workloads/sap-hana-high-availability'
             };
-            
-            // Parse sysctl output
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed || trimmed.startsWith('#')) continue;
-                
-                // Parse "key = value" format
-                const match = trimmed.match(/^([^\s=]+)\s*=\s*(.+)$/);
-                if (match) {
-                    const key = match[1].trim();
-                    const value = match[2].trim();
-                    parameters[key] = value;
-                }
-            }
             
             // Check for expected values
             for (const [param, expectedValue] of Object.entries(expectedValues)) {
@@ -3105,10 +3117,7 @@ const SCC_RULES = {
         parse: function(content, filename) {
             debugLog('[fstab parser] Analyzing fstab in:', filename);
             
-            return {
-                found: true,
-                content: content
-            };
+            return SCC_RULES.extractRawFile(content, filename);
         }
     }
     
