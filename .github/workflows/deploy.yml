@@ -110,7 +110,7 @@ jobs:
     - name: Run post-deployment tests
       run: |
         # Run tests against the deployed site
-        BASE_URL=https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/rca-tool/ npx playwright test --reporter=list
+        BASE_URL=https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/ npx playwright test --reporter=list
       working-directory: rca-tool/tests
       
     - name: Upload post-deployment test results
