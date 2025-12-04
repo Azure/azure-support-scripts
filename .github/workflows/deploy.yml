@@ -80,3 +80,43 @@ jobs:
     - name: Deploy to GitHub Pages
       id: deployment
       uses: actions/deploy-pages@v4
+
+  post-deploy-test:
+    runs-on: ubuntu-latest
+    needs: deploy
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+        
+    - name: Install dependencies
+      run: npm ci
+      working-directory: rca-tool/tests
+      
+    - name: Install Playwright Browsers
+      run: npx playwright install --with-deps msedge
+      working-directory: rca-tool/tests
+      
+    - name: Wait for deployment to be ready
+      run: |
+        echo "Waiting 30 seconds for GitHub Pages to update..."
+        sleep 30
+        
+    - name: Run post-deployment tests
+      run: |
+        # Run tests against the deployed site
+        BASE_URL=https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/rca-tool/ npx playwright test --reporter=list
+      working-directory: rca-tool/tests
+      
+    - name: Upload post-deployment test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: post-deploy-test-results
+        path: rca-tool/tests/test-results/
+        retention-days: 30
