@@ -49,6 +49,7 @@ jobs:
         cp index.html _site/
         cp styles.css _site/
         cp liblzma-streaming-worker.js _site/
+        cp rca-utilities.js _site/
         # Copy built WASM files
         mkdir -p _site/liblzma-wasm/dist-streaming/
         cp liblzma-wasm/dist-streaming/liblzma-xz-streaming.js _site/liblzma-wasm/dist-streaming/
