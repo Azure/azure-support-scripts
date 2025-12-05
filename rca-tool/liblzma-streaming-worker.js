@@ -46,48 +46,7 @@ const SCC_RULES = {
     // ========================================================================
     
     grepLines: function(content, patterns, options = {}) {
-        // Use imported utilities if available, otherwise use inline fallback
-        if (typeof RCA_UTILITIES !== 'undefined') {
-            return RCA_UTILITIES.grepLines(content, patterns, options);
-        }
-        
-        // Inline fallback for Node.js/test context
-        const {
-            firstMatchOnly = true,
-            returnAllMatches = false
-        } = options;
-        
-        const lines = content.split('\n');
-        const patternArray = Array.isArray(patterns) ? patterns : [patterns];
-        const matches = [];
-        
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-            
-            for (const pattern of patternArray) {
-                if (pattern.test(trimmed)) {
-                    const match = {
-                        found: true,
-                        lineNumber: i + 1,
-                        line: trimmed,
-                        matchedPattern: pattern
-                    };
-                    
-                    if (firstMatchOnly) {
-                        return match;
-                    }
-                    
-                    matches.push(match);
-                    break;
-                }
-            }
-        }
-        
-        return returnAllMatches 
-            ? { found: matches.length > 0, matches }
-            : { found: false };
+        return RCA_UTILITIES.grepLines(content, patterns, options);
     },
     
     detectSystemdService: function(content, filename, serviceName, severity, message) {
@@ -99,56 +58,11 @@ const SCC_RULES = {
     },
     
     detectRPMPackage: function(content, packagePrefix, parserName = '') {
-        if (typeof RCA_UTILITIES !== 'undefined') {
-            return RCA_UTILITIES.detectRPMPackage(content, packagePrefix, parserName, debugLog);
-        }
-        
-        // Inline fallback
-        const rpmPattern = new RegExp(`^${packagePrefix}-([\\.\\d.]+)`);
-        const result = this.grepLines(content, rpmPattern, { firstMatchOnly: true });
-        
-        if (!result.found) {
-            if (parserName) debugLog(`[${parserName}] RPM package ${packagePrefix} not found`);
-            return { found: false };
-        }
-        
-        const match = result.line.match(rpmPattern);
-        if (match) {
-            const version = match[1];
-            if (parserName) debugLog(`[${parserName}] Found RPM package ${packagePrefix}:`, version);
-            return {
-                found: true,
-                version: version,
-                packageName: packagePrefix,
-                line: result.line,
-                lineNumber: result.lineNumber
-            };
-        }
-        
-        return { found: false };
+        return RCA_UTILITIES.detectRPMPackage(content, packagePrefix, parserName, debugLog);
     },
     
     detectProcess: function(content, processIndicators, parserName = '') {
-        if (typeof RCA_UTILITIES !== 'undefined') {
-            return RCA_UTILITIES.detectProcess(content, processIndicators, parserName, debugLog);
-        }
-        
-        // Inline fallback
-        const processArray = Array.isArray(processIndicators) ? processIndicators : [processIndicators];
-        const processPattern = new RegExp(processArray.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'));
-        const result = this.grepLines(content, processPattern, { firstMatchOnly: true });
-        
-        if (!result.found) {
-            if (parserName) debugLog(`[${parserName}] Process not found:`, processIndicators);
-            return { found: false };
-        }
-        
-        if (parserName) debugLog(`[${parserName}] Found process:`, result.line);
-        return {
-            found: true,
-            line: result.line,
-            lineNumber: result.lineNumber
-        };
+        return RCA_UTILITIES.detectProcess(content, processIndicators, parserName, debugLog);
     },
     
     detectSecuritySoftware: function(content, parserName, packagePrefix, processIndicators, displayName, message) {
@@ -165,6 +79,42 @@ const SCC_RULES = {
     
     extractRawFile: function(content, filename) {
         return RCA_UTILITIES.extractRawFile(content, filename, debugLog);
+    },
+    
+    extractTimestamp: function(line) {
+        return RCA_UTILITIES.extractTimestamp(line);
+    },
+    
+    deduplicateEvents: function(existingEvents, newEvents, comparisonFields, debugLog) {
+        if (typeof RCA_UTILITIES !== 'undefined') {
+            return RCA_UTILITIES.deduplicateEvents(existingEvents, newEvents, comparisonFields, debugLog);
+        }
+        
+        // Inline fallback
+        const addedEvents = [];
+        let duplicateCount = 0;
+        
+        newEvents.forEach(newEvent => {
+            const isDuplicate = existingEvents.some(existingEvent => {
+                return comparisonFields.every(field => existingEvent[field] === newEvent[field]);
+            });
+            
+            if (!isDuplicate) {
+                addedEvents.push(newEvent);
+            } else {
+                duplicateCount++;
+            }
+        });
+        
+        return { addedEvents, duplicateCount };
+    },
+    
+    compareVersion: function(actual, expected, operator) {
+        return RCA_UTILITIES.compareVersion(actual, expected, operator);
+    },
+    
+    deduplicateEvents: function(existingEvents, newEvents, comparisonFields) {
+        return RCA_UTILITIES.deduplicateEvents(existingEvents, newEvents, comparisonFields, debugLog);
     },
     
     // ========================================================================
@@ -2184,7 +2134,7 @@ const SCC_RULES = {
                 // Look for first pattern: "hv_utils: Heartbeat IC"
                 if (line.includes('hv_utils: Heartbeat IC')) {
                     const heartbeatLine = i;
-                    const heartbeatTimestamp = this.extractTimestamp(line);
+                    const heartbeatTimestamp = SCC_RULES.extractTimestamp(line);
                     
                     debugLog('[liveMigration parser] Found hv_utils at line', i + 1, ':', heartbeatTimestamp);
                     
@@ -2212,7 +2162,7 @@ const SCC_RULES = {
                         // If found all three, we detected a Live Migration
                         if (netvscLine !== -1) {
                             // Extract timestamp from the heartbeat line
-                            const timestamp = this.extractTimestamp(lines[heartbeatLine]);
+                            const timestamp = SCC_RULES.extractTimestamp(lines[heartbeatLine]);
                             
                             migrations.push({
                                 timestamp: timestamp || 'Unknown',
@@ -2240,28 +2190,6 @@ const SCC_RULES = {
                 count: migrations.length,
                 events: migrations
             };
-        },
-        
-        // Helper function to extract timestamp from log line
-        extractTimestamp: function(line) {
-            // Common syslog timestamp patterns:
-            // 1. "2025-10-23T14:30:45.123456+00:00"
-            // 2. "Oct 23 14:30:45"
-            // 3. "2025-10-23 14:30:45"
-            
-            // Try ISO timestamp
-            const isoMatch = line.match(/(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)/);
-            if (isoMatch) return isoMatch[1];
-            
-            // Try syslog format (Month Day Time)
-            const syslogMatch = line.match(/((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})/);
-            if (syslogMatch) return syslogMatch[1];
-            
-            // Try simple date format
-            const simpleMatch = line.match(/(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/);
-            if (simpleMatch) return simpleMatch[1];
-            
-            return null;
         }
     },
     
@@ -2293,7 +2221,7 @@ const SCC_RULES = {
                 // - "kernel: [    0.000000][    T0] Linux version 5.14.21-150400.24.103-default"
                 const kernelMatch = line.match(/kernel:\s*(?:\[\s*[\d\.]+\]\s*(?:\[\s*T\d+\]\s*)?)?Linux version\s+([\d\.\-\w]+)/i);
                 if (kernelMatch) {
-                    const timestamp = this.extractTimestamp(line);
+                    const timestamp = SCC_RULES.extractTimestamp(line);
                     const kernelVersion = kernelMatch[1];
                     
                     reboots.push({
@@ -2312,7 +2240,7 @@ const SCC_RULES = {
                 if (line.match(/systemd.*Shutting down/i) || 
                     line.match(/systemd.*Starting Reboot/i) ||
                     line.match(/systemd.*Stopped target.*Shutdown/i)) {
-                    const timestamp = this.extractTimestamp(line);
+                    const timestamp = SCC_RULES.extractTimestamp(line);
                     
                     // Check if we already have a reboot event very close to this timestamp
                     const isDuplicate = reboots.some(r => {
@@ -2337,7 +2265,7 @@ const SCC_RULES = {
                 
                 // Pattern 3: "reboot: " messages
                 if (line.match(/kernel:\s*reboot:/i)) {
-                    const timestamp = this.extractTimestamp(line);
+                    const timestamp = SCC_RULES.extractTimestamp(line);
                     
                     reboots.push({
                         timestamp: timestamp || 'Unknown',
@@ -2358,23 +2286,6 @@ const SCC_RULES = {
                 count: reboots.length,
                 events: reboots
             };
-        },
-        
-        // Helper function to extract timestamp from log line (reuse from liveMigration)
-        extractTimestamp: function(line) {
-            // Try ISO timestamp
-            const isoMatch = line.match(/(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)/);
-            if (isoMatch) return isoMatch[1];
-            
-            // Try syslog format (Month Day Time)
-            const syslogMatch = line.match(/((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})/);
-            if (syslogMatch) return syslogMatch[1];
-            
-            // Try simple date format
-            const simpleMatch = line.match(/(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/);
-            if (simpleMatch) return simpleMatch[1];
-            
-            return null;
         }
     },
     
@@ -2403,7 +2314,7 @@ const SCC_RULES = {
                 // Pattern 1: "Out of memory: Kill process" or "Out of memory: Killed process"
                 const oomKillMatch = line.match(/Out of memory:.*Kill(?:ed)? process\s+(\d+)\s+\(([^)]+)\)/i);
                 if (oomKillMatch) {
-                    const timestamp = this.extractTimestamp(line);
+                    const timestamp = SCC_RULES.extractTimestamp(line);
                     const pid = oomKillMatch[1];
                     const processName = oomKillMatch[2];
                     
@@ -2438,7 +2349,7 @@ const SCC_RULES = {
                 
                 // Pattern 2: "oom-killer:" invocation (usually precedes the kill message)
                 if (line.match(/invoked oom-killer:/i)) {
-                    const timestamp = this.extractTimestamp(line);
+                    const timestamp = SCC_RULES.extractTimestamp(line);
                     
                     // Extract the process that invoked OOM killer
                     let invokedBy = null;
@@ -2478,7 +2389,7 @@ const SCC_RULES = {
                 
                 // Pattern 3: "oom_reaper:" messages (cleanup after OOM kill)
                 if (line.match(/oom_reaper:/i)) {
-                    const timestamp = this.extractTimestamp(line);
+                    const timestamp = SCC_RULES.extractTimestamp(line);
                     
                     // Extract PID if present
                     let pid = null;
@@ -2509,7 +2420,7 @@ const SCC_RULES = {
                 
                 // Pattern 4: "Cannot allocate memory" errors
                 if (line.match(/Cannot allocate memory/i)) {
-                    const timestamp = this.extractTimestamp(line);
+                    const timestamp = SCC_RULES.extractTimestamp(line);
                     
                     // Extract process name if present
                     let processName = null;
@@ -2545,23 +2456,80 @@ const SCC_RULES = {
                 count: oomEvents.length,
                 events: oomEvents
             };
-        },
+        }
+    },
+    
+    // Rule: Detect XFS filesystem errors requiring repair
+    xfsErrors: {
+        // Target file path patterns (same as oomKiller)
+        // supportconfig: */messages or */localmessages (with optional suffixes)
+        // sosreport: */var/log/messages or */sos_commands/logs/journalctl*
+        filePattern: /\/(messages|localmessages|journalctl[^\/]*)(?:[.-]\d+)?(?:\.txt)?$/,
         
-        // Helper function to extract timestamp from log line
-        extractTimestamp: function(line) {
-            // Try ISO timestamp
-            const isoMatch = line.match(/(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)/);
-            if (isoMatch) return isoMatch[1];
+        // Parse function receives file content as string
+        // Detects XFS filesystem errors that require unmounting and repair
+        // Example: [1814128.610637] XFS (sdd1): Please unmount the filesystem and rectify the problem(s)
+        parse: function(content) {
+            debugLog('[xfsErrors parser] Analyzing for XFS filesystem errors');
             
-            // Try syslog format (Month Day Time)
-            const syslogMatch = line.match(/((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})/);
-            if (syslogMatch) return syslogMatch[1];
+            // Pattern to match XFS error messages
+            const xfsPattern = /XFS\s+\(([^)]+)\):\s*(.+)/i;
             
-            // Try simple date format
-            const simpleMatch = line.match(/(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/);
-            if (simpleMatch) return simpleMatch[1];
+            // Use grepLines to find all XFS messages
+            const result = SCC_RULES.grepLines(content, xfsPattern, { 
+                firstMatchOnly: false, 
+                returnAllMatches: true 
+            });
             
-            return null;
+            if (!result.found) {
+                debugLog('[xfsErrors parser] No XFS messages found');
+                return {
+                    count: 0,
+                    events: []
+                };
+            }
+            
+            const xfsErrors = [];
+            
+            // Filter for critical errors only
+            for (const match of result.matches) {
+                const fullMatch = match.line.match(xfsPattern);
+                if (!fullMatch) continue;
+                
+                const device = fullMatch[1];
+                const message = fullMatch[2].trim();
+                
+                // Focus on critical errors that require repair
+                const isCritical = /please unmount.*rectify/i.test(message) ||
+                                 /metadata.*corruption/i.test(message) ||
+                                 /corruption.*detected/i.test(message) ||
+                                 /corruption warning/i.test(message) ||
+                                 /internal error/i.test(message) ||
+                                 /shutting down filesystem/i.test(message) ||
+                                 /filesystem has been shut down/i.test(message) ||
+                                 /duplicate UUID.*can't mount/i.test(message);
+                
+                if (isCritical) {
+                    const timestamp = SCC_RULES.extractTimestamp(match.line);
+                    
+                    xfsErrors.push({
+                        timestamp: timestamp || 'Unknown',
+                        lineNumber: match.lineNumber,
+                        device: device,
+                        message: message,
+                        rawLine: match.line
+                    });
+                    
+                    debugLog('[xfsErrors parser] ✓ Detected XFS error at line', match.lineNumber, ':', timestamp, 'device:', device);
+                }
+            }
+            
+            debugLog('[xfsErrors parser] Found', xfsErrors.length, 'critical XFS filesystem errors');
+            
+            return {
+                count: xfsErrors.length,
+                events: xfsErrors
+            };
         }
     },
     
@@ -2614,7 +2582,7 @@ const SCC_RULES = {
                         
                         // Validate version
                         if (requirements.operator === 'gte') {
-                            if (!this.compareVersion(version, requirements.version, 'gte')) {
+                            if (!SCC_RULES.compareVersion(version, requirements.version, 'gte')) {
                                 warnings.push({
                                     package: pkgName,
                                     expected: `>= ${requirements.version}`,
@@ -2627,8 +2595,8 @@ const SCC_RULES = {
                             }
                         } else if (requirements.operator === 'range') {
                             // Check if version is INSIDE the problematic range (inverted logic)
-                            if (this.compareVersion(version, requirements.minVersion, 'gte') && 
-                                this.compareVersion(version, requirements.maxVersion, 'lte')) {
+                            if (SCC_RULES.compareVersion(version, requirements.minVersion, 'gte') && 
+                                SCC_RULES.compareVersion(version, requirements.maxVersion, 'lte')) {
                                 warnings.push({
                                     package: pkgName,
                                     expected: `< ${requirements.minVersion} or > ${requirements.maxVersion}`,
@@ -2664,44 +2632,6 @@ const SCC_RULES = {
                 packages: foundPackages,
                 warnings: warnings
             };
-        },
-        
-        // Helper function to compare versions
-        compareVersion: function(actual, expected, operator) {
-            const parseVersion = (v) => {
-                const parts = v.split('.').map(p => parseInt(p, 10));
-                return {
-                    major: parts[0] || 0,
-                    minor: parts[1] || 0,
-                    patch: parts[2] || 0
-                };
-            };
-            
-            const actualParts = parseVersion(actual);
-            const expectedParts = parseVersion(expected);
-            
-            switch (operator) {
-                case 'exact':
-                    return actualParts.major === expectedParts.major && 
-                           actualParts.minor === expectedParts.minor;
-                           
-                case 'gte': // greater than or equal
-                    if (actualParts.major > expectedParts.major) return true;
-                    if (actualParts.major < expectedParts.major) return false;
-                    if (actualParts.minor > expectedParts.minor) return true;
-                    if (actualParts.minor < expectedParts.minor) return false;
-                    return actualParts.patch >= expectedParts.patch;
-                    
-                case 'lte': // less than or equal
-                    if (actualParts.major < expectedParts.major) return true;
-                    if (actualParts.major > expectedParts.major) return false;
-                    if (actualParts.minor < expectedParts.minor) return true;
-                    if (actualParts.minor > expectedParts.minor) return false;
-                    return actualParts.patch <= expectedParts.patch;
-                    
-                default:
-                    return false;
-            }
         }
     },
     
@@ -3165,9 +3095,9 @@ class IncrementalTARParser {
                 if (this.buffer.length >= dataOffset + size) {
                     const content = this.extractFileContent(dataOffset, size);
                     if (content) {
-                        // For rules that process multiple files (like liveMigration, kernelReboots, and oomKiller)
+                        // For rules that process multiple files (like liveMigration, kernelReboots, oomKiller, and xfsErrors)
                         // we need to accumulate results instead of replacing
-                        const isMultiFileRule = ruleName === 'liveMigration' || ruleName === 'kernelReboots' || ruleName === 'oomKiller';
+                        const isMultiFileRule = ruleName === 'liveMigration' || ruleName === 'kernelReboots' || ruleName === 'oomKiller' || ruleName === 'xfsErrors';
                         
                         // NOTE: We don't store file content in extractedFiles anymore to save memory
                         // Content is parsed immediately and discarded
@@ -3185,27 +3115,31 @@ class IncrementalTARParser {
                                     };
                                 }
                                 
-                                // For kernelReboots, deduplicate events based on timestamp and type
-                                if (ruleName === 'kernelReboots') {
-                                    let newEventsAdded = 0;
-                                    result.events.forEach(newEvent => {
-                                        // Check if this event already exists (same timestamp and type)
-                                        const isDuplicate = this.analysisResults[ruleName].events.some(existingEvent => {
-                                            return existingEvent.timestamp === newEvent.timestamp && 
-                                                   existingEvent.type === newEvent.type &&
-                                                   existingEvent.kernelVersion === newEvent.kernelVersion;
-                                        });
-                                        
-                                        if (!isDuplicate) {
-                                            this.analysisResults[ruleName].events.push({
-                                                ...newEvent,
-                                                sourceFile: filename
-                                            });
-                                            newEventsAdded++;
-                                        }
-                                    });
+                                // For kernelReboots and xfsErrors, deduplicate events based on timestamp and relevant fields
+                                if (ruleName === 'kernelReboots' || ruleName === 'xfsErrors') {
+                                    // Define comparison fields for each rule type
+                                    const comparisonFields = ruleName === 'kernelReboots' 
+                                        ? ['timestamp', 'type', 'kernelVersion']
+                                        : ['timestamp', 'device', 'message'];
+                                    
+                                    // Add sourceFile to new events
+                                    const newEventsWithSource = result.events.map(event => ({
+                                        ...event,
+                                        sourceFile: filename
+                                    }));
+                                    
+                                    // Use utility function for deduplication
+                                    const dedupeResult = SCC_RULES.deduplicateEvents(
+                                        this.analysisResults[ruleName].events,
+                                        newEventsWithSource,
+                                        comparisonFields
+                                    );
+                                    
+                                    // Add non-duplicate events
+                                    this.analysisResults[ruleName].events.push(...dedupeResult.addedEvents);
                                     this.analysisResults[ruleName].count = this.analysisResults[ruleName].events.length;
-                                    debugLog(`[TAR Parser] Rule '${ruleName}' accumulated ${newEventsAdded} new events (${result.count - newEventsAdded} duplicates skipped, total: ${this.analysisResults[ruleName].count})`);
+                                    
+                                    debugLog(`[TAR Parser] Rule '${ruleName}' accumulated ${dedupeResult.addedEvents.length} new events (${dedupeResult.duplicateCount} duplicates skipped, total: ${this.analysisResults[ruleName].count})`);
                                 } else {
                                     // Merge results without deduplication for other multi-file rules
                                     this.analysisResults[ruleName].count += result.count;
@@ -3341,6 +3275,7 @@ class IncrementalTARParser {
         const liveMigrationData = this.analysisResults.liveMigration || null;
         const kernelRebootsData = this.analysisResults.kernelReboots || null;
         const oomKillerData = this.analysisResults.oomKiller || null;
+        const xfsErrorsData = this.analysisResults.xfsErrors || null;
         const corosyncData = this.analysisResults.corosyncConfig || null;
         const rpmPackagesData = this.analysisResults.rpmPackages || null;
         const pacemakerResourcesData = this.analysisResults.pacemakerResources || null;
@@ -3544,6 +3479,7 @@ class IncrementalTARParser {
             liveMigration: liveMigrationData,
             kernelReboots: kernelRebootsData,
             oomKiller: oomKillerData,
+            xfsErrors: xfsErrorsData,
             corosyncConfig: corosyncData,
             corosyncStatus: this.analysisResults.corosyncStatus || null,
             rpmPackages: rpmPackagesData,

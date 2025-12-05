@@ -313,6 +313,8 @@ Currently, the tool manages:
 |Kernel parameters and validation|It grabs kernel parameters (sysctl) and displays them raw. If SAP Hana is found, it also validates best practices.|🗸||||
 |Raw fstab|It grab the raw fstab.|🗸||||
 |Azure Site Recovery|It detects if the involflt_start service is enabled.|🗸||🗸||
+|XFS corruption|If we see a message about xfs corruption, it is listed as an event.|🗸||🗸|🗸|
+|XFS duplicate UUID|If the is a kernel message about a duplicate UUID XFS mount, it is listed as an event.|🗸||🗸|🗸|
 |(WIP)||𐄂|n.a.|🗸|🗸|
 
 

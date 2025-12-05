@@ -51,6 +51,37 @@ function grepLines(content, patterns, options = {}) {
 }
 
 /**
+ * Extract timestamp from log line
+ * Supports multiple common log timestamp formats
+ * @param {string} line - Log line to extract timestamp from
+ * @returns {string|null} Extracted timestamp or null if not found
+ */
+function extractTimestamp(line) {
+    // Try kernel timestamp format [time.microseconds]
+    const kernelMatch = line.match(/\[(\d+\.\d+)\]/);
+    if (kernelMatch) return kernelMatch[1] + 's (kernel uptime)';
+    
+    // Try ISO timestamp
+    const isoMatch = line.match(/(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)/);
+    if (isoMatch) return isoMatch[1];
+    
+    // Try syslog format (Month Day Time) - normalize day to 2 digits with leading zero
+    const syslogMatch = line.match(/((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+)(\d{1,2})(\s+\d{2}:\d{2}:\d{2})/);
+    if (syslogMatch) {
+        const month = syslogMatch[1].trim();
+        const day = syslogMatch[2].padStart(2, '0');
+        const time = syslogMatch[3].trim();
+        return `${month} ${day} ${time}`;
+    }
+    
+    // Try simple date format
+    const simpleMatch = line.match(/(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/);
+    if (simpleMatch) return simpleMatch[1];
+    
+    return null;
+}
+
+/**
  * Generic systemd service detection helper
  * Detects if a systemd service is enabled using various systemctl output formats
  * @param {string} content - File content to search
@@ -376,9 +407,91 @@ function extractRawFile(content, filename, debugLog) {
     };
 }
 
+/**
+ * Deduplicate events based on specified comparison fields
+ * @param {Array} existingEvents - Array of existing events
+ * @param {Array} newEvents - Array of new events to add
+ * @param {Array} comparisonFields - Array of field names to compare for deduplication
+ * @param {Function} debugLog - Optional debug logging function
+ * @returns {Object} Object with addedEvents array and duplicateCount
+ */
+function deduplicateEvents(existingEvents, newEvents, comparisonFields, debugLog) {
+    const addedEvents = [];
+    let duplicateCount = 0;
+    
+    newEvents.forEach(newEvent => {
+        // Check if this event already exists by comparing specified fields
+        const isDuplicate = existingEvents.some(existingEvent => {
+            return comparisonFields.every(field => existingEvent[field] === newEvent[field]);
+        });
+        
+        if (!isDuplicate) {
+            addedEvents.push(newEvent);
+        } else {
+            duplicateCount++;
+        }
+    });
+    
+    if (debugLog) {
+        debugLog(`[deduplicateEvents] Added ${addedEvents.length} new events, skipped ${duplicateCount} duplicates`);
+    }
+    
+    return {
+        addedEvents,
+        duplicateCount
+    };
+}
+
+/**
+ * Compare semantic versions
+ * @param {string} actual - Actual version string (e.g., "5.14.21")
+ * @param {string} expected - Expected version string (e.g., "5.14.0")
+ * @param {string} operator - Comparison operator: 'exact', 'gte', 'lte'
+ * @returns {boolean} True if comparison matches
+ */
+function compareVersion(actual, expected, operator) {
+    const parseVersion = (v) => {
+        const parts = v.split('.').map(p => parseInt(p, 10));
+        return {
+            major: parts[0] || 0,
+            minor: parts[1] || 0,
+            patch: parts[2] || 0
+        };
+    };
+    
+    const actualParts = parseVersion(actual);
+    const expectedParts = parseVersion(expected);
+    
+    switch (operator) {
+        case 'exact':
+            return actualParts.major === expectedParts.major && 
+                   actualParts.minor === expectedParts.minor;
+                   
+        case 'gte': // greater than or equal
+            if (actualParts.major > expectedParts.major) return true;
+            if (actualParts.major < expectedParts.major) return false;
+            if (actualParts.minor > expectedParts.minor) return true;
+            if (actualParts.minor < expectedParts.minor) return false;
+            return actualParts.patch >= expectedParts.patch;
+            
+        case 'lte': // less than or equal
+            if (actualParts.major < expectedParts.major) return true;
+            if (actualParts.major > expectedParts.major) return false;
+            if (actualParts.minor < expectedParts.minor) return true;
+            if (actualParts.minor > expectedParts.minor) return false;
+            return actualParts.patch <= expectedParts.patch;
+            
+        default:
+            return false;
+    }
+}
+
 // Export utilities object for use in Web Worker
 const RCA_UTILITIES = {
     grepLines,
+    extractTimestamp,
+    deduplicateEvents,
+    compareVersion,
     detectSystemdService,
     checkSAPExclusions,
     detectRPMPackage,

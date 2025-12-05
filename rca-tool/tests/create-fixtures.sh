@@ -644,6 +644,65 @@ EOF
     fi
 fi
 
+################################################################################
+# Test for XFS errors with timestamp normalization and deduplication
+################################################################################
+echo ""
+echo "=== Creating test-xfs-errors.tar.xz ==="
+mkdir -p test-data
+cat > test-data/messages << 'EOF'
+Dec  2 15:07:09 testhost kernel: XFS (sda1): Metadata I/O Error: block 0x12345 ("xfs_trans_read_buf_map") error 5 numblks 8
+Dec  2 15:07:10 testhost kernel: XFS (sda1): xfs_do_force_shutdown(0x1) called from line 1234 of file fs/xfs/xfs_buf.c. Return address = 0xffffffffc0123456
+Dec  2 15:07:11 testhost kernel: XFS (sdb2): Internal error xfs_trans_cancel at line 987 of file fs/xfs/xfs_trans.c. Caller xfs_create+0x456/0x789
+Dec  3 08:45:23 testhost kernel: XFS (sdc3): Corruption detected. Unmount and run xfs_repair
+Dec  3 08:45:24 testhost kernel: XFS (sdc3): corrupt dinode 123456, extent total = 1, nblocks = 10
+EOF
+
+# Create rotated log with duplicate entries (different day format to test normalization)
+cat > test-data/messages-1 << 'EOF'
+Dec 02 15:07:09 testhost kernel: XFS (sda1): Metadata I/O Error: block 0x12345 ("xfs_trans_read_buf_map") error 5 numblks 8
+Dec 02 15:07:10 testhost kernel: XFS (sda1): xfs_do_force_shutdown(0x1) called from line 1234 of file fs/xfs/xfs_buf.c. Return address = 0xffffffffc0123456
+Dec 01 12:30:45 testhost kernel: XFS (sdd4): log I/O error -5
+EOF
+
+# Create another rotated log
+cat > test-data/messages-2 << 'EOF'
+Nov 30 18:22:11 testhost kernel: XFS (sde5): metadata I/O error in "xfs_btree_read_buf_block" at daddr 0xabcdef
+EOF
+
+create_fixture "test-xfs-errors"
+
+################################################################################
+# Test for XFS errors with single-digit vs zero-padded days
+################################################################################
+echo ""
+echo "=== Creating test-xfs-timestamp-normalization.tar.xz ==="
+mkdir -p test-data
+cat > test-data/messages << 'EOF'
+Dec  5 10:15:30 node1 kernel: XFS (nvme0n1p1): Corruption warning: inode 456789
+Dec  5 10:15:31 node1 kernel: XFS (nvme0n1p1): Internal error XFS_WANT_CORRUPTED_GOTO at line 2345
+EOF
+
+cat > test-data/messages-1 << 'EOF'
+Dec 05 10:15:30 node1 kernel: XFS (nvme0n1p1): Corruption warning: inode 456789
+Dec 05 10:15:31 node1 kernel: XFS (nvme0n1p1): Internal error XFS_WANT_CORRUPTED_GOTO at line 2345
+EOF
+
+create_fixture "test-xfs-timestamp-normalization"
+
+################################################################################
+# Test for XFS duplicate UUID errors
+################################################################################
+echo ""
+echo "=== Creating test-xfs-duplicate-uuid.tar.xz ==="
+mkdir -p test-data
+cat > test-data/messages << 'EOF'
+Dec  3 17:37:06 vmcdfaccdrmigoradbqa01 kernel: XFS (sde1): Filesystem has duplicate UUID ac560ede-78b1-4d66-b199-2c1284ad1aaf - can't mount
+Dec  3 17:37:07 vmcdfaccdrmigoradbqa01 kernel: XFS (sdf1): Filesystem has duplicate UUID f1234567-89ab-cdef-0123-456789abcdef - can't mount
+EOF
+
+create_fixture "test-xfs-duplicate-uuid"
+
 echo ""
 echo "========================================="
 echo "✓ All test fixtures created successfully!"

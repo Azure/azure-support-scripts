@@ -505,7 +505,7 @@
                     return new Promise((resolve, reject) => {
                         if (!workerSupported) return reject(new Error('Workers not supported'));
                         try {
-                            const w = new Worker('./liblzma-streaming-worker.js');
+                            const w = new Worker('./liblzma-streaming-worker.js?v=' + Date.now());
                             let timeout = setTimeout(() => { 
                                 w.terminate(); 
                                 reject(new Error('Streaming worker timeout')); 
@@ -656,6 +656,7 @@
             console.log('[DEBUG] liveMigration:', analysis.liveMigration);
             console.log('[DEBUG] kernelReboots:', analysis.kernelReboots);
             console.log('[DEBUG] oomKiller:', analysis.oomKiller);
+            console.log('[DEBUG] xfsErrors:', analysis.xfsErrors);
             console.log('[DEBUG] rpmPackages:', analysis.rpmPackages);
             console.log('[DEBUG] pacemakerResources:', analysis.pacemakerResources);
             console.log('[DEBUG] kernelTuning:', analysis.kernelTuning);
@@ -663,7 +664,7 @@
                 console.log('[DEBUG] Resources detail:', analysis.pacemakerResources.resources);
             }
             
-            const { fileCount, directories, fileTypes, files, totalParsed, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, kernelReboots, oomKiller, corosyncConfig, rpmPackages, antivirus, kernelTuning, fstab } = analysis;
+            const { fileCount, directories, fileTypes, files, totalParsed, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, kernelReboots, oomKiller, xfsErrors, corosyncConfig, rpmPackages, antivirus, kernelTuning, fstab } = analysis;
 
             // Compute a reusable SAP detection flag early so UI sections can be gated
             const dirListGlobal = (directories || []).map(d => (d || '').toLowerCase());
@@ -1537,8 +1538,13 @@
                 html += `</div></details>`;
             }
             
-            // Events - group Live Migration, Kernel Reboots and OOM (collapsed by default)
-            html += `<details class="content-details">`;
+            // Events - group Live Migration, Kernel Reboots, OOM, and XFS Errors (collapsed by default)
+            // Determine Events section severity based on critical events
+            const hasXFSErrors = xfsErrors && xfsErrors.count > 0;
+            const hasOOMEvents = oomKiller && oomKiller.count > 0;
+            const eventsBlockClass = hasXFSErrors ? 'danger-block' : hasOOMEvents ? 'warning-block' : 'content-details';
+            
+            html += `<details class="${eventsBlockClass}">`;
             html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">Events</summary>`;
             html += `<div style="margin-top: 15px;">`;
 
@@ -1685,6 +1691,50 @@
             } else {
                 html += `<p class="text-muted"><em>No OOM (Out of Memory) killer events were detected in the analyzed files.</em></p>`;
                 html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection patterns: "Out of memory: Kill process", "oom-killer: invoked", "oom_reaper:", "Cannot allocate memory"</em></p>`;
+            }
+            html += `</div></details>`;
+
+            // XFS Filesystem Errors - Always show
+            const xfsErrorsCount = xfsErrors ? xfsErrors.count : 0;
+            const xfsBlockClass = hasXFSErrors ? 'danger-block' : 'info-block';
+            html += `<details class="${xfsBlockClass}">`;
+            html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
+            html += `XFS Filesystem Errors`;
+            html += ` <span style="font-size: 12px; font-weight: normal;">(${xfsErrorsCount} error${xfsErrorsCount !== 1 ? 's' : ''} found)</span>`;
+            html += `</summary>`;
+            html += `<div style="margin-top: 15px;">`;
+            
+            if (hasXFSErrors) {
+                html += '<p><strong>Detected XFS filesystem errors requiring attention:</strong></p>';
+                html += '<ul style="margin: 10px 0; max-height: 300px; overflow-y: auto;">';
+                
+                // Sort events by timestamp (most recent first)
+                const sortedXFS = [...xfsErrors.events].sort((a, b) => {
+                    return b.timestamp.localeCompare(a.timestamp);
+                });
+                
+                sortedXFS.forEach(error => {
+                    html += `<li style="margin-bottom: 12px; padding: 8px; border-radius: 4px;" class="bg-code">`;
+                    html += `<strong class="text-danger">${error.timestamp}</strong>`;
+                    html += `<br><span style="font-weight: bold;">Device: ${error.device}</span>`;
+                    html += `<br><span style="font-size: 13px;">${error.message}</span>`;
+                    if (error.lineNumber) {
+                        html += `<br><span style="font-size: 11px;" class="text-muted">Line: ${error.lineNumber}</span>`;
+                    }
+                    html += `<br><span style="font-size: 11px;" class="text-muted">Source: ${error.sourceFile}</span>`;
+                    if (error.rawLine) {
+                        html += `<br><span class="event-raw-line">${error.rawLine}</span>`;
+                    }
+                    html += `</li>`;
+                });
+                
+                html += '</ul>';
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection patterns: "XFS (...): Please unmount", "metadata corruption", "corruption detected", "internal error", "shutting down filesystem"</em></p>`;
+                html += `<p style="margin-top: 5px; font-size: 12px;" class="text-danger"><strong>⚠ Warning:</strong> XFS errors may indicate filesystem corruption. Unmount the affected filesystem and run xfs_repair.</p>`;
+                html += `<p style="margin-top: 5px; font-size: 12px;"><strong>Recommended action:</strong> <code>umount /dev/device && xfs_repair /dev/device</code></p>`;
+            } else {
+                html += `<p class="text-muted"><em>No XFS filesystem errors were detected in the analyzed files.</em></p>`;
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection patterns: "XFS (...): Please unmount", "metadata corruption", "internal error"</em></p>`;
             }
             html += `</div></details>`;
 
