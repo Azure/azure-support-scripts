@@ -2866,6 +2866,38 @@ const SCC_RULES = {
             
             return SCC_RULES.extractRawFile(content, filename);
         }
+    },
+    
+    // Rule: Detect NVMe drives in sosreports
+    nvmeList: {
+        filePattern: /sos_commands\/nvme\/nvme_list$/,
+        
+        parse: function(content, filename) {
+            debugLog('[nvmeList parser] Analyzing NVMe drives in:', filename);
+            
+            // Count non-empty lines
+            const lines = content.split('\n').filter(line => line.trim().length > 0);
+            
+            // If only 2 lines (header), no NVMe drives present
+            if (lines.length <= 2) {
+                debugLog('[nvmeList parser] No NVMe drives detected (header only)');
+                return {
+                    found: false,
+                    hasNVMe: false
+                };
+            }
+            
+            // More than 2 lines means NVMe drives are present
+            debugLog('[nvmeList parser] NVMe drives detected:', lines.length - 2, 'drives');
+            
+            return {
+                found: true,
+                hasNVMe: true,
+                driveCount: lines.length - 2,
+                content: content,
+                filename: filename
+            };
+        }
     }
     
     // ADD MORE RULES HERE
@@ -3490,6 +3522,7 @@ class IncrementalTARParser {
             clusterServices: clusterServicesResults,
             kernelTuning: this.analysisResults.kernelTuning || null,
             fstab: this.analysisResults.fstab || null,
+            nvmeList: this.analysisResults.nvmeList || null,
             // Cross-validation results
             nodesInHosts: nodesInHosts,
             nodesMissingFromHosts: nodesMissingFromHosts

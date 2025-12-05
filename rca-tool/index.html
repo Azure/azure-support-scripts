@@ -664,7 +664,7 @@
                 console.log('[DEBUG] Resources detail:', analysis.pacemakerResources.resources);
             }
             
-            const { fileCount, directories, fileTypes, files, totalParsed, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, kernelReboots, oomKiller, xfsErrors, corosyncConfig, rpmPackages, antivirus, kernelTuning, fstab } = analysis;
+            const { fileCount, directories, fileTypes, files, totalParsed, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, kernelReboots, oomKiller, xfsErrors, corosyncConfig, rpmPackages, antivirus, kernelTuning, fstab, nvmeList } = analysis;
 
             // Compute a reusable SAP detection flag early so UI sections can be gated
             const dirListGlobal = (directories || []).map(d => (d || '').toLowerCase());
@@ -1982,7 +1982,7 @@
             html += `</div></details>`;
             
             // Kernel and System Parameters Section (show SAP-relevant warnings only when SAP detected)
-            if ((kernelTuning && kernelTuning.found) || (fstab && fstab.found)) {
+            if ((kernelTuning && kernelTuning.found) || (fstab && fstab.found) || (nvmeList && nvmeList.hasNVMe)) {
                 html += `<details class="content-details">`;
                 html += `<summary>Kernel and System Parameters`;
                 if (kernelTuning && kernelTuning.hasWarnings && sapDetected) {
@@ -2052,6 +2052,18 @@
                     html += `<div style="margin-top: 10px;">`;
                     html += `<pre style="background: var(--code-bg); padding: 10px; border: 1px solid var(--code-border); border-radius: 4px; overflow-x: auto; font-size: 12px; white-space: pre-wrap;">`;
                     html += fstab.content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    html += `</pre>`;
+                    html += `</div>`;
+                    html += `</details>`;
+                }
+
+                // NVMe drives section
+                if (nvmeList && nvmeList.hasNVMe) {
+                    html += `<details style="margin-top: 15px;">`;
+                    html += `<summary style="font-size: 14px; cursor: pointer;">NVMe Drives <span style="font-size: 12px; font-weight: normal;">(${nvmeList.driveCount} detected)</span></summary>`;
+                    html += `<div style="margin-top: 10px;">`;
+                    html += `<pre style="background: var(--code-bg); padding: 10px; border: 1px solid var(--code-border); border-radius: 4px; overflow-x: auto; font-size: 12px; white-space: pre-wrap;">`;
+                    html += nvmeList.content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
                     html += `</pre>`;
                     html += `</div>`;
                     html += `</details>`;

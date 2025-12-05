@@ -2,6 +2,38 @@
 
 How to build and contribute to rca-tool.
 
+## Functionality
+
+Currently, the tool manages:
+
+|Function|Description|Mature|crm/hb|scc|sos|
+|--------|-----------|------|------|---|---|
+|Azure vm size|Extract Azure VM Size, from wireserver metadata|🗸|n.a.|🗸|🗸|
+|Azure BYOS/PAYG|Licensing source for Azure, from wireserver metadata.|𐄂|n.a.|🗸|🗸|
+|Distro detection|It finds distribution mayor and minor version from OS files or wireserver metadata|🗸|🗸|🗸|🗸|
+|Cluster node detection and validation|Detects if a node name is declared in both cluster config and hosts file|🗸|🗸|🗸|🗸|
+|Corosync configuration and validation|Azure best practices are compared. Needs improvement for non-Suse|𐄂|🗸|🗸|🗸|
+|Cluster resource extraction|List resources, active node for each. Adding constains would be useful.|🗸|🗸|🗸|🗸|
+|Corosync runtime status|Details which nodes are active, which is localhost|🗸|🗸|🗸|🗸|
+|Fencing detection|Azure fencing or SDB. Needs warning if two are active at the same time.|🗸|🗸|🗸|🗸|
+|Cluster events|Migrations are detected and listed|🗸|🗸|🗸|🗸|
+|Live migration|Azure Live Migrations are detected and listed|🗸|🗸|🗸|🗸|
+|Kernel reboot events|Shutdown, reboots and kernel starts are listed. Shows kernel version when boots|🗸|🗸|🗸|🗸|
+|Out of memory/oomk events|If the system cannot allocate memory for processes or has out of memory events, they are detected and listed.|🗸|n.a.|🗸|🗸|
+|Cluster packages|Validation of packages install in specific version ranges. Needs improvement for non-Suse.|||||
+|AV Detection|MS Defender, Cloudstrike Falcon, Illumio, Trend Micro, Guardicore|||||
+|DLM Service Detection|Detects if DLM (Distributed Lock Manager) service is enabled and alerts|🗸|n.a.|🗸|🗸|
+|Kernel parameters and validation|It grabs kernel parameters (sysctl) and displays them raw. If SAP Hana is found, it also validates best practices.|🗸||||
+|Raw fstab|It grab the raw fstab.|🗸||||
+|Azure Site Recovery|It detects if the involflt_start service is enabled.|🗸||🗸||
+|XFS corruption|If we see a message about xfs corruption, it is listed as an event.|🗸||🗸|🗸|
+|XFS duplicate UUID|If the is a kernel message about a duplicate UUID XFS mount, it is listed as an event.|🗸||🗸|🗸|
+|NVME Detection|If NVME disks are found, they are listed.|🗸|n.a.||🗸|
+|(WIP)||𐄂|n.a.|🗸|🗸|
+
+
+Note: "n.a." in this table, means that some data is not present on all type of debug files.
+
 ## Quick Start
 
 1. **Build the project:**
@@ -288,34 +320,3 @@ If possible, moving the rules to a rust WASM code would make the analysis of the
 Due to the need to run with streaming, we currently support only gzip and xz files, using a C library compiled for WASM.
 
 If other mature libraries for compression can be compiled and used with streaming, it should be possible to support other types for files like ZIP, or zstd.
-
-## Functionality
-
-Currently, the tool manages:
-
-|Function|Description|Mature|crm/hb|scc|sos|
-|--------|-----------|------|------|---|---|
-|Azure vm size|Extract Azure VM Size, from wireserver metadata|🗸|n.a.|🗸|🗸|
-|Azure BYOS/PAYG|Licensing source for Azure, from wireserver metadata.|𐄂|n.a.|🗸|🗸|
-|Distro detection|It finds distribution mayor and minor version from OS files or wireserver metadata|🗸|🗸|🗸|🗸|
-|Cluster node detection and validation|Detects if a node name is declared in both cluster config and hosts file|🗸|🗸|🗸|🗸|
-|Corosync configuration and validation|Azure best practices are compared. Needs improvement for non-Suse|𐄂|🗸|🗸|🗸|
-|Cluster resource extraction|List resources, active node for each. Adding constains would be useful.|🗸|🗸|🗸|🗸|
-|Corosync runtime status|Details which nodes are active, which is localhost|🗸|🗸|🗸|🗸|
-|Fencing detection|Azure fencing or SDB. Needs warning if two are active at the same time.|🗸|🗸|🗸|🗸|
-|Cluster events|Migrations are detected and listed|🗸|🗸|🗸|🗸|
-|Live migration|Azure Live Migrations are detected and listed|🗸|🗸|🗸|🗸|
-|Kernel reboot events|Shutdown, reboots and kernel starts are listed. Shows kernel version when boots|🗸|🗸|🗸|🗸|
-|Out of memory/oomk events|If the system cannot allocate memory for processes or has out of memory events, they are detected and listed.|🗸|n.a.|🗸|🗸|
-|Cluster packages|Validation of packages install in specific version ranges. Needs improvement for non-Suse.|||||
-|AV Detection|MS Defender, Cloudstrike Falcon, Illumio, Trend Micro, Guardicore|||||
-|DLM Service Detection|Detects if DLM (Distributed Lock Manager) service is enabled and alerts|🗸|n.a.|🗸|🗸|
-|Kernel parameters and validation|It grabs kernel parameters (sysctl) and displays them raw. If SAP Hana is found, it also validates best practices.|🗸||||
-|Raw fstab|It grab the raw fstab.|🗸||||
-|Azure Site Recovery|It detects if the involflt_start service is enabled.|🗸||🗸||
-|XFS corruption|If we see a message about xfs corruption, it is listed as an event.|🗸||🗸|🗸|
-|XFS duplicate UUID|If the is a kernel message about a duplicate UUID XFS mount, it is listed as an event.|🗸||🗸|🗸|
-|(WIP)||𐄂|n.a.|🗸|🗸|
-
-
-Note: "n.a." in this table, means that some data is not present on all type of debug files.
