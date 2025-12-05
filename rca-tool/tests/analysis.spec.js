@@ -42,7 +42,8 @@ function isSapDetectedFromResult(resultHtml) {
 test.describe('SAP HANA Cluster Analyzer', () => {
   
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    // Use empty string instead of '/' to properly use baseURL
+    await page.goto('');
     await expect(page.locator('h1')).toContainText('RCA Tool');
   });
 

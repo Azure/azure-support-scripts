@@ -25,6 +25,15 @@ export default defineConfig({
         channel: 'msedge',
       },
     },
+    {
+      name: 'deployed',
+      use: { 
+        ...devices['Desktop Edge'],
+        channel: 'msedge',
+        // Remove trailing slash so page.goto('/') works correctly
+        baseURL: process.env.DEPLOYED_URL?.replace(/\/$/, '') || 'https://fede2cr.github.io/azure-support-scripts',
+      },
+    },
   ],
 
   webServer: process.env.BASE_URL ? undefined : {
