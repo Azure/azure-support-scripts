@@ -44,7 +44,7 @@ jobs:
       working-directory: rca-tool/tests
       
     - name: Run tests
-      run: npm test
+      run: npx playwright test --project=msedge
       working-directory: rca-tool/tests
       
     - name: Run accessibility checks
