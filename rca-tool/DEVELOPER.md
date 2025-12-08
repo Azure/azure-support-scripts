@@ -29,6 +29,7 @@ Currently, the tool manages:
 |XFS corruption|If we see a message about xfs corruption, it is listed as an event.|🗸||🗸|🗸|
 |XFS duplicate UUID|If the is a kernel message about a duplicate UUID XFS mount, it is listed as an event.|🗸||🗸|🗸|
 |NVME Detection|If NVME disks are found, they are listed.|🗸|n.a.||🗸|
+|Network Kernel Parameters|Recommended and optional kernel parameters for network are verified on the collected sysctl.|🗸|n.a.|🗸|🗸|
 |(WIP)||𐄂|n.a.|🗸|🗸|
 
 
