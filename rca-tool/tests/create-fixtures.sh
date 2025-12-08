@@ -703,6 +703,129 @@ EOF
 
 create_fixture "test-xfs-duplicate-uuid"
 
+################################################################################
+# Test: Azure Network Tuning - Correctly Configured
+# Tests detection of properly configured Azure Network optimization parameters
+################################################################################
+echo ""
+echo "=== Creating test-azure-network-tuned.tar.xz ==="
+mkdir -p test-data/sos_commands/kernel
+cat > test-data/sos_commands/kernel/sysctl_-a << 'EOF'
+kernel.hostname = test-host
+kernel.osrelease = 5.14.0-362.8.1.el9_3.x86_64
+kernel.ostype = Linux
+net.core.busy_poll = 50
+net.core.busy_read = 50
+net.core.rmem_default = 33554432
+net.core.rmem_max = 134217728
+net.core.wmem_default = 33554432
+net.core.wmem_max = 134217728
+net.ipv4.tcp_congestion_control = bbr
+net.ipv4.tcp_mem = 4096	87380	67108864
+net.ipv4.tcp_rmem = 4096	87380	67108864
+net.ipv4.tcp_wmem = 4096	65536	67108864
+net.ipv4.udp_mem = 4096	87380	33554432
+net.ipv4.udp_rmem_min = 16384
+net.ipv4.udp_wmem_min = 16384
+vm.swappiness = 60
+EOF
+
+create_fixture "test-azure-network-tuned"
+
+################################################################################
+# Test: Azure Network Tuning - Needs Adjustment
+# Tests detection of Azure Network parameters that need adjustment
+################################################################################
+echo ""
+echo "=== Creating test-azure-network-warnings.tar.xz ==="
+mkdir -p test-data/sos_commands/kernel
+cat > test-data/sos_commands/kernel/sysctl_-a << 'EOF'
+kernel.hostname = test-host
+kernel.osrelease = 5.14.0-362.8.1.el9_3.x86_64
+kernel.ostype = Linux
+net.core.busy_poll = 0
+net.core.busy_read = 0
+net.core.rmem_default = 262144
+net.core.rmem_max = 4194304
+net.core.wmem_default = 262144
+net.core.wmem_max = 1048576
+net.ipv4.tcp_congestion_control = cubic
+net.ipv4.tcp_mem = 4096	87380	4194304
+net.ipv4.tcp_rmem = 4096	87380	6291456
+net.ipv4.tcp_wmem = 4096	16384	4194304
+net.ipv4.udp_mem = 4096	87380	4194304
+net.ipv4.udp_rmem_min = 4096
+net.ipv4.udp_wmem_min = 4096
+vm.swappiness = 60
+EOF
+
+create_fixture "test-azure-network-warnings"
+
+################################################################################
+# Test: Optional Network Tuning - Mixed Configuration
+# Tests detection of optional network parameters with mixed values
+################################################################################
+echo ""
+echo "=== Creating test-optional-network-tuning.tar.xz ==="
+mkdir -p test-data/sos_commands/kernel
+cat > test-data/sos_commands/kernel/sysctl_-a << 'EOF'
+kernel.hostname = test-host
+kernel.osrelease = 5.14.0-362.8.1.el9_3.x86_64
+kernel.ostype = Linux
+net.core.default_qdisc = fq
+net.core.dev_weight = 64
+net.core.netdev_budget = 1000
+net.core.netdev_max_backlog = 32768
+net.core.optmem_max = 65535
+net.core.somaxconn = 32768
+net.ipv4.ip_local_port_range = 1024	65535
+net.ipv4.tcp_frto = 0
+net.ipv4.tcp_timestamps = 0
+net.ipv4.tcp_tw_reuse = 1
+vm.swappiness = 60
+EOF
+
+create_fixture "test-optional-network-tuning"
+
+################################################################################
+# Test: Complete Network Tuning - All Parameters
+# Tests detection of all Azure and optional network parameters configured correctly
+################################################################################
+echo ""
+echo "=== Creating test-complete-network-tuning.tar.xz ==="
+mkdir -p test-data/sos_commands/kernel
+cat > test-data/sos_commands/kernel/sysctl_-a << 'EOF'
+kernel.hostname = test-host
+kernel.osrelease = 5.14.0-362.8.1.el9_3.x86_64
+kernel.ostype = Linux
+net.core.busy_poll = 50
+net.core.busy_read = 50
+net.core.default_qdisc = fq
+net.core.dev_weight = 64
+net.core.netdev_budget = 1000
+net.core.netdev_max_backlog = 32768
+net.core.optmem_max = 65535
+net.core.rmem_default = 33554432
+net.core.rmem_max = 134217728
+net.core.somaxconn = 32768
+net.core.wmem_default = 33554432
+net.core.wmem_max = 134217728
+net.ipv4.ip_local_port_range = 1024	65535
+net.ipv4.tcp_congestion_control = bbr
+net.ipv4.tcp_frto = 0
+net.ipv4.tcp_mem = 4096	87380	67108864
+net.ipv4.tcp_rmem = 4096	87380	67108864
+net.ipv4.tcp_timestamps = 0
+net.ipv4.tcp_tw_reuse = 1
+net.ipv4.tcp_wmem = 4096	65536	67108864
+net.ipv4.udp_mem = 4096	87380	33554432
+net.ipv4.udp_rmem_min = 16384
+net.ipv4.udp_wmem_min = 16384
+vm.swappiness = 60
+EOF
+
+create_fixture "test-complete-network-tuning"
+
 echo ""
 echo "========================================="
 echo "✓ All test fixtures created successfully!"

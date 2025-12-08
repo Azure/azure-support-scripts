@@ -256,7 +256,7 @@
                 
                 let worker;
                 try {
-                    worker = new Worker('./xz-worker.js');
+                    worker = new Worker('./xz-worker.js?v=' + Date.now());
                 } catch (e) {
                     reject(new Error(`Failed to create worker: ${e.message}`));
                     return;
@@ -380,7 +380,7 @@
                         
                         // Use streaming worker for analysis only (no decompression)
                         const streamingResult = await new Promise((resolve, reject) => {
-                            const w = new Worker('liblzma-streaming-worker.js');
+                            const w = new Worker('liblzma-streaming-worker.js?v=' + Date.now());
                             const timeout = setTimeout(() => {
                                 w.terminate();
                                 reject(new Error('TAR analysis timeout after 5 minutes'));
@@ -1988,12 +1988,15 @@
                 if (kernelTuning && kernelTuning.hasWarnings && sapDetected) {
                     html += ` <span class="badge badge-warning">⚠ ${kernelTuning.warnings.length} warning${kernelTuning.warnings.length > 1 ? 's' : ''}</span>`;
                 }
+                if (kernelTuning && kernelTuning.hasAzureNetworkWarnings) {
+                    html += ` <span class="badge badge-warning">⚠ Network tuning</span>`;
+                }
                 html += `</summary>`;
                 html += `<div style="margin-top: 15px;">`;
 
                 // Kernel Tuning section
                 if (kernelTuning && kernelTuning.found) {
-                    // Show warnings only if SAP detected
+                    // Show SAP warnings only if SAP detected
                     if (kernelTuning.hasWarnings && sapDetected) {
                         html += `<div class="warning-block">`;
                         html += `<p style="margin: 0 0 10px 0;"><strong>⚠ Kernel Parameter Warnings</strong></p>`;
@@ -2014,6 +2017,70 @@
                         });
 
                         html += `</div>`;
+                    }
+
+                    // Azure Network optimization status
+                    if (kernelTuning.azureNetworkTuned) {
+                        // All parameters are correctly configured
+                        html += `<div class="info-block" style="margin-top: 15px;">`;
+                        html += `<p style="margin: 0;"><strong>✅ Kernel parameters tuned for Azure Network</strong></p>`;
+                        html += `<p style="margin: 5px 0 0 0; font-size: 12px;">`;
+                        html += `<a href="https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-optimize-network-bandwidth#linux-virtual-machines" target="_blank" class="text-info">📘 View Documentation</a>`;
+                        html += `</p>`;
+                        html += `</div>`;
+                    } else if (kernelTuning.hasAzureNetworkWarnings) {
+                        // Some parameters need adjustment
+                        html += `<div class="warning-block" style="margin-top: 15px;">`;
+                        html += `<p style="margin: 0 0 10px 0;"><strong>⚠ Azure Network Optimization - Parameters Need Adjustment</strong></p>`;
+
+                        kernelTuning.azureNetworkWarnings.forEach(warning => {
+                            html += `<div style="margin-bottom: 15px;">`;
+                            html += `<p style="margin: 0; font-size: 13px;"><code style="font-weight: bold;">${warning.parameter}</code></p>`;
+                            html += `<p style="margin: 5px 0; font-size: 12px;">`;
+                            html += `Expected: <code class="text-success">${warning.expected}</code>, `;
+                            html += `Found: <code class="text-danger">${warning.actual}</code>`;
+                            html += `</p>`;
+                            html += `</div>`;
+                        });
+
+                        html += `<p style="margin: 10px 0 0 0; font-size: 12px;">`;
+                        html += `<a href="https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-optimize-network-bandwidth#linux-virtual-machines" target="_blank" class="text-info">📘 View Documentation</a>`;
+                        html += `</p>`;
+                        html += `</div>`;
+                    }
+
+                    // Optional Network Tuning section (informational, collapsed by default)
+                    if (kernelTuning.hasOptionalNetworkInfo && kernelTuning.optionalNetworkInfo.length > 0) {
+                        html += `<details style="margin-top: 15px;">`;
+                        html += `<summary style="font-size: 14px; cursor: pointer;">`;
+                        html += `Optional Network Tuning <span style="font-size: 12px; font-weight: normal;">(informational)</span>`;
+                        html += `</summary>`;
+                        html += `<div style="margin-top: 10px;">`;
+                        html += `<p style="margin: 0 0 10px 0; font-size: 13px; color: var(--text-secondary);">`;
+                        html += `These parameters are optional recommendations for network optimization. They are informational only and do not indicate configuration issues, and should only be applied depending on conditions detailed in the documentation.`;
+                        html += `</p>`;
+
+                        kernelTuning.optionalNetworkInfo.forEach(info => {
+                            const statusIcon = info.matches ? '✅' : 'ℹ️';
+                            const statusColor = info.matches ? 'color: var(--success);' : 'color: var(--text-secondary);';
+                            
+                            html += `<div style="margin-bottom: 12px;">`;
+                            html += `<p style="margin: 0; font-size: 13px;">`;
+                            html += `<span style="${statusColor}">${statusIcon}</span> `;
+                            html += `<code style="font-weight: bold;">${info.parameter}</code>`;
+                            html += `</p>`;
+                            html += `<p style="margin: 5px 0; font-size: 12px; padding-left: 20px;">`;
+                            html += `Recommended: <code>${info.expected}</code>, `;
+                            html += `Current: <code>${info.actual}</code>`;
+                            html += `</p>`;
+                            html += `</div>`;
+                        });
+
+                        html += `<p style="margin: 10px 0 0 0; font-size: 12px;">`;
+                        html += `<a href="${kernelTuning.optionalNetworkInfo[0].documentationUrl}" target="_blank" class="text-info">📘 View Documentation</a>`;
+                        html += `</p>`;
+                        html += `</div>`;
+                        html += `</details>`;
                     }
 
                     // Show all kernel parameters in a collapsed section
@@ -2061,8 +2128,8 @@
                 if (nvmeList && nvmeList.hasNVMe) {
                     html += `<details style="margin-top: 15px;">`;
                     html += `<summary style="font-size: 14px; cursor: pointer;">NVMe Drives <span style="font-size: 12px; font-weight: normal;">(${nvmeList.driveCount} detected)</span></summary>`;
-                    html += `<div style="margin-top: 10px;">`;
-                    html += `<pre style="background: var(--code-bg); padding: 10px; border: 1px solid var(--code-border); border-radius: 4px; overflow-x: auto; font-size: 12px; white-space: pre-wrap;">`;
+                    html += `<div style="margin-top: 10px; max-height: 400px; overflow-y: auto;">`;
+                    html += `<pre style="background: var(--code-bg); padding: 10px; border: 1px solid var(--code-border); border-radius: 4px; overflow-x: auto; font-size: 12px; white-space: pre;">`;
                     html += nvmeList.content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
                     html += `</pre>`;
                     html += `</div>`;

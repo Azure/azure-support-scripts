@@ -2816,6 +2816,7 @@ const SCC_RULES = {
             
             const parameters = parsed.parameters;
             const warnings = [];
+            const azureNetworkWarnings = [];
             
             // Expected values for SAP HANA / high-performance workloads
             const expectedValues = {
@@ -2848,11 +2849,98 @@ const SCC_RULES = {
                 }
             }
             
+            // Azure Network optimization parameters
+            // Documentation: https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-optimize-network-bandwidth#linux-virtual-machines
+            const azureNetworkParams = {
+                'net.ipv4.tcp_mem': '4096\t87380\t67108864',
+                'net.ipv4.udp_mem': '4096\t87380\t33554432',
+                'net.ipv4.tcp_rmem': '4096\t87380\t67108864',
+                'net.ipv4.tcp_wmem': '4096\t65536\t67108864',
+                'net.core.rmem_default': '33554432',
+                'net.core.wmem_default': '33554432',
+                'net.ipv4.udp_wmem_min': '16384',
+                'net.ipv4.udp_rmem_min': '16384',
+                'net.core.wmem_max': '134217728',
+                'net.core.rmem_max': '134217728',
+                'net.core.busy_poll': '50',
+                'net.core.busy_read': '50',
+                'net.ipv4.tcp_congestion_control': 'bbr'
+            };
+            
+            const azureNetworkDocUrl = 'https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-optimize-network-bandwidth#linux-virtual-machines';
+            
+            // Check Azure Network optimization parameters
+            for (const [param, expectedValue] of Object.entries(azureNetworkParams)) {
+                if (parameters[param]) {
+                    const actualValue = parameters[param];
+                    // Normalize whitespace: replace tabs/multiple spaces with single tab for comparison
+                    const normalizedActual = actualValue.replace(/\s+/g, '\t');
+                    const normalizedExpected = expectedValue.replace(/\s+/g, '\t');
+                    
+                    if (normalizedActual !== normalizedExpected) {
+                        azureNetworkWarnings.push({
+                            parameter: param,
+                            expected: expectedValue,
+                            actual: actualValue,
+                            documentationUrl: azureNetworkDocUrl
+                        });
+                        debugLog(`[kernelTuning parser] Azure Network Warning: ${param} = ${actualValue}, expected ${expectedValue}`);
+                    } else {
+                        debugLog(`[kernelTuning parser] Azure Network OK: ${param} = ${actualValue}`);
+                    }
+                }
+            }
+            
+            // Optional Network Tuning parameters (informational only)
+            const optionalNetworkParams = {
+                'net.ipv4.tcp_timestamps': '0',
+                'net.ipv4.tcp_tw_reuse': '1',
+                'net.ipv4.ip_local_port_range': '1024\t65535',
+                'net.core.netdev_budget': '1000',
+                'net.core.optmem_max': '65535',
+                'net.ipv4.tcp_frto': '0',
+                'net.core.somaxconn': '32768',
+                'net.core.netdev_max_backlog': '32768',
+                'net.core.dev_weight': '64',
+                'net.core.default_qdisc': 'fq'
+            };
+            
+            const optionalNetworkInfo = [];
+            
+            // Check optional parameters (informational, not warnings)
+            for (const [param, expectedValue] of Object.entries(optionalNetworkParams)) {
+                if (parameters[param]) {
+                    const actualValue = parameters[param];
+                    // Normalize whitespace: replace tabs/multiple spaces with single tab for comparison
+                    const normalizedActual = actualValue.replace(/\s+/g, '\t');
+                    const normalizedExpected = expectedValue.replace(/\s+/g, '\t');
+                    
+                    optionalNetworkInfo.push({
+                        parameter: param,
+                        expected: expectedValue,
+                        actual: actualValue,
+                        matches: normalizedActual === normalizedExpected,
+                        documentationUrl: azureNetworkDocUrl
+                    });
+                    
+                    if (normalizedActual === normalizedExpected) {
+                        debugLog(`[kernelTuning parser] Optional Network OK: ${param} = ${actualValue}`);
+                    } else {
+                        debugLog(`[kernelTuning parser] Optional Network Info: ${param} = ${actualValue}, recommended ${expectedValue}`);
+                    }
+                }
+            }
+            
             return {
                 found: true,
                 parameters: parameters,
                 warnings: warnings,
-                hasWarnings: warnings.length > 0
+                hasWarnings: warnings.length > 0,
+                azureNetworkWarnings: azureNetworkWarnings,
+                hasAzureNetworkWarnings: azureNetworkWarnings.length > 0,
+                azureNetworkTuned: azureNetworkWarnings.length === 0 && Object.keys(azureNetworkParams).every(p => parameters[p]),
+                optionalNetworkInfo: optionalNetworkInfo,
+                hasOptionalNetworkInfo: optionalNetworkInfo.length > 0
             };
         }
     },
