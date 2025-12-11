@@ -873,6 +873,69 @@
                 html += `</summary>`;
                 html += `<div style="margin-top: 15px;">`;
                 
+                // Show cluster health/status if available (moved to top)
+                if (analysis.clusterStatus && analysis.clusterStatus.found) {
+                    const status = analysis.clusterStatus;
+                    
+                    html += `<div class="subsection" style="margin-bottom: 20px;">`;
+                    html += `<p style="margin: 0 0 10px 0; font-weight: bold;"><strong>Cluster Health:</strong></p>`;
+                    
+                    if (status.clusterName) {
+                        html += `<p style="margin: 5px 0;"><strong>Cluster Stack:</strong> <code>${status.clusterName}</code></p>`;
+                    }
+                    
+                    if (status.dcNode) {
+                        html += `<p style="margin: 5px 0;"><strong>DC Node:</strong> <code>${status.dcNode}</code>`;
+                        if (status.quorumStatus) {
+                            const quorumClass = status.quorumStatus.includes('with') ? 'text-success' : 'text-danger';
+                            html += ` <span class="${quorumClass}">(${status.quorumStatus})</span>`;
+                        }
+                        html += `</p>`;
+                    }
+                    
+                    if (status.nodesConfigured !== null || status.resourcesConfigured !== null) {
+                        html += `<p style="margin: 5px 0;">`;
+                        if (status.nodesConfigured !== null) {
+                            html += `<strong>Nodes:</strong> ${status.nodesConfigured} configured`;
+                        }
+                        if (status.resourcesConfigured !== null) {
+                            if (status.nodesConfigured !== null) html += ` | `;
+                            html += `<strong>Resources:</strong> ${status.resourcesConfigured} configured`;
+                        }
+                        html += `</p>`;
+                    }
+                    
+                    if (status.lastUpdated) {
+                        html += `<p style="margin: 5px 0; font-size: 12px;" class="text-muted"><strong>Last Updated:</strong> ${status.lastUpdated}</p>`;
+                    }
+                    
+                    // Show node statuses if available
+                    if (status.nodeStatuses && status.nodeStatuses.length > 0) {
+                        html += `<p style="margin: 15px 0 5px 0;"><strong>Node Status:</strong></p>`;
+                        html += `<ul style="margin: 5px 0; padding-left: 20px;">`;
+                        status.nodeStatuses.forEach(node => {
+                            const statusClass = node.status === 'online' ? 'text-success' : 
+                                               node.status === 'standby' ? 'text-warning' :
+                                               node.status === 'maintenance' ? 'text-info' :
+                                               'text-danger';
+                            
+                            html += `<li style="margin: 5px 0; font-size: 13px;">`;
+                            html += `<strong>${node.name}:</strong> `;
+                            html += `<span class="${statusClass}">${node.status}</span>`;
+                            if (node.isDC) {
+                                html += ` <span class="text-info">(DC)</span>`;
+                            }
+                            if (node.resourcesRunning > 0) {
+                                html += ` <span class="text-muted">(${node.resourcesRunning} resources)</span>`;
+                            }
+                            html += `</li>`;
+                        });
+                        html += `</ul>`;
+                    }
+                    
+                    html += `</div>`;
+                }
+                
                 // Show totem checks group
                 html += '<div style="margin-bottom: 20px;">';
                 html += '<p style="margin: 0 0 8px 0;"><strong>Totem checks:</strong></p>';
@@ -961,10 +1024,89 @@
                     html += '<div style="margin-top: 20px; margin-bottom: 15px;">';
                     html += '<p style="margin: 0 0 8px 0;"><strong>Cluster Resources:</strong></p>';
                     html += '<div class="subsection">';
-                    html += `<p style="margin: 0 0 10px 0; font-size: 13px;" class="text-muted">${resources.count} resource${resources.count > 1 ? 's' : ''} detected</p>`;
+                    
+                    // Count total resources (primitives + groups)
+                    const totalCount = resources.count + (resources.groupsCount || 0);
+                    html += `<p style="margin: 0 0 10px 0; font-size: 13px;" class="text-muted">${totalCount} active resource${totalCount > 1 ? 's' : ''} detected`;
+                    if (resources.groupsCount > 0) {
+                        html += ` (${resources.groupsCount} group${resources.groupsCount > 1 ? 's' : ''}, ${resources.count} primitive${resources.count > 1 ? 's' : ''})`;
+                    }
+                    
+                    // Show note if configured count differs from detected count
+                    if (analysis.clusterStatus && analysis.clusterStatus.resourcesConfigured !== null) {
+                        const configuredCount = analysis.clusterStatus.resourcesConfigured;
+                        if (configuredCount > totalCount) {
+                            const diff = configuredCount - totalCount;
+                            html += `<br><span style="font-size: 12px;" class="text-warning">Note: ${configuredCount} total configured (${diff} may be stopped/disabled/failed)</span>`;
+                        }
+                    }
+                    html += `</p>`;
                     html += '<ul style="margin: 0; padding-left: 20px;">';
                     
-                    resources.resources.forEach(resource => {
+                    // Display groups first
+                    if (resources.groups && resources.groups.length > 0) {
+                        resources.groups.forEach(group => {
+                            html += `<li style="margin: 10px 0; font-size: 13px;">`;
+                            
+                            // Group type indicator
+                            const groupTypeLabel = group.type === 'clone' ? 'Clone Set' : 
+                                                  group.type === 'master-slave' ? 'Primary/Secondary Set' :
+                                                  'Resource Group';
+                            html += `<strong>${groupTypeLabel}: <code class="text-info" style="font-weight: bold;">${group.name}</code></strong>`;
+                            
+                            // Show maintenance status
+                            if (group.maintenance) {
+                                html += ` <span class="badge badge-warning" style="font-size: 11px; margin-left: 5px;">In maintenance</span>`;
+                            }
+                            
+                            // Show group node information if available
+                            if (group.node) {
+                                html += `<br><span style="font-size: 11px; margin-left: 5px;" class="text-success">`;
+                                html += `▸ Active on: <strong>${group.node}</strong>`;
+                                html += `</span>`;
+                            }
+                            
+                            // List group members
+                            if (group.members && group.members.length > 0) {
+                                html += '<ul style="margin: 5px 0 0 0; padding-left: 25px;">';
+                                group.members.forEach(memberName => {
+                                    const member = resources.resources.find(r => r.name === memberName);
+                                    if (member) {
+                                        html += `<li style="margin: 3px 0; font-size: 12px;">`;
+                                        html += `<code class="text-muted" style="font-weight: normal;">${member.name}</code>`;
+                                        html += ` <span class="text-muted">- ${member.type}`;
+                                        if (member.provider && member.provider !== 'unknown') {
+                                            html += ` (${member.provider})`;
+                                        }
+                                        html += `</span>`;
+                                        
+                                        // Show maintenance status for member
+                                        if (member.maintenance) {
+                                            html += ` <span class="badge badge-warning" style="font-size: 10px;">In maintenance</span>`;
+                                        }
+                                        
+                                        if (member.status) {
+                                            html += `<br><span style="font-size: 10px; margin-left: 5px; color: #28a745;">`;
+                                            // Replace master/slave terminology with primary/secondary
+                                            const displayStatus = member.status.replace(/Master/gi, 'Primary').replace(/Slave/gi, 'Secondary');
+                                            html += `${displayStatus}`;
+                                            if (member.node) {
+                                                html += ` on ${member.node}`;
+                                            }
+                                            html += `</span>`;
+                                        }
+                                        html += `</li>`;
+                                    }
+                                });
+                                html += '</ul>';
+                            }
+                            html += `</li>`;
+                        });
+                    }
+                    
+                    // Display standalone resources (not in groups)
+                    const standaloneResources = resources.resources.filter(r => !r.groupMember && !r.cloneMember);
+                    standaloneResources.forEach(resource => {
                         html += `<li style="margin: 5px 0; font-size: 13px;">`;
                         html += `<code class="text-info" style="font-weight: bold;">${resource.name}</code>`;
                         html += ` <span class="text-muted">- ${resource.type}`;
@@ -973,17 +1115,26 @@
                         }
                         html += `</span>`;
                         
+                        // Show maintenance status
+                        if (resource.maintenance) {
+                            html += ` <span class="badge badge-warning" style="font-size: 11px; margin-left: 5px;">In maintenance</span>`;
+                        }
+                        
                         // Show node information if available
                         if (resource.node) {
                             html += `<br><span style="font-size: 11px; margin-left: 5px;" class="text-success">`;
                             html += `▸ Active on: <strong>${resource.node}</strong>`;
                             if (resource.status) {
-                                html += ` (${resource.status})`;
+                                // Replace master/slave terminology with primary/secondary
+                                const displayStatus = resource.status.replace(/Master/gi, 'Primary').replace(/Slave/gi, 'Secondary');
+                                html += ` (${displayStatus})`;
                             }
                             html += `</span>`;
                         } else if (resource.status) {
                             html += `<br><span style="font-size: 11px; margin-left: 5px;" class="text-muted">`;
-                            html += `Status: ${resource.status}`;
+                            // Replace master/slave terminology with primary/secondary
+                            const displayStatus = resource.status.replace(/Master/gi, 'Primary').replace(/Slave/gi, 'Secondary');
+                            html += `Status: ${displayStatus}`;
                             html += `</span>`;
                         }
                         
@@ -1083,6 +1234,91 @@
                     });
                     
                     html += '</ul>';
+                    html += '</div>';
+                    html += '</div>';
+                }
+                
+                // Show Resource Constraints if available
+                if (analysis.pacemakerResources && analysis.pacemakerResources.constraintsCount > 0) {
+                    const constraints = analysis.pacemakerResources.constraints;
+                    html += '<div style="margin-top: 20px; margin-bottom: 15px;">';
+                    html += '<p style="margin: 0 0 8px 0;"><strong>Resource Constraints:</strong></p>';
+                    html += '<div class="subsection">';
+                    html += `<p style="margin: 0 0 10px 0; font-size: 13px;" class="text-muted">${constraints.length} constraint${constraints.length > 1 ? 's' : ''} configured</p>`;
+                    
+                    // Group constraints by type
+                    const locationConstraints = constraints.filter(c => c.type === 'location');
+                    const colocationConstraints = constraints.filter(c => c.type === 'colocation');
+                    const orderConstraints = constraints.filter(c => c.type === 'order');
+                    
+                    // Display location constraints
+                    if (locationConstraints.length > 0) {
+                        html += '<p style="margin: 10px 0 5px 0; font-weight: bold;">Location Constraints:</p>';
+                        html += '<ul style="margin: 0; padding-left: 20px;">';
+                        locationConstraints.forEach(constraint => {
+                            html += `<li style="margin: 5px 0; font-size: 13px;">`;
+                            html += `<code class="text-info" style="font-weight: bold;">${constraint.resource}</code>`;
+                            if (constraint.node) {
+                                html += ` → <strong>${constraint.node}</strong>`;
+                            } else {
+                                html += ` → <span class="text-muted">rule-based</span>`;
+                            }
+                            if (constraint.score) {
+                                const scoreClass = parseInt(constraint.score) > 0 ? 'text-success' : 'text-warning';
+                                html += ` <span class="${scoreClass}">(score: ${constraint.score})</span>`;
+                            }
+                            html += `<br><span style="font-size: 11px; margin-left: 5px;" class="text-muted">ID: ${constraint.id}</span>`;
+                            html += `</li>`;
+                        });
+                        html += '</ul>';
+                    }
+                    
+                    // Display colocation constraints
+                    if (colocationConstraints.length > 0) {
+                        html += '<p style="margin: 15px 0 5px 0; font-weight: bold;">Colocation Constraints:</p>';
+                        html += '<ul style="margin: 0; padding-left: 20px;">';
+                        colocationConstraints.forEach(constraint => {
+                            html += `<li style="margin: 5px 0; font-size: 13px;">`;
+                            html += `<code class="text-info" style="font-weight: bold;">${constraint.resource}</code>`;
+                            html += ` ↔ `;
+                            html += `<code class="text-info" style="font-weight: bold;">${constraint.withResource}</code>`;
+                            if (constraint.score) {
+                                const scoreValue = parseInt(constraint.score);
+                                const scoreClass = scoreValue > 0 ? 'text-success' : 'text-danger';
+                                const scoreLabel = scoreValue > 0 ? 'together' : 'separate';
+                                html += ` <span class="${scoreClass}">(${scoreLabel}, score: ${constraint.score})</span>`;
+                            }
+                            html += `<br><span style="font-size: 11px; margin-left: 5px;" class="text-muted">ID: ${constraint.id}</span>`;
+                            html += `</li>`;
+                        });
+                        html += '</ul>';
+                    }
+                    
+                    // Display order constraints
+                    if (orderConstraints.length > 0) {
+                        html += '<p style="margin: 15px 0 5px 0; font-weight: bold;">Order Constraints:</p>';
+                        html += '<ul style="margin: 0; padding-left: 20px;">';
+                        orderConstraints.forEach(constraint => {
+                            html += `<li style="margin: 5px 0; font-size: 13px;">`;
+                            html += `<code class="text-info" style="font-weight: bold;">${constraint.firstResource}</code>`;
+                            html += ` <span class="text-muted">(${constraint.firstAction})</span>`;
+                            html += ` → `;
+                            html += `<code class="text-info" style="font-weight: bold;">${constraint.thenResource}</code>`;
+                            html += ` <span class="text-muted">(${constraint.thenAction})</span>`;
+                            if (constraint.kind) {
+                                const kindClass = constraint.kind === 'Mandatory' ? 'text-warning' : 'text-muted';
+                                html += ` <span class="${kindClass}">[${constraint.kind}]</span>`;
+                            }
+                            html += `<br><span style="font-size: 11px; margin-left: 5px;" class="text-muted">ID: ${constraint.id}`;
+                            if (constraint.symmetrical) {
+                                html += `, symmetrical: ${constraint.symmetrical}`;
+                            }
+                            html += `</span>`;
+                            html += `</li>`;
+                        });
+                        html += '</ul>';
+                    }
+                    
                     html += '</div>';
                     html += '</div>';
                 }

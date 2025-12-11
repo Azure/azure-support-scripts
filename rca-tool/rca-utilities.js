@@ -1,6 +1,58 @@
 // SCC Report Analysis Utilities
 // Reusable helper functions for parsing SCC/supportconfig reports
 
+// Simple XML parser for Web Workers (since DOMParser is not available)
+// This is a minimal SAX-style parser for extracting elements and attributes
+// Handles multi-line XML and properly parses opening tags with attributes
+function parseXMLSimple(xmlString) {
+    const elements = [];
+    
+    // Normalize whitespace: replace newlines and multiple spaces within tags
+    // This allows tags to span multiple lines
+    const normalizedXml = xmlString.replace(/\s+/g, ' ');
+    
+    // Match opening tags with attributes: <tagname attr="value" ...>
+    // This simpler regex handles both regular and self-closing tags
+    const tagRegex = /<(\w+)([^>]*)>/g;
+    let match;
+    
+    while ((match = tagRegex.exec(normalizedXml)) !== null) {
+        const tagName = match[1];
+        const attrsString = match[2];
+        
+        // Parse attributes - handles both single and double quotes, and hyphenated attribute names
+        const attributes = {};
+        const attrRegex = /([\w-]+)=["']([^"']*)["']/g;
+        let attrMatch;
+        
+        while ((attrMatch = attrRegex.exec(attrsString)) !== null) {
+            attributes[attrMatch[1]] = attrMatch[2];
+        }
+        
+        elements.push({
+            tagName: tagName,
+            attributes: attributes
+        });
+    }
+    
+    return elements;
+}
+
+// Query parsed XML elements by tag name
+function querySelectorAll(elements, tagName) {
+    return elements.filter(el => el.tagName === tagName);
+}
+
+// Query parsed XML elements by tag name and attribute match
+function querySelectorAllWithAttr(elements, tagName, attrName, attrValue) {
+    return elements.filter(el => {
+        if (el.tagName !== tagName) return false;
+        if (!attrName) return true;
+        if (!attrValue) return el.attributes[attrName] !== undefined;
+        return el.attributes[attrName] === attrValue;
+    });
+}
+
 /**
  * Generic grep-like function to search content for pattern(s)
  * Searches line by line and returns match information

@@ -2,10 +2,13 @@
 // Processes compressed data in chunks to keep memory usage low
 
 const CACHE_BUST = '?v=' + Date.now();
+console.log('[Worker] Loading version: 2025-12-09 with custom XML parser');
 
 // Import utility functions (only in Web Worker context)
 if (typeof importScripts === 'function') {
     importScripts('rca-utilities.js' + CACHE_BUST);
+    console.log('[Worker] Running in Web Worker context');
+    console.log('[Worker] Browser:', typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown');
 }
 
 // Debug flag - will be set from main thread via message
@@ -630,6 +633,23 @@ const SCC_RULES = {
             const nodeSet = new Set();
             const nodeToIpMap = {}; // Maps hostname to IP from corosync.conf
             
+            // If content contains XML (CIB format), use XML parser for node extraction
+            if (content.includes('<node') && (content.includes('<cib') || content.includes('uname='))) {
+                debugLog('[clusterNodes parser] Detected XML format, using custom XML parser');
+                const elements = parseXMLSimple(content);
+                const nodes = querySelectorAll(elements, 'node');
+                
+                nodes.forEach(node => {
+                    const attrs = node.attributes;
+                    // Prioritize uname over id (uname is the actual hostname, id can be numeric)
+                    if (attrs.uname) {
+                        nodeSet.add(attrs.uname);
+                    } else if (attrs.id && !attrs.id.match(/^\d+$/)) {
+                        nodeSet.add(attrs.id);
+                    }
+                });
+            }
+            
             // Track if we're inside a nodelist block
             let inNodelist = false;
             let inNode = false;
@@ -737,28 +757,7 @@ const SCC_RULES = {
                     continue;
                 }
                 
-                // Pattern 3: CIB XML node format: <node id="1" uname="vmupelhscs001">
-                // Prioritize uname over id (uname is the actual hostname, id can be numeric)
-                const xmlNodeMatch = trimmed.match(/<node\s+[^>]*>/i);
-                if (xmlNodeMatch) {
-                    const fullMatch = xmlNodeMatch[0];
-                    // Try to extract uname first
-                    const unameMatch = fullMatch.match(/uname="([^"]+)"/);
-                    if (unameMatch) {
-                        nodeSet.add(unameMatch[1]);
-                        debugLog('[clusterNodes parser] Found node from XML uname:', unameMatch[1]);
-                        continue;
-                    }
-                    // Fallback to id if uname not found (but skip numeric-only ids)
-                    const idMatch = fullMatch.match(/id="([^"]+)"/);
-                    if (idMatch && !idMatch[1].match(/^\d+$/)) {
-                        nodeSet.add(idMatch[1]);
-                        debugLog('[clusterNodes parser] Found node from XML id:', idMatch[1]);
-                        continue;
-                    }
-                }
-                
-                // Pattern 4: Simple "name: hostname" (not inside nodelist)
+                // Pattern 3: Simple "name: hostname" (not inside nodelist)
                 if (trimmed.match(/^\s*name:/i)) {
                     const nameMatch = trimmed.match(/name:\s*([a-zA-Z0-9][a-zA-Z0-9_\-\.]+)/i);
                     if (nameMatch && !nameMatch[1].match(/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/)) {
@@ -1208,6 +1207,7 @@ const SCC_RULES = {
             debugLog('[pacemakerResources parser] Analyzing pacemaker configuration in:', filename);
             
             const resources = [];
+            const constraints = [];
             const lines = content.split('\n');
             
             // Pattern 1: CIB XML format - <primitive id="resource-name" class="..." type="...">
@@ -1312,6 +1312,8 @@ const SCC_RULES = {
             }
             
             const contentLines = relevantContent.split('\n');
+            const groupData = [];  // Initialize groups array at function scope
+            const groupMemberIds = new Set();  // Track which primitives are group members
             
             debugLog('[pacemakerResources parser] Processing', contentLines.length, 'lines from', isHaTxt ? 'ha.txt sections' : filename);
             
@@ -1336,22 +1338,229 @@ const SCC_RULES = {
                 crmMonLines.slice(0, 20).forEach((l, i) => debugLog(`  crm_mon[${i}]:`, l));
             }
             
+            // Parse XML content using simple XML parser (works in Web Workers)
+            if (relevantContent.includes('<cib') || relevantContent.includes('<primitive')) {
+                debugLog('[pacemakerResources parser] Parsing XML with custom XML parser');
+                
+                // Parse XML into elements
+                const elements = parseXMLSimple(relevantContent);
+                
+                // Find all group elements first
+                const groups = querySelectorAll(elements, 'group').filter(g => 
+                    g.attributes.id && !g.attributes['crm-debug-origin']
+                );
+                
+                debugLog('[pacemakerResources parser] Found', groups.length, 'group elements');
+                groups.forEach(group => {
+                    const groupAttrs = group.attributes;
+                    const groupId = groupAttrs.id;
+                    
+                    if (groupId) {
+                        const groupInfo = {
+                            name: groupId,
+                            type: 'group',
+                            members: [],
+                            node: null,
+                            status: null
+                        };
+                        
+                        // Find primitives that belong to this group
+                        // In CIB XML, primitives inside groups don't have special markers,
+                        // so we'll mark them during primitive parsing
+                        groupData.push(groupInfo);
+                        debugLog('[pacemakerResources parser] Found group (XML):', groupId);
+                    }
+                });
+                
+                // Find all primitive elements
+                const primitives = querySelectorAll(elements, 'primitive');
+                debugLog('[pacemakerResources parser] Found', primitives.length, 'primitive elements');
+                
+                primitives.forEach(primitive => {
+                    const attrs = primitive.attributes;
+                    const id = attrs.id;
+                    const type = attrs.type;
+                    const provider = attrs.provider || 'unknown';
+                    const cls = attrs.class || 'ocf';
+                    
+                    if (id && type) {
+                        resources.push({
+                            name: id,
+                            type: type,
+                            provider: provider,
+                            class: cls,
+                            format: 'xml',
+                            node: null,  // Node info not in XML, will be enriched from crm_mon
+                            groupMember: false  // Will be updated if it belongs to a group
+                        });
+                        debugLog('[pacemakerResources parser] Found resource (XML):', id, type);
+                    }
+                });
+                
+                // Extract location constraints (preferred node assignments)
+                const locations = querySelectorAll(elements, 'rsc_location');
+                debugLog('[pacemakerResources parser] Found', locations.length, 'rsc_location constraints');
+                
+                locations.forEach(loc => {
+                    const attrs = loc.attributes;
+                    const id = attrs.id;
+                    const rscName = attrs.rsc;
+                    const node = attrs.node;
+                    const role = attrs.role || 'Started';
+                    const score = attrs.score;
+                    
+                    // Add to constraints list
+                    if (id && rscName) {
+                        constraints.push({
+                            id: id,
+                            type: 'location',
+                            resource: rscName,
+                            node: node || null,
+                            role: role,
+                            score: score || null
+                        });
+                        debugLog('[pacemakerResources parser] Found location constraint:', id, rscName, 'on', node || 'rule-based', 'score:', score);
+                    }
+                    
+                    // Enrich resource with node info if available
+                    if (rscName && node) {
+                        const resource = resources.find(r => r.name === rscName);
+                        if (resource && !resource.node) {
+                            resource.node = node;
+                            resource.status = role;
+                            resource.locationScore = score;
+                            debugLog('[pacemakerResources parser] Enriched from XML constraint:', rscName, 'on', node, 'role:', role, 'score:', score);
+                        }
+                    }
+                });
+                
+                // Extract colocation constraints (resources that should/shouldn't run together)
+                const colocations = querySelectorAll(elements, 'rsc_colocation');
+                debugLog('[pacemakerResources parser] Found', colocations.length, 'rsc_colocation constraints');
+                
+                colocations.forEach(coloc => {
+                    const attrs = coloc.attributes;
+                    const id = attrs.id;
+                    const rsc = attrs.rsc;
+                    const withRsc = attrs['with-rsc'];
+                    const score = attrs.score;
+                    
+                    if (id && rsc && withRsc) {
+                        constraints.push({
+                            id: id,
+                            type: 'colocation',
+                            resource: rsc,
+                            withResource: withRsc,
+                            score: score || null
+                        });
+                        debugLog('[pacemakerResources parser] Found colocation constraint:', id, rsc, 'with', withRsc, 'score:', score);
+                    }
+                });
+                
+                // Extract order constraints (start/stop ordering dependencies)
+                const orders = querySelectorAll(elements, 'rsc_order');
+                debugLog('[pacemakerResources parser] Found', orders.length, 'rsc_order constraints');
+                
+                orders.forEach(order => {
+                    const attrs = order.attributes;
+                    const id = attrs.id;
+                    const first = attrs.first;
+                    const then = attrs.then;
+                    const firstAction = attrs['first-action'] || 'start';
+                    const thenAction = attrs['then-action'] || 'start';
+                    const kind = attrs.kind || 'Mandatory';
+                    const symmetrical = attrs.symmetrical;
+                    
+                    if (id && first && then) {
+                        constraints.push({
+                            id: id,
+                            type: 'order',
+                            firstResource: first,
+                            firstAction: firstAction,
+                            thenResource: then,
+                            thenAction: thenAction,
+                            kind: kind,
+                            symmetrical: symmetrical
+                        });
+                        debugLog('[pacemakerResources parser] Found order constraint:', id, first, firstAction, '->', then, thenAction);
+                    }
+                });
+                
+                debugLog('[pacemakerResources parser] XML parsing complete, found', resources.length, 'resources and', constraints.length, 'constraints');
+            }
+            
+            let currentGroup = null;  // Track current group when parsing crm_mon output
+            let currentClone = null;  // Track current clone/master-slave set
+            
             for (const line of contentLines) {
                 const trimmed = line.trim();
                 
-                // XML format: <primitive id="rsc_ip" class="ocf" provider="heartbeat" type="IPaddr2">
-                const xmlMatch = trimmed.match(/<primitive\s+id="([^"]+)".*?type="([^"]+)".*?(?:provider="([^"]+)")?/);
-                if (xmlMatch) {
-                    const [, id, type, provider] = xmlMatch;
-                    resources.push({
-                        name: id,
-                        type: type,
-                        provider: provider || 'unknown',
-                        format: 'xml',
-                        node: null  // Node info not in XML, will be enriched from crm_mon
-                    });
-                    debugLog('[pacemakerResources parser] Found resource (XML):', id, type);
+                // Detect Clone Set or Primary/Secondary Set lines
+                // * Clone Set: cln_azure-events [rsc_azure-events] (maintenance):
+                // * Clone Set: msl_SAPHana_CPH_HDB01 [rsc_SAPHana_CPH_HDB01] (promotable, maintenance):
+                const cloneMatch = trimmed.match(/^\*?\s*(?:Clone Set|Master\/Slave Set|Primary\/Secondary Set):\s+(\S+)\s+\[(\S+)\](?:\s+\(([^)]+)\))?/i);
+                if (cloneMatch) {
+                    const cloneName = cloneMatch[1];
+                    const resourceName = cloneMatch[2];
+                    const attributes = cloneMatch[3] || '';
+                    const isMaintenance = attributes.includes('maintenance');
+                    
+                    currentClone = cloneName;
+                    
+                    // Find or create clone/primary-secondary set in groupData
+                    let clone = groupData.find(g => g.name === cloneName);
+                    if (!clone) {
+                        clone = {
+                            name: cloneName,
+                            type: trimmed.toLowerCase().includes('master') ? 'master-slave' : 'clone',
+                            members: [],
+                            node: null,
+                            status: isMaintenance ? 'maintenance' : null,
+                            maintenance: isMaintenance
+                        };
+                        groupData.push(clone);
+                    }
+                    
+                    debugLog('[pacemakerResources parser] Found Clone/Primary-Secondary Set:', cloneName, 'maintenance:', isMaintenance);
                     continue;
+                }
+                
+                // Detect Resource Group lines: "* Resource Group: g-NAP_ASCS:"
+                // * Resource Group: GRP_IP_CPH_HDB01 (maintenance):
+                const groupMatch = trimmed.match(/^\*?\s*Resource Group:\s+(\S+):?\s*(?:\(([^)]+)\))?/i);
+                if (groupMatch) {
+                    const groupName = groupMatch[1].replace(/:$/, '');  // Remove trailing colon
+                    const attributes = groupMatch[2] || '';
+                    const isMaintenance = attributes.includes('maintenance');
+                    
+                    currentGroup = groupName;
+                    currentClone = null;  // Reset clone tracking when entering group
+                    
+                    // Find or create group in groupData
+                    let group = groupData.find(g => g.name === groupName);
+                    if (!group) {
+                        group = {
+                            name: groupName,
+                            type: 'group',
+                            members: [],
+                            node: null,
+                            status: isMaintenance ? 'maintenance' : null,
+                            maintenance: isMaintenance
+                        };
+                        groupData.push(group);
+                    }
+                    
+                    debugLog('[pacemakerResources parser] Found Resource Group:', groupName, 'maintenance:', isMaintenance);
+                    continue;
+                }
+                
+                // Reset current group if we hit a non-indented resource (standalone resource)
+                if (trimmed.match(/^\*\s+\S+/) && !trimmed.match(/Resource Group|Clone Set|Master\/Slave Set/i)) {
+                    // Check if this is a deeply indented line (group member) vs. top-level
+                    if (!line.match(/^\s{2,}/)) {  // Top-level resources have less indentation
+                        currentGroup = null;
+                        currentClone = null;
+                    }
                 }
                 
                 // crm config format: primitive rsc_ip ocf:heartbeat:IPaddr2
@@ -1364,7 +1573,9 @@ const SCC_RULES = {
                         provider: provider,
                         class: cls,
                         format: 'crm',
-                        node: null  // Node info not in crm config, will be enriched from crm_mon
+                        node: null,  // Node info not in crm config, will be enriched from crm_mon
+                        groupMember: false,
+                        maintenance: false
                     });
                     debugLog('[pacemakerResources parser] Found resource (crm):', name, type);
                     continue;
@@ -1372,8 +1583,9 @@ const SCC_RULES = {
                 
                 // crm_mon format variations:
                 // * rsc_ip_ABC (ocf::heartbeat:IPaddr2): Started node1
-                // * rsc_ip_ABC (ocf::heartbeat:IPaddr2):    Started node1
-                // rsc_ip_ABC (ocf::heartbeat:IPaddr2): Started node1 (without asterisk)
+                // * rsc_ip_ABC (ocf::heartbeat:IPaddr2): Started node1 (maintenance)
+                // * rsc_SAPHana_CPH_HDB01 (ocf::suse:SAPHana): Master csscp2d10 (maintenance)
+                // * rsc_SAPHana_CPH_HDB01 (ocf::suse:SAPHana): Slave csscp2d20 (maintenance)
                 // Indented format (within Resource Group):
                 //   * fs_NAP_ASCS       (ocf::heartbeat:Filesystem):     Started ccecccsprd01
                 // Also captures: Stopped, Master, Slave, etc.
@@ -1383,9 +1595,11 @@ const SCC_RULES = {
                     debugLog('[pacemakerResources parser] Checking crm_mon line:', trimmed.substring(0, 100));
                 }
                 
-                const monMatch = trimmed.match(/^\*?\s*(\S+)\s+\((\S+)::(\S+):(\S+)\):\s+(\w+)(?:\s+(\S+))?/);
+                // Updated regex to capture maintenance status
+                const monMatch = trimmed.match(/^\*?\s*(\S+)\s+\((\S+)::(\S+):(\S+)\):\s+(\w+)(?:\s+(\S+))?(?:\s+\(([^)]+)\))?/);
                 if (monMatch) {
-                    const [, name, cls, provider, type, status, node] = monMatch;
+                    const [, name, cls, provider, type, status, node, attributes] = monMatch;
+                    const isMaintenance = attributes ? attributes.includes('maintenance') : false;
                     
                     // Check if resource already exists (from XML or crm config)
                     const existing = resources.find(r => r.name === name);
@@ -1393,46 +1607,135 @@ const SCC_RULES = {
                         // Enrich existing resource with node info
                         existing.node = node || null;
                         existing.status = status;
-                        debugLog('[pacemakerResources parser] Enriched resource with node info:', name, 'on', node || 'unknown', 'status:', status);
+                        existing.maintenance = isMaintenance;
+                        
+                        // Mark as group or clone member if we're currently parsing one
+                        if (currentGroup) {
+                            existing.groupMember = true;
+                            existing.groupName = currentGroup;
+                            
+                            // Add to group's members list
+                            const group = groupData.find(g => g.name === currentGroup);
+                            if (group && !group.members.includes(name)) {
+                                group.members.push(name);
+                                // Inherit node from first member
+                                if (!group.node) group.node = node;
+                            }
+                        } else if (currentClone) {
+                            existing.cloneMember = true;
+                            existing.cloneName = currentClone;
+                            
+                            // Add to clone's members list
+                            const clone = groupData.find(g => g.name === currentClone);
+                            if (clone && !clone.members.includes(name)) {
+                                clone.members.push(name);
+                            }
+                        }
+                        
+                        debugLog('[pacemakerResources parser] Enriched resource with node info:', name, 'on', node || 'unknown', 'status:', status, 'maintenance:', isMaintenance);
                     } else {
                         // Add new resource
-                        resources.push({
+                        const newResource = {
                             name: name,
                             type: type,
                             provider: provider,
                             class: cls,
                             format: 'crm_mon',
                             node: node || null,
-                            status: status
-                        });
-                        debugLog('[pacemakerResources parser] Found resource (crm_mon):', name, type, 'on', node || 'unknown', 'status:', status);
+                            status: status,
+                            maintenance: isMaintenance,
+                            groupMember: currentGroup ? true : false,
+                            groupName: currentGroup || null,
+                            cloneMember: currentClone ? true : false,
+                            cloneName: currentClone || null
+                        };
+                        resources.push(newResource);
+                        
+                        // Add to group's or clone's members list
+                        if (currentGroup) {
+                            const group = groupData.find(g => g.name === currentGroup);
+                            if (group && !group.members.includes(name)) {
+                                group.members.push(name);
+                                if (!group.node) group.node = node;
+                            }
+                        } else if (currentClone) {
+                            const clone = groupData.find(g => g.name === currentClone);
+                            if (clone && !clone.members.includes(name)) {
+                                clone.members.push(name);
+                            }
+                        }
+                        
+                        debugLog('[pacemakerResources parser] Found resource (crm_mon):', name, type, 'on', node || 'unknown', 'status:', status, 'maintenance:', isMaintenance);
                     }
                     continue;
                 }
                 
                 // Pattern for lines without parentheses but with colon separator
-                // Example:   * stonith-sbd (stonith:external/sbd):  Started cceccerprd02
-                // Format: name (type:provider/agent): Status node
-                const stonithMatch = trimmed.match(/^\*?\s*(\S+)\s+\((\S+):(\S+)\/(\S+)\):\s+(\w+)(?:\s+(\S+))?/);
+                // Example:   * stonith-sbd (stonith:external/sbd):  Started cceccerprd02 (maintenance)
+                // Format: name (type:provider/agent): Status node (attributes)
+                const stonithMatch = trimmed.match(/^\*?\s*(\S+)\s+\((\S+):(\S+)\/(\S+)\):\s+(\w+)(?:\s+(\S+))?(?:\s+\(([^)]+)\))?/);
                 if (stonithMatch) {
-                    const [, name, type, provider, agent, status, node] = stonithMatch;
+                    const [, name, type, provider, agent, status, node, attributes] = stonithMatch;
+                    const isMaintenance = attributes ? attributes.includes('maintenance') : false;
                     
                     const existing = resources.find(r => r.name === name);
                     if (existing) {
                         existing.node = node || null;
                         existing.status = status;
-                        debugLog('[pacemakerResources parser] Enriched resource (stonith):', name, 'on', node || 'unknown');
+                        existing.maintenance = isMaintenance;
+                        
+                        // Mark as group or clone member if we're currently parsing one
+                        if (currentGroup) {
+                            existing.groupMember = true;
+                            existing.groupName = currentGroup;
+                            
+                            const group = groupData.find(g => g.name === currentGroup);
+                            if (group && !group.members.includes(name)) {
+                                group.members.push(name);
+                                if (!group.node) group.node = node;
+                            }
+                        } else if (currentClone) {
+                            existing.cloneMember = true;
+                            existing.cloneName = currentClone;
+                            
+                            const clone = groupData.find(g => g.name === currentClone);
+                            if (clone && !clone.members.includes(name)) {
+                                clone.members.push(name);
+                            }
+                        }
+                        
+                        debugLog('[pacemakerResources parser] Enriched resource (stonith):', name, 'on', node || 'unknown', 'maintenance:', isMaintenance);
                     } else {
-                        resources.push({
+                        const newResource = {
                             name: name,
                             type: agent,
                             provider: provider,
                             class: type,
                             format: 'crm_mon_stonith',
                             node: node || null,
-                            status: status
-                        });
-                        debugLog('[pacemakerResources parser] Found resource (stonith format):', name, agent, 'on', node || 'unknown');
+                            status: status,
+                            maintenance: isMaintenance,
+                            groupMember: currentGroup ? true : false,
+                            groupName: currentGroup || null,
+                            cloneMember: currentClone ? true : false,
+                            cloneName: currentClone || null
+                        };
+                        resources.push(newResource);
+                        
+                        if (currentGroup) {
+                            const group = groupData.find(g => g.name === currentGroup);
+                            if (group && !group.members.includes(name)) {
+                                group.members.push(name);
+                                if (!group.node) group.node = node;
+                            }
+                        } else if (currentClone) {
+                            const clone = groupData.find(g => g.name === currentClone);
+                            if (clone && !clone.members.includes(name)) {
+                                clone.members.push(name);
+                            }
+                        }
+                        
+                        debugLog('[pacemakerResources parser] Found resource (stonith format):', name, agent, 'on', node || 'unknown', 'maintenance:', isMaintenance);
                     }
                     continue;
                 }
@@ -1467,24 +1770,6 @@ const SCC_RULES = {
             if (resources.length === 0) {
                 debugLog('[pacemakerResources parser] No resources found');
                 return { found: false };
-            }
-            
-            // Second pass: Extract node information from XML rsc_location constraints
-            // These show where resources are configured to run
-            // Format: <rsc_location id="loc-..." rsc="resource_name" role="Started" node="nodename" score="..."/>
-            debugLog('[pacemakerResources parser] Looking for rsc_location constraints in XML...');
-            for (const line of contentLines) {
-                const trimmed = line.trim();
-                const locMatch = trimmed.match(/<rsc_location\s+.*?rsc="([^"]+)".*?node="([^"]+)".*?(?:role="([^"]+)")?/);
-                if (locMatch) {
-                    const [, rscName, node, role] = locMatch;
-                    const resource = resources.find(r => r.name === rscName);
-                    if (resource && !resource.node) {
-                        resource.node = node;
-                        resource.status = role || 'Started';
-                        debugLog('[pacemakerResources parser] Enriched from XML constraint:', rscName, 'on', node, 'role:', role || 'Started');
-                    }
-                }
             }
             
             debugLog('[pacemakerResources parser] Found', resources.length, 'resources');
@@ -1531,11 +1816,16 @@ const SCC_RULES = {
             }
             
             debugLog('[pacemakerResources parser] Found', failedActions.length, 'failed actions');
+            debugLog('[pacemakerResources parser] Found', groupData.length, 'groups');
             
             return {
                 found: true,
                 resources: resources,
                 count: resources.length,
+                groups: groupData,
+                groupsCount: groupData.length,
+                constraints: constraints,
+                constraintsCount: constraints.length,
                 failedActions: failedActions,
                 failedActionsCount: failedActions.length
             };
@@ -1603,6 +1893,354 @@ const SCC_RULES = {
         }
     },
     
+    // Rule: Extract cluster health/status from crm_mon XML output or CIB
+    clusterStatus: {
+        // Target file patterns - crm_mon XML output or cib.xml
+        filePattern: /cib\.xml$|\/crm_mon.*\.txt$|\/crm_mon.*\.xml$|\/ha\.txt$/,
+        
+        parse: function(content, filename) {
+            debugLog('[clusterStatus parser] Analyzing cluster status in:', filename);
+            
+            let clusterName = null;
+            let dcNode = null;
+            let nodesConfigured = null;
+            let resourcesConfigured = null;
+            let lastUpdated = null;
+            const nodeStatuses = [];
+            let quorumStatus = null;
+            
+            // Check if content contains XML
+            if (content.includes('<crm_mon') || content.includes('<cib')) {
+                debugLog('[clusterStatus parser] Detected XML format, using custom XML parser');
+                
+                // Extract only the CIB XML section if this is ha.txt with embedded content
+                let xmlContent = content;
+                if (filename.includes('ha.txt')) {
+                    // Try to extract the cibadmin -Q section
+                    const cibSection = extractSection(content, filename, '# /usr/sbin/cibadmin -Q', 'cib.xml', debugLog);
+                    if (cibSection.found) {
+                        xmlContent = cibSection.content;
+                        debugLog('[clusterStatus parser] Extracted CIB section from ha.txt:', cibSection.lines.length, 'lines');
+                    }
+                }
+                
+                const elements = parseXMLSimple(xmlContent);
+                
+                // Parse crm_mon root element for summary info
+                const crmMonElements = querySelectorAll(elements, 'crm_mon');
+                if (crmMonElements.length > 0) {
+                    const attrs = crmMonElements[0].attributes;
+                    lastUpdated = attrs.version || null;
+                }
+                
+                // Parse CIB root element for cluster info
+                const cibElements = querySelectorAll(elements, 'cib');
+                if (cibElements.length > 0) {
+                    const attrs = cibElements[0].attributes;
+                    lastUpdated = attrs['cib-last-written'] || lastUpdated;
+                    dcNode = attrs['dc-uuid'] || dcNode;
+                    quorumStatus = attrs['have-quorum'] === '1' ? 'with quorum' : 'without quorum';
+                }
+                
+                // Parse cluster_property_set for cluster-name and stonith settings
+                const nvpairs = querySelectorAll(elements, 'nvpair');
+                nvpairs.forEach(nvpair => {
+                    const attrs = nvpair.attributes;
+                    if (attrs.name === 'cluster-name') {
+                        clusterName = attrs.value;
+                    } else if (attrs.name === 'cluster-infrastructure') {
+                        if (!clusterName) clusterName = attrs.value;
+                    }
+                });
+                
+                // Parse summary element (crm_mon format)
+                const summaryElements = querySelectorAll(elements, 'summary');
+                if (summaryElements.length > 0) {
+                    const summary = summaryElements[0].attributes;
+                    
+                    // Extract stack info
+                    const stackElements = querySelectorAll(elements, 'stack');
+                    if (stackElements.length > 0) {
+                        const stackAttrs = stackElements[0].attributes;
+                        clusterName = stackAttrs.type || clusterName || 'corosync';
+                    }
+                    
+                    // Extract current DC
+                    const currentDcElements = querySelectorAll(elements, 'current_dc');
+                    if (currentDcElements.length > 0) {
+                        const dcAttrs = currentDcElements[0].attributes;
+                        dcNode = dcAttrs.name || dcAttrs.uname || dcNode;
+                        quorumStatus = dcAttrs.with_quorum === 'true' ? 'with quorum' : quorumStatus;
+                    }
+                    
+                    // Extract nodes and resources count
+                    const nodesConfiguredElements = querySelectorAll(elements, 'nodes_configured');
+                    if (nodesConfiguredElements.length > 0) {
+                        nodesConfigured = parseInt(nodesConfiguredElements[0].attributes.number) || null;
+                    }
+                    
+                    const resourcesConfiguredElements = querySelectorAll(elements, 'resources_configured');
+                    if (resourcesConfiguredElements.length > 0) {
+                        resourcesConfigured = parseInt(resourcesConfiguredElements[0].attributes.number) || null;
+                    }
+                    
+                    // Parse last update timestamp
+                    const lastUpdateElements = querySelectorAll(elements, 'last_update');
+                    if (lastUpdateElements.length > 0) {
+                        lastUpdated = lastUpdateElements[0].attributes.time || lastUpdated;
+                    }
+                }
+                
+                // Parse node_state elements from CIB (runtime status)
+                const nodeStateElements = querySelectorAll(elements, 'node_state');
+                if (nodeStateElements.length > 0) {
+                    debugLog('[clusterStatus parser] Found', nodeStateElements.length, 'node_state elements in CIB');
+                    nodeStateElements.forEach(nodeState => {
+                        const attrs = nodeState.attributes;
+                        const nodeName = attrs.uname || attrs.name;
+                        const nodeId = attrs.id;
+                        const online = attrs.crmd === 'online';
+                        const in_ccm = attrs.in_ccm === 'true';
+                        const join = attrs.join;
+                        const expected = attrs.expected;
+                        
+                        // Check if this is the DC node
+                        const is_dc = (nodeId === dcNode || nodeName === dcNode);
+                        
+                        // Determine status
+                        let status = 'unknown';
+                        if (attrs.standby === 'true' || attrs.standby === 'on') {
+                            status = 'standby';
+                        } else if (attrs.maintenance === 'true') {
+                            status = 'maintenance';
+                        } else if (online && in_ccm) {
+                            status = 'online';
+                        } else if (!online) {
+                            status = 'offline';
+                        } else {
+                            status = 'pending';
+                        }
+                        
+                        if (nodeName && !nodeStatuses.find(n => n.name === nodeName)) {
+                            nodeStatuses.push({
+                                name: nodeName,
+                                status: status,
+                                online: online,
+                                isDC: is_dc,
+                                resourcesRunning: 0,  // CIB doesn't have this, would need to count resources
+                                type: 'member'
+                            });
+                            
+                            debugLog('[clusterStatus parser] Found node_state:', nodeName, status, 
+                                    is_dc ? '(DC)' : '', `crmd=${attrs.crmd}, in_ccm=${in_ccm}, join=${join}`);
+                        }
+                    });
+                }
+                
+                // Parse node elements from crm_mon format
+                const nodeElements = querySelectorAll(elements, 'node');
+                nodeElements.forEach(node => {
+                    const attrs = node.attributes;
+                    const nodeName = attrs.name || attrs.uname;
+                    const online = attrs.online === 'true';
+                    const standby = attrs.standby === 'true' || attrs.standby === 'on';
+                    const maintenance = attrs.maintenance === 'true';
+                    const pending = attrs.pending === 'true';
+                    const unclean = attrs.unclean === 'true';
+                    const shutdown = attrs.shutdown === 'true';
+                    const expected_up = attrs.expected_up === 'true';
+                    const is_dc = attrs.is_dc === 'true';
+                    const resources_running = parseInt(attrs.resources_running) || 0;
+                    const type = attrs.type || 'member';
+                    
+                    if (nodeName && !nodeStatuses.find(n => n.name === nodeName)) {
+                        let status = 'unknown';
+                        if (unclean) status = 'UNCLEAN';
+                        else if (shutdown) status = 'shutdown';
+                        else if (pending) status = 'pending';
+                        else if (maintenance) status = 'maintenance';
+                        else if (standby) status = 'standby';
+                        else if (online) status = 'online';
+                        else status = 'offline';
+                        
+                        nodeStatuses.push({
+                            name: nodeName,
+                            status: status,
+                            online: online,
+                            isDC: is_dc,
+                            resourcesRunning: resources_running,
+                            type: type
+                        });
+                        
+                        debugLog('[clusterStatus parser] Found node (crm_mon):', nodeName, status, 
+                                is_dc ? '(DC)' : '', `(${resources_running} resources)`);
+                    }
+                });
+                
+                // Count nodes and resources from CIB if not found in summary
+                if (nodesConfigured === null) {
+                    // Count only node definitions (not node_state entries)
+                    // Node definitions have both 'id' and 'uname' attributes
+                    const nodeDefinitions = querySelectorAll(elements, 'node').filter(n => 
+                        n.attributes.id && n.attributes.uname && !n.attributes.crmd
+                    );
+                    if (nodeDefinitions.length > 0) {
+                        nodesConfigured = nodeDefinitions.length;
+                        debugLog('[clusterStatus parser] Counted nodes from CIB:', nodesConfigured);
+                    }
+                }
+                
+                if (resourcesConfigured === null) {
+                    // Count only top-level resource primitives (not those in status/lrm sections)
+                    // Filter by checking they have class, provider, and type attributes (resource definitions)
+                    // and don't have crm-debug-origin (which indicates status section)
+                    const resourcePrimitives = querySelectorAll(elements, 'primitive').filter(p => 
+                        p.attributes.id && p.attributes.class && p.attributes.type && !p.attributes['crm-debug-origin']
+                    );
+                    const groups = querySelectorAll(elements, 'group').filter(g => 
+                        g.attributes.id && !g.attributes['crm-debug-origin']
+                    );
+                    const clones = querySelectorAll(elements, 'clone').filter(c => 
+                        c.attributes.id && !c.attributes['crm-debug-origin']
+                    );
+                    
+                    // Use unique IDs to avoid counting duplicates
+                    const uniqueResourceIds = new Set();
+                    resourcePrimitives.forEach(p => uniqueResourceIds.add(p.attributes.id));
+                    groups.forEach(g => uniqueResourceIds.add(g.attributes.id));
+                    clones.forEach(c => uniqueResourceIds.add(c.attributes.id));
+                    
+                    resourcesConfigured = uniqueResourceIds.size;
+                    if (resourcesConfigured > 0) {
+                        debugLog('[clusterStatus parser] Counted resources from CIB:', resourcesConfigured, 
+                                '(', resourcePrimitives.length, 'primitives,', groups.length, 'groups,', clones.length, 'clones)');
+                    }
+                }
+            }
+            
+            // Parse text-based crm_mon output if no XML found
+            if (nodeStatuses.length === 0) {
+                const lines = content.split('\n');
+                let inNodesSection = false;
+                
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    
+                    // Extract cluster name and DC from header
+                    const stackMatch = trimmed.match(/Stack:\s+(\w+)/i);
+                    if (stackMatch) {
+                        clusterName = stackMatch[1];
+                    }
+                    
+                    const dcMatch = trimmed.match(/Current DC:\s+([^\s]+)/i);
+                    if (dcMatch) {
+                        dcNode = dcMatch[1];
+                    }
+                    
+                    const lastUpdateMatch = trimmed.match(/Last updated:\s+(.+)/i);
+                    if (lastUpdateMatch) {
+                        lastUpdated = lastUpdateMatch[1];
+                    }
+                    
+                    const nodesMatch = trimmed.match(/(\d+)\s+nodes?\s+configured/i);
+                    if (nodesMatch) {
+                        nodesConfigured = parseInt(nodesMatch[1]);
+                    }
+                    
+                    const resourcesMatch = trimmed.match(/(\d+)\s+resources?\s+configured/i);
+                    if (resourcesMatch) {
+                        resourcesConfigured = parseInt(resourcesMatch[1]);
+                    }
+                    
+                    // Detect nodes section
+                    if (trimmed.match(/^(Online|Offline|Node):/i) || trimmed.match(/^\s*\*?\s*Node\s+/i)) {
+                        inNodesSection = true;
+                    }
+                    
+                    // Parse node status lines
+                    // Format: "Online: [ node1 node2 ]" or "* Node node1: online"
+                    const onlineMatch = trimmed.match(/Online:\s*\[\s*([^\]]+)\s*\]/i);
+                    if (onlineMatch) {
+                        const nodeNames = onlineMatch[1].trim().split(/\s+/);
+                        nodeNames.forEach(name => {
+                            if (name && !nodeStatuses.find(n => n.name === name)) {
+                                nodeStatuses.push({
+                                    name: name,
+                                    status: 'online',
+                                    online: true,
+                                    isDC: name === dcNode,
+                                    resourcesRunning: 0,
+                                    type: 'member'
+                                });
+                                debugLog('[clusterStatus parser] Found node (text):', name, 'online');
+                            }
+                        });
+                    }
+                    
+                    const offlineMatch = trimmed.match(/Offline:\s*\[\s*([^\]]+)\s*\]/i);
+                    if (offlineMatch) {
+                        const nodeNames = offlineMatch[1].trim().split(/\s+/);
+                        nodeNames.forEach(name => {
+                            if (name && !nodeStatuses.find(n => n.name === name)) {
+                                nodeStatuses.push({
+                                    name: name,
+                                    status: 'offline',
+                                    online: false,
+                                    isDC: false,
+                                    resourcesRunning: 0,
+                                    type: 'member'
+                                });
+                                debugLog('[clusterStatus parser] Found node (text):', name, 'offline');
+                            }
+                        });
+                    }
+                    
+                    // Parse individual node lines: "* Node node1 (1): online"
+                    const nodeLineMatch = trimmed.match(/\*?\s*Node\s+([^\s:]+)[^:]*:\s*(\w+)/i);
+                    if (nodeLineMatch && inNodesSection) {
+                        const nodeName = nodeLineMatch[1];
+                        const status = nodeLineMatch[2].toLowerCase();
+                        
+                        if (!nodeStatuses.find(n => n.name === nodeName)) {
+                            nodeStatuses.push({
+                                name: nodeName,
+                                status: status,
+                                online: status === 'online',
+                                isDC: nodeName === dcNode,
+                                resourcesRunning: 0,
+                                type: 'member'
+                            });
+                            debugLog('[clusterStatus parser] Found node (text line):', nodeName, status);
+                        }
+                    }
+                }
+            }
+            
+            if (nodeStatuses.length === 0 && !clusterName && !dcNode) {
+                debugLog('[clusterStatus parser] No cluster status information found');
+                return { found: false };
+            }
+            
+            debugLog('[clusterStatus parser] Found cluster status:',
+                    'Stack:', clusterName,
+                    'DC:', dcNode,
+                    'Nodes:', nodesConfigured,
+                    'Resources:', resourcesConfigured,
+                    'Node count:', nodeStatuses.length);
+            
+            return {
+                found: true,
+                clusterName: clusterName,
+                dcNode: dcNode,
+                nodesConfigured: nodesConfigured,
+                resourcesConfigured: resourcesConfigured,
+                lastUpdated: lastUpdated,
+                quorumStatus: quorumStatus,
+                nodeStatuses: nodeStatuses
+            };
+        }
+    },
+    
     // Rule: Detect fencing/STONITH configuration
     fencingConfig: {
         // Target file patterns - match cib.xml anywhere in the archive
@@ -1612,49 +2250,135 @@ const SCC_RULES = {
             debugLog('[fencingConfig parser] Analyzing fencing configuration in:', filename);
             
             const fencingDevices = [];
-            const lines = content.split('\n');
             let stonithEnabled = null;
             let stonithSourceFile = null;
             let stonithSourcePattern = null;
             
+            // If content contains XML (CIB format), use XML parser for upfront extraction
+            if (content.includes('<primitive') || content.includes('<nvpair')) {
+                debugLog('[fencingConfig parser] Detected XML format, using custom XML parser');
+                
+                // Extract only the CIB XML section if this is ha.txt with embedded content
+                let xmlContent = content;
+                if (filename.includes('ha.txt')) {
+                    // Try to extract the cibadmin -Q section
+                    const cibSection = extractSection(content, filename, '# /usr/sbin/cibadmin -Q', 'cib.xml', debugLog);
+                    if (cibSection.found) {
+                        xmlContent = cibSection.content;
+                        debugLog('[fencingConfig parser] Extracted CIB section from ha.txt:', cibSection.lines.length, 'lines');
+                    }
+                }
+                
+                const elements = parseXMLSimple(xmlContent);
+                
+                // Check stonith-enabled setting from nvpair elements
+                const nvpairs = querySelectorAll(elements, 'nvpair');
+                nvpairs.forEach(nvpair => {
+                    const attrs = nvpair.attributes;
+                    if (attrs.name === 'stonith-enabled') {
+                        if (attrs.value === 'true') {
+                            stonithEnabled = true;
+                            stonithSourceFile = filename;
+                            stonithSourcePattern = '<nvpair name="stonith-enabled" value="true"/>';
+                        } else if (attrs.value === 'false') {
+                            stonithEnabled = false;
+                            stonithSourceFile = filename;
+                            stonithSourcePattern = '<nvpair name="stonith-enabled" value="false"/>';
+                        }
+                    }
+                });
+                
+                // Extract fencing devices from primitive elements
+                const primitives = querySelectorAll(elements, 'primitive');
+                debugLog('[fencingConfig parser] Found', primitives.length, 'primitive elements');
+                primitives.forEach(primitive => {
+                    const attrs = primitive.attributes;
+                    const deviceName = attrs.id;
+                    const agentType = attrs.type;
+                    const agentClass = attrs.class;
+                    
+                    // Check for Azure fence_azure_arm
+                    if (agentType && agentType.includes('fence_azure_arm')) {
+                        if (deviceName && !fencingDevices.find(d => d.name === deviceName)) {
+                            fencingDevices.push({
+                                name: deviceName,
+                                type: 'fence_azure_arm',
+                                agent: 'Azure Fencing Agent',
+                                cloud: 'Azure',
+                                sourceFile: filename,
+                                sourceLine: 0,
+                                pattern: 'XML: <primitive ... type="fence_azure_arm">'
+                            });
+                            debugLog('[fencingConfig parser] Found Azure fencing agent (XML):', deviceName);
+                        }
+                    }
+                    // Check for other stonith devices
+                    else if (agentClass === 'stonith' && deviceName && agentType) {
+                        if (!fencingDevices.find(d => d.name === deviceName)) {
+                            let agent = agentType;
+                            let cloud = null;
+                            
+                            // Handle external/sbd format
+                            if (agentType.startsWith('external/')) {
+                                const externalType = agentType.split('/')[1];
+                                agent = `External ${externalType.toUpperCase()}`;
+                            } else if (agentType.includes('azure')) {
+                                agent = 'Azure Fencing';
+                                cloud = 'Azure';
+                            } else if (agentType.includes('aws')) {
+                                agent = 'AWS Fencing';
+                                cloud = 'AWS';
+                            } else if (agentType.includes('gce')) {
+                                agent = 'GCP Fencing';
+                                cloud = 'GCP';
+                            } else if (agentType.startsWith('fence_')) {
+                                const fenceType = agentType.replace('fence_', '');
+                                agent = `Fence ${fenceType.toUpperCase()}`;
+                            }
+                            
+                            fencingDevices.push({
+                                name: deviceName,
+                                type: agentType,
+                                agent: agent,
+                                cloud: cloud,
+                                sourceFile: filename,
+                                sourceLine: 0,
+                                pattern: `XML: <primitive class="stonith" type="${agentType}">`
+                            });
+                            debugLog('[fencingConfig parser] Found fencing device (XML):', deviceName, agentType);
+                        }
+                    }
+                });
+            }
+            
+            // Parse line-by-line for non-XML formats (crm config, etc.)
+            const lines = content.split('\n');
             for (let lineNum = 0; lineNum < lines.length; lineNum++) {
                 const line = lines[lineNum];
                 const trimmed = line.trim();
                 
-                // Check if STONITH is enabled
-                // Format: stonith-enabled=true or <nvpair name="stonith-enabled" value="true"/>
-                if (trimmed.match(/stonith-enabled[=\s]*true/i)) {
+                // Check if STONITH is enabled (non-XML format)
+                // Format: stonith-enabled=true
+                if (trimmed.match(/stonith-enabled[=\s]*true/i) && !trimmed.includes('<')) {
                     stonithEnabled = true;
                     stonithSourceFile = filename;
                     stonithSourcePattern = 'stonith-enabled=true';
                     debugLog('[fencingConfig parser] STONITH is enabled at line', lineNum + 1);
-                } else if (trimmed.match(/name="stonith-enabled".*value="true"/i)) {
-                    stonithEnabled = true;
-                    stonithSourceFile = filename;
-                    stonithSourcePattern = '<nvpair name="stonith-enabled" value="true"/>';
-                    debugLog('[fencingConfig parser] STONITH is enabled (XML) at line', lineNum + 1);
                 }
                 
-                if (trimmed.match(/stonith-enabled[=\s]*false/i)) {
+                if (trimmed.match(/stonith-enabled[=\s]*false/i) && !trimmed.includes('<')) {
                     stonithEnabled = false;
                     stonithSourceFile = filename;
                     stonithSourcePattern = 'stonith-enabled=false';
                     debugLog('[fencingConfig parser] STONITH is disabled at line', lineNum + 1);
-                } else if (trimmed.match(/name="stonith-enabled".*value="false"/i)) {
-                    stonithEnabled = false;
-                    stonithSourceFile = filename;
-                    stonithSourcePattern = '<nvpair name="stonith-enabled" value="false"/>';
-                    debugLog('[fencingConfig parser] STONITH is disabled (XML) at line', lineNum + 1);
                 }
                 
-                // Detect Azure fencing agent: fence_azure_arm
-                // XML: <primitive id="stonith-fence_azure_arm" type="fence_azure_arm">
+                // Detect Azure fencing agent in crm config format (non-XML)
                 // crm: primitive stonith-fence_azure_arm stonith:fence_azure_arm
-                const azureFenceMatch = trimmed.match(/(?:primitive.*?id="|primitive\s+)([^"\s]+).*?fence_azure_arm/);
-                if (azureFenceMatch) {
+                const azureFenceMatch = trimmed.match(/^primitive\s+([^\s]+).*?(?:stonith:)?fence_azure_arm/);
+                if (azureFenceMatch && !trimmed.includes('<')) {
                     const deviceName = azureFenceMatch[1];
                     if (!fencingDevices.find(d => d.name === deviceName)) {
-                        const isXml = trimmed.includes('<primitive');
                         fencingDevices.push({
                             name: deviceName,
                             type: 'fence_azure_arm',
@@ -1662,15 +2386,15 @@ const SCC_RULES = {
                             cloud: 'Azure',
                             sourceFile: filename,
                             sourceLine: lineNum + 1,
-                            pattern: isXml ? 'XML: <primitive ... type="fence_azure_arm">' : 'crm: primitive ... fence_azure_arm'
+                            pattern: 'crm: primitive ... fence_azure_arm'
                         });
-                        debugLog('[fencingConfig parser] Found Azure fencing agent:', deviceName, 'at line', lineNum + 1);
+                        debugLog('[fencingConfig parser] Found Azure fencing agent (crm):', deviceName, 'at line', lineNum + 1);
                     }
                 }
                 
-                // Detect other common fencing agents
-                const fenceMatch = trimmed.match(/(?:primitive.*?id="|primitive\s+)([^"\s]+).*?stonith:(\S+)/);
-                if (fenceMatch) {
+                // Detect other common fencing agents in crm config format (non-XML)
+                const fenceMatch = trimmed.match(/^primitive\s+([^\s]+).*?stonith:(\S+)/);
+                if (fenceMatch && !trimmed.includes('<')) {
                     const [, deviceName, agentType] = fenceMatch;
                     if (!fencingDevices.find(d => d.name === deviceName)) {
                         let agent = agentType;
@@ -1688,7 +2412,6 @@ const SCC_RULES = {
                             cloud = 'GCP';
                         }
                         
-                        const isXml = trimmed.includes('<primitive');
                         fencingDevices.push({
                             name: deviceName,
                             type: agentType,
@@ -1696,49 +2419,9 @@ const SCC_RULES = {
                             cloud: cloud,
                             sourceFile: filename,
                             sourceLine: lineNum + 1,
-                            pattern: isXml ? 'XML: <primitive ... class="stonith">' : `crm: primitive ... stonith:${agentType}`
+                            pattern: `crm: primitive ... stonith:${agentType}`
                         });
-                        debugLog('[fencingConfig parser] Found fencing device:', deviceName, agentType, 'at line', lineNum + 1);
-                    }
-                }
-                
-                // Also check XML format: <primitive ... class="stonith" type="fence_XXX"> or type="external/XXX">
-                const xmlFenceMatch = trimmed.match(/<primitive\s+id="([^"]+)".*?class="stonith".*?type="([^"]+)"/);
-                if (xmlFenceMatch) {
-                    const [, deviceName, agentType] = xmlFenceMatch;
-                    if (!fencingDevices.find(d => d.name === deviceName)) {
-                        let agent = agentType;
-                        let cloud = null;
-                        
-                        // Handle external/sbd format
-                        if (agentType.startsWith('external/')) {
-                            const externalType = agentType.split('/')[1];
-                            agent = `External ${externalType.toUpperCase()}`;
-                        } else if (agentType.includes('azure') || agentType.includes('fence_azure_arm')) {
-                            agent = 'Azure Fencing';
-                            cloud = 'Azure';
-                        } else if (agentType.includes('aws')) {
-                            agent = 'AWS Fencing';
-                            cloud = 'AWS';
-                        } else if (agentType.includes('gce')) {
-                            agent = 'GCP Fencing';
-                            cloud = 'GCP';
-                        } else if (agentType.startsWith('fence_')) {
-                            // Generic fence agent
-                            const fenceType = agentType.replace('fence_', '');
-                            agent = `Fence ${fenceType.toUpperCase()}`;
-                        }
-                        
-                        fencingDevices.push({
-                            name: deviceName,
-                            type: agentType,
-                            agent: agent,
-                            cloud: cloud,
-                            sourceFile: filename,
-                            sourceLine: lineNum + 1,
-                            pattern: `XML: <primitive class="stonith" type="${agentType}">`
-                        });
-                        debugLog('[fencingConfig parser] Found fencing device (XML):', deviceName, agentType, 'at line', lineNum + 1);
+                        debugLog('[fencingConfig parser] Found fencing device (crm):', deviceName, agentType, 'at line', lineNum + 1);
                     }
                 }
             }
@@ -2893,7 +3576,7 @@ const SCC_RULES = {
             
             // Optional Network Tuning parameters (informational only)
             const optionalNetworkParams = {
-                'net.ipv4.tcp_timestamps': '0',
+                'net.ipv4.tcp_timestamps': '1',
                 'net.ipv4.tcp_tw_reuse': '1',
                 'net.ipv4.ip_local_port_range': '1024\t65535',
                 'net.core.netdev_budget': '1000',
@@ -3494,8 +4177,6 @@ class IncrementalTARParser {
         
         debugLog('[TAR Parser] getAnalysis() called');
         debugLog('[TAR Parser] analysisResults:', this.analysisResults);
-        debugLog('[TAR Parser] Raw cluster nodes:', clusterNodes);
-        debugLog('[TAR Parser] Node-to-IP mappings:', nodeToIpMap);
         
         // Resolve cluster nodes using multiple strategies:
         // 1. If we have nodeToIpMap (from corosync.conf), use it to resolve IPs back to hostnames
@@ -3516,7 +4197,6 @@ class IncrementalTARParser {
                     // First, check if we have a hostname mapping from corosync.conf
                     if (ipToHostnameMap[node]) {
                         const hostname = ipToHostnameMap[node];
-                        debugLog(`[TAR Parser] Resolved IP ${node} to hostname ${hostname} (from corosync nodeToIpMap)`);
                         resolvedNodes.push(hostname);
                     }
                     // If not, try to resolve using hosts file
@@ -3525,11 +4205,9 @@ class IncrementalTARParser {
                         if (hostEntry && hostEntry.hostnames.length > 0) {
                             // Use the first hostname
                             const hostname = hostEntry.hostnames[0];
-                            debugLog(`[TAR Parser] Resolved IP ${node} to hostname ${hostname} (from hosts file)`);
                             resolvedNodes.push(hostname);
                         } else {
                             // Keep the IP if we can't resolve it
-                            debugLog(`[TAR Parser] Could not resolve IP ${node}, keeping as-is`);
                             resolvedNodes.push(node);
                         }
                     } else {
@@ -3537,16 +4215,12 @@ class IncrementalTARParser {
                     }
                 } else {
                     // It's a hostname - check if we have an IP mapping for validation
-                    if (nodeToIpMap[node]) {
-                        debugLog(`[TAR Parser] Hostname ${node} maps to IP ${nodeToIpMap[node]} (from corosync.conf)`);
-                    }
                     resolvedNodes.push(node);
                 }
             });
             
             // Deduplicate resolved nodes (in case same hostname was added multiple times)
             clusterNodes = Array.from(new Set(resolvedNodes)).sort();
-            debugLog('[TAR Parser] Resolved cluster nodes (deduplicated):', clusterNodes);
         }
         
         let nodesInHosts = [];
@@ -3602,6 +4276,7 @@ class IncrementalTARParser {
             xfsErrors: xfsErrorsData,
             corosyncConfig: corosyncData,
             corosyncStatus: this.analysisResults.corosyncStatus || null,
+            clusterStatus: this.analysisResults.clusterStatus || null,
             rpmPackages: rpmPackagesData,
             pacemakerResources: pacemakerResourcesData,
             fencingConfig: fencingConfigData,
