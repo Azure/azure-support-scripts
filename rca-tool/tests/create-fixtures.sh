@@ -826,6 +826,70 @@ EOF
 
 create_fixture "test-complete-network-tuning"
 
+# Test for raw RPM package list display
+echo ""
+echo "=== Creating sosreport-rpm-raw.tar.xz ==="
+mkdir -p sosreport-rpm-raw/sos_commands/dnf
+cat > sosreport-rpm-raw/sos_commands/dnf/dnf_list_installed << 'EOF'
+Updating Subscription Management repositories.
+Unable to read consumer identity
+Installed Packages
+GConf2.x86_64                          3.2.6-22.el8                           @rhel-8-for-x86_64-appstream-rpms
+LibRaw.x86_64                          0.19.5-3.el8                           @rhui-rhel-8-for-x86_64-appstream-rhui-rpms
+ModemManager-glib.x86_64               1.10.8-4.el8                           @rhel-8-for-x86_64-baseos-rpms
+NetworkManager.x86_64                  1:1.40.16-4.el8_9                      @rhui-rhel-8-for-x86_64-baseos-rhui-rpms
+NetworkManager-libnm.x86_64            1:1.40.16-4.el8_9                      @rhui-rhel-8-for-x86_64-baseos-rhui-rpms
+PackageKit.x86_64                      1.1.12-6.el8                           @rhel-8-for-x86_64-appstream-rpms
+PackageKit-glib.x86_64                 1.1.12-6.el8                           @rhel-8-for-x86_64-appstream-rpms
+acl.x86_64                             2.2.53-1.el8                           @rhel-8-for-x86_64-baseos-rpms
+bash.x86_64                            4.4.20-4.el8_6                         @rhui-rhel-8-for-x86_64-baseos-rhui-rpms
+bash-completion.noarch                 1:2.7-5.el8                            @rhel-8-for-x86_64-baseos-rpms
+bind-export-libs.x86_64                32:9.11.36-8.el8_8.2                   @rhui-rhel-8-for-x86_64-baseos-rhui-rpms
+binutils.x86_64                        2.30-119.el8                           @rhui-rhel-8-for-x86_64-baseos-rhui-rpms
+bzip2.x86_64                           1.0.6-26.el8                           @rhel-8-for-x86_64-baseos-rpms
+ca-certificates.noarch                 2023.2.60_v7.0.306-80.0.el8_8          @rhui-rhel-8-for-x86_64-baseos-rhui-rpms
+EOF
+tar -cJf "$FIXTURES_DIR/sosreport-rpm-raw.tar.xz" sosreport-rpm-raw
+rm -rf sosreport-rpm-raw
+echo "✓ Created sosreport-rpm-raw (14 packages)"
+
+# Test for raw DEB package list display
+echo ""
+echo "=== Creating sosreport-deb-raw.tar.xz ==="
+mkdir -p sosreport-deb-raw/sos_commands/dpkg
+cat > sosreport-deb-raw/sos_commands/dpkg/dpkg_-l << 'EOF'
+Desired=Unknown/Install/Remove/Purge/Hold
+| Status=Not/Inst/Conf-files/Unpacked/halF-conf/Half-inst/trig-aWait/Trig-pend
+|/ Err?=(none)/Reinst-required (Status,Err: uppercase=bad)
+||/ Name                          Version                      Architecture Description
++++-=============================-============================-============-===============================================================================
+ii  accountsservice               0.6.55-0ubuntu12~20.04.7     amd64        query and manipulate user account information
+ii  acl                           2.2.53-6                     amd64        access control list - utilities
+ii  adduser                       3.118ubuntu2                 all          add and remove users and groups
+ii  apparmor                      2.13.3-7ubuntu5.3            amd64        user-space parser utility for AppArmor
+ii  apt                           2.0.10                       amd64        commandline package manager
+ii  apt-utils                     2.0.10                       amd64        package management related utility programs
+ii  base-files                    11ubuntu5.8                  amd64        Debian base system miscellaneous files
+ii  base-passwd                   3.5.47                       amd64        Debian base system master password and group files
+ii  bash                          5.0-6ubuntu1.2               amd64        GNU Bourne Again SHell
+ii  bash-completion               1:2.10-1ubuntu1              all          programmable completion for the bash shell
+ii  bind9-dnsutils                1:9.16.1-0ubuntu2.16         amd64        Clients provided with BIND 9
+ii  bsdutils                      1:2.34-0.1ubuntu9.6          amd64        basic utilities from 4.4BSD-Lite
+ii  busybox-initramfs             1:1.30.1-4ubuntu6.5          amd64        Standalone shell setup for initramfs
+ii  bzip2                         1.0.8-2                      amd64        high-quality block-sorting file compressor - utilities
+ii  ca-certificates               20230311ubuntu0.20.04.1      all          Common CA certificates
+ii  cloud-init                    24.1.3-0ubuntu1~20.04.4      all          Init scripts for cloud instances
+ii  coreutils                     8.30-3ubuntu2                amd64        GNU core utilities
+ii  cpio                          2.13+dfsg-2ubuntu0.4         amd64        GNU cpio -- a program to manage archives of files
+ii  cron                          3.0pl1-136ubuntu1            amd64        process scheduling daemon
+ii  curl                          7.68.0-1ubuntu2.22           amd64        command line tool for transferring data with URL syntax
+ii  dbus                          1.12.16-2ubuntu2.3           amd64        simple interprocess messaging system (daemon and utilities)
+ii  systemd                       245.4-4ubuntu3.23            amd64        system and service manager
+EOF
+tar -cJf "$FIXTURES_DIR/sosreport-deb-raw.tar.xz" sosreport-deb-raw
+rm -rf sosreport-deb-raw
+echo "✓ Created sosreport-deb-raw (22 packages)"
+
 echo ""
 echo "========================================="
 echo "✓ All test fixtures created successfully!"

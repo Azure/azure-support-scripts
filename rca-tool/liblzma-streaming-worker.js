@@ -2,7 +2,7 @@
 // Processes compressed data in chunks to keep memory usage low
 
 const CACHE_BUST = '?v=' + Date.now();
-console.log('[Worker] Loading version: 2025-12-09 with custom XML parser');
+console.log('[Worker] Loading version: 2025-12-11-rpm-raw-list-v3');
 
 // Import utility functions (only in Web Worker context)
 if (typeof importScripts === 'function') {
@@ -501,9 +501,10 @@ const SCC_RULES = {
     // Rule: Extract OS release information from /etc/os-release
     osRelease: {
         // Match os-release files from various report types:
-        // - /etc/os-release or /usr/lib/os-release (sosreport, crm_report)
+        // - /usr/lib/os-release (sosreport - real file, not the /etc symlink)
+        // - /etc/os-release (crm_report)
         // - sysinfo.txt (supportconfig SUSE)
-        filePattern: /\/(?:etc|usr\/lib)\/os-release$|sysinfo\.txt$/,
+        filePattern: /\/usr\/lib\/os-release$|\/etc\/os-release$|\/sysinfo\.txt$/,
         
         parse: function(content, filename) {
             debugLog('[osRelease parser] Analyzing OS release information in:', filename);
@@ -3216,19 +3217,49 @@ const SCC_RULES = {
         }
     },
     
-    // Rule: Validate Azure-specific RPM packages
-    rpmPackages: {
+    // Rule: Validate distribution packages (RPM and DEB)
+    distroPackages: {
         // Target file patterns
         // supportconfig: */rpm.txt
-        // sosreport: */installed-rpms or */sos_commands/rpm/package-data
-        filePattern: /\/(rpm\.txt|installed-rpms|package-data)$/,
+        // sosreport (RHEL/SLES): */installed-rpms or */sos_commands/rpm/package-data or */sos_commands/dnf/dnf_list_installed
+        // sosreport (Debian/Ubuntu): */sos_commands/dpkg/dpkg_-l (installed-debs is a symlink)
+        filePattern: /\/(rpm\.txt|installed-rpms|package-data|dpkg_-l|dnf[_-]list[_-]installed)$/,
         
-        // Parse function receives rpm.txt content
+        // Parse function receives package list content
         // Validates Azure-required packages with specific version requirements
-        parse: function(content) {
+        parse: function(content, filename) {
             const lines = content.split('\n');
             
-            debugLog('[rpmPackages parser] Analyzing', lines.length, 'lines');
+            debugLog('[distroPackages parser] Analyzing', lines.length, 'lines from', filename);
+            
+            // If this is a dpkg file, return raw content for display
+            if (filename && filename.includes('dpkg')) {
+                debugLog('[distroPackages parser] Detected dpkg format, returning raw content');
+                return {
+                    found: true,
+                    isDpkg: true,
+                    rawContent: content,
+                    filename: filename,
+                    packageCount: lines.filter(l => l.trim() && !l.startsWith('Desired') && !l.startsWith('|') && !l.startsWith('+++')).length
+                };
+            }
+            
+            // If this is a dnf list file, return raw content for display
+            if (filename && (filename.includes('dnf_list_installed') || filename.includes('dnf-list-installed') || filename.includes('dnf_list-installed'))) {
+                const pkgCount = lines.filter(l => l.trim() && !l.startsWith('Installed') && !l.startsWith('Last metadata')).length;
+                debugLog('[distroPackages parser] Detected dnf format, returning raw content');
+                debugLog('[distroPackages parser] Filename:', filename);
+                debugLog('[distroPackages parser] Content length:', content.length);
+                debugLog('[distroPackages parser] Package count:', pkgCount);
+                debugLog('[distroPackages parser] First 500 chars:', content.substring(0, 500));
+                return {
+                    found: true,
+                    isRpmRaw: true,
+                    rawContent: content,
+                    filename: filename,
+                    packageCount: pkgCount
+                };
+            }
             
             // Required Azure packages with minimum version requirements
             const requiredPackages = {
@@ -3261,7 +3292,7 @@ const SCC_RULES = {
                     if (match) {
                         const version = match[1];
                         foundPackages[pkgName] = version;
-                        debugLog('[rpmPackages parser] Found', pkgName, 'version', version);
+                        debugLog('[distroPackages parser] Found', pkgName, 'version', version);
                         
                         // Validate version
                         if (requirements.operator === 'gte') {
@@ -3274,7 +3305,7 @@ const SCC_RULES = {
                                     message: `Package ${pkgName} version is ${version}, but should be >= ${requirements.version} for Azure environments`,
                                     documentationUrl: 'https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-suse-pacemaker'
                                 });
-                                debugLog('[rpmPackages parser] WARNING:', pkgName, 'version too old');
+                                debugLog('[distroPackages parser] WARNING:', pkgName, 'version too old');
                             }
                         } else if (requirements.operator === 'range') {
                             // Check if version is INSIDE the problematic range (inverted logic)
@@ -3288,7 +3319,7 @@ const SCC_RULES = {
                                     message: `Package ${pkgName} version is ${version}, but should be lower than ${requirements.minVersion} or higher than ${requirements.maxVersion} for Azure environments`,
                                     documentationUrl: 'https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-suse-pacemaker'
                                 });
-                                debugLog('[rpmPackages parser] WARNING:', pkgName, 'version in problematic range');
+                                debugLog('[distroPackages parser] WARNING:', pkgName, 'version in problematic range');
                             }
                         }
                     }
@@ -3303,10 +3334,10 @@ const SCC_RULES = {
                         expected: requirements.operator === 'gte' ? `>= ${requirements.version}` : `${requirements.minVersion} - ${requirements.maxVersion}`,
                         actual: 'not found',
                         severity: 'error',
-                        message: `Required package ${pkgName} not found in rpm.txt`,
+                        message: `Required package ${pkgName} not found in package list`,
                         documentationUrl: 'https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-suse-pacemaker'
                     });
-                    debugLog('[rpmPackages parser] WARNING:', pkgName, 'not found');
+                    debugLog('[distroPackages parser] WARNING:', pkgName, 'not found');
                 }
             }
             
@@ -3753,6 +3784,9 @@ class IncrementalTARParser {
         this.isSCCReport = false;
         this.sccReportName = null;
         this.analysisResults = {}; // Stores parsed results by rule name (no raw file content)
+        this.nextLongFilename = null; // For GNU TAR long filename extension
+        this.paxExtendedHeaders = {};  // For PAX extended attributes
+        this.usedPaxFormat = false;  // Track if PAX extended headers were used
     }
 
     // Add decompressed chunk to buffer and parse what we can
@@ -3816,11 +3850,37 @@ class IncrementalTARParser {
     parseHeader(offset) {
         if (this.buffer.length - offset < 512) return null;
 
-        // Read filename (null-terminated)
+        // Read type flag first (offset 156)
+        const typeflag = this.buffer[offset + 156];
+
+        // Read filename (null-terminated, first 100 bytes)
         let filename = '';
         for (let i = 0; i < 100; i++) {
             if (this.buffer[offset + i] === 0) break;
             filename += String.fromCharCode(this.buffer[offset + i]);
+        }
+
+        // Read prefix field (offset 345, 155 bytes) for POSIX ustar format
+        let prefix = '';
+        for (let i = 345; i < 500; i++) {
+            if (this.buffer[offset + i] === 0) break;
+            prefix += String.fromCharCode(this.buffer[offset + i]);
+        }
+
+        // Combine prefix and filename if prefix exists
+        if (prefix) {
+            filename = prefix + '/' + filename;
+        }
+
+        // Use long filename from previous GNU extension if available
+        if (this.nextLongFilename) {
+            filename = this.nextLongFilename;
+            this.nextLongFilename = null;
+        }
+
+        // Use path from PAX extended headers if available
+        if (this.paxExtendedHeaders.path) {
+            filename = this.paxExtendedHeaders.path;
         }
 
         if (!filename) return null;
@@ -3835,14 +3895,68 @@ class IncrementalTARParser {
 
         const size = parseInt(sizeStr.trim(), 8) || 0;
 
-        // Read type flag (offset 156)
-        const typeflag = this.buffer[offset + 156];
+        // Debug: Log when parsing headers for key files
+        if (filename.includes('dpkg') || filename.includes('usr/lib/os-release')) {
+            debugLog(`[TAR Parser] parseHeader:`, filename, `size=${size}, prefix='${prefix}', name_len=${filename.length}, typeflag=${typeflag}`);
+        }
 
         return { filename, size, typeflag, offset };
     }
 
     processEntry(header) {
         const { filename, size, typeflag, offset } = header;
+
+        // Handle GNU TAR long filename extension (typeflag='L' or 76)
+        if (typeflag === 76 || typeflag === 'L'.charCodeAt(0)) {
+            // This entry contains a long filename for the NEXT entry
+            // Extract the long filename from the data section
+            const dataOffset = offset + 512;
+            let longName = '';
+            const maxRead = Math.min(size, this.buffer.length - dataOffset);
+            for (let i = 0; i < maxRead; i++) {
+                const c = this.buffer[dataOffset + i];
+                if (c === 0) break;
+                longName += String.fromCharCode(c);
+            }
+            this.nextLongFilename = longName;
+            debugLog(`[TAR Parser] Found long filename:`, longName);
+            return; // Don't process this as a regular file
+        }
+
+        // Handle PAX extended headers (typeflag='x' (120) or 'g' (103))
+        if (typeflag === 120 || typeflag === 103 || typeflag === 'x'.charCodeAt(0) || typeflag === 'g'.charCodeAt(0)) {
+            this.usedPaxFormat = true;  // Mark that this archive uses PAX format
+            const dataOffset = offset + 512;
+            let paxData = '';
+            const maxRead = Math.min(size, this.buffer.length - dataOffset);
+            for (let i = 0; i < maxRead; i++) {
+                const c = this.buffer[dataOffset + i];
+                if (c === 0) break;
+                paxData += String.fromCharCode(c);
+            }
+            
+            // Parse PAX extended headers (format: "length key=value\n")
+            const lines = paxData.split('\n');
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                // PAX format: "111 path=sosreport-..." or "111 path = sosreport-..."
+                const match = line.match(/^\d+\s+(\S+)\s*=\s*(.*)$/);
+                if (match) {
+                    const key = match[1];
+                    const value = match[2];
+                    this.paxExtendedHeaders[key] = value;
+                    if (key === 'path' || key === 'linkpath') {
+                        debugLog(`[TAR Parser] Found PAX ${key}:`, value);
+                    }
+                }
+            }
+            return; // Don't process PAX headers as regular files
+        }
+
+        // Debug: Log when we see key files
+        if (filename.endsWith('dpkg_-l') || filename.endsWith('os-release')) {
+            debugLog(`[TAR Parser] processEntry:`, filename, `size=${size}, typeflag=${typeflag}`);
+        }
 
         // Detect SCC report using rules
         if (!this.isSCCReport && SCC_RULES.detection.isSCCReport(filename)) {
@@ -3854,6 +3968,11 @@ class IncrementalTARParser {
         // Process SCC rules if this is an SCC report
         if (this.isSCCReport && size > 0) {
             this.processSCCRules(filename, size, offset);
+        }
+
+        // Clear PAX headers after processing regular file (typeflag '0' or 48)
+        if (typeflag === 48 || typeflag === 0 || typeflag === '0'.charCodeAt(0)) {
+            this.paxExtendedHeaders = {};
         }
 
         // Track directories
@@ -3885,9 +4004,19 @@ class IncrementalTARParser {
             return;
         }
         
+        // Debug: Log when we see key files
+        if (filename.endsWith('dpkg_-l') || filename.endsWith('os-release')) {
+            debugLog(`[TAR Parser] Processing file:`, filename, `size=${size}`);
+        }
+        
         // Iterate through all rules (except detection)
         for (const [ruleName, rule] of Object.entries(SCC_RULES)) {
             if (ruleName === 'detection' || !rule.filePattern) continue;
+            
+            // Debug: Log pattern testing for key files
+            if (filename.includes('os-release') || filename.includes('dpkg') || filename.includes('installed-rpms') || filename.includes('package-data')) {
+                debugLog(`[TAR Parser] Testing rule '${ruleName}' pattern ${rule.filePattern} against:`, filename);
+            }
             
             // Check if filename matches rule pattern
             if (rule.filePattern.test(filename)) {
@@ -4043,6 +4172,26 @@ class IncrementalTARParser {
                                         };
                                         debugLog(`[TAR Parser] Rule '${ruleName}' merged (${this.analysisResults[ruleName].nodes.length} unique nodes, ${Object.keys(mergedMap).length} mappings)`);
                                     }
+                                } else if (ruleName === 'distroPackages') {
+                                    // distroPackages: prefer raw format over Azure validation format
+                                    const existing = this.analysisResults[ruleName];
+                                    
+                                    // Priority: raw content (isRpmRaw or isDpkg) > Azure validation (packages/warnings)
+                                    const isRawFormat = result.isRpmRaw || result.isDpkg;
+                                    const existingIsRaw = existing && (existing.isRpmRaw || existing.isDpkg);
+                                    
+                                    if (!existing || isRawFormat && !existingIsRaw) {
+                                        // No existing result, or this is raw and existing is validation
+                                        this.analysisResults[ruleName] = result;
+                                        debugLog(`[TAR Parser] Rule '${ruleName}' parsed successfully (${isRawFormat ? 'raw format' : 'validation format'}):`, result);
+                                    } else if (!isRawFormat && existingIsRaw) {
+                                        // This is validation but existing is raw - keep existing
+                                        debugLog(`[TAR Parser] Rule '${ruleName}' skipping validation format (already have raw format)`);
+                                    } else {
+                                        // Both same type, use newer
+                                        this.analysisResults[ruleName] = result;
+                                        debugLog(`[TAR Parser] Rule '${ruleName}' replaced with newer result`);
+                                    }
                                 } else {
                                     // Other single file rules - replace result
                                     this.analysisResults[ruleName] = result;
@@ -4080,7 +4229,7 @@ class IncrementalTARParser {
         const oomKillerData = this.analysisResults.oomKiller || null;
         const xfsErrorsData = this.analysisResults.xfsErrors || null;
         const corosyncData = this.analysisResults.corosyncConfig || null;
-        const rpmPackagesData = this.analysisResults.rpmPackages || null;
+        const distroPackagesData = this.analysisResults.distroPackages || null;
         const pacemakerResourcesData = this.analysisResults.pacemakerResources || null;
         const fencingConfigData = this.analysisResults.fencingConfig || null;
         const clusterEventsData = this.analysisResults.clusterEvents || null;
@@ -4277,7 +4426,7 @@ class IncrementalTARParser {
             corosyncConfig: corosyncData,
             corosyncStatus: this.analysisResults.corosyncStatus || null,
             clusterStatus: this.analysisResults.clusterStatus || null,
-            rpmPackages: rpmPackagesData,
+            distroPackages: distroPackagesData,
             pacemakerResources: pacemakerResourcesData,
             fencingConfig: fencingConfigData,
             clusterEvents: clusterEventsData,
@@ -4286,6 +4435,7 @@ class IncrementalTARParser {
             kernelTuning: this.analysisResults.kernelTuning || null,
             fstab: this.analysisResults.fstab || null,
             nvmeList: this.analysisResults.nvmeList || null,
+            usedPaxFormat: this.usedPaxFormat || false,  // Flag if PAX format was detected
             // Cross-validation results
             nodesInHosts: nodesInHosts,
             nodesMissingFromHosts: nodesMissingFromHosts

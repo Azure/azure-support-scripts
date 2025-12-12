@@ -637,6 +637,13 @@
             }
         };
         
+        // Utility: Escape HTML to prevent XSS and display issues
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
         // Format streaming analysis results (from worker)
         function formatStreamingAnalysis(analysis, compressedSize, decompressedSize, filename) {
             // Debug: Log the entire analysis object to see what we're receiving
@@ -657,14 +664,14 @@
             console.log('[DEBUG] kernelReboots:', analysis.kernelReboots);
             console.log('[DEBUG] oomKiller:', analysis.oomKiller);
             console.log('[DEBUG] xfsErrors:', analysis.xfsErrors);
-            console.log('[DEBUG] rpmPackages:', analysis.rpmPackages);
+            console.log('[DEBUG] distroPackages:', analysis.distroPackages);
             console.log('[DEBUG] pacemakerResources:', analysis.pacemakerResources);
             console.log('[DEBUG] kernelTuning:', analysis.kernelTuning);
             if (analysis.pacemakerResources && analysis.pacemakerResources.resources) {
                 console.log('[DEBUG] Resources detail:', analysis.pacemakerResources.resources);
             }
             
-            const { fileCount, directories, fileTypes, files, totalParsed, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, kernelReboots, oomKiller, xfsErrors, corosyncConfig, rpmPackages, antivirus, kernelTuning, fstab, nvmeList } = analysis;
+            const { fileCount, directories, fileTypes, files, totalParsed, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, kernelReboots, oomKiller, xfsErrors, corosyncConfig, distroPackages, antivirus, kernelTuning, fstab, nvmeList } = analysis;
 
             // Compute a reusable SAP detection flag early so UI sections can be gated
             const dirListGlobal = (directories || []).map(d => (d || '').toLowerCase());
@@ -689,8 +696,8 @@
                     return /sap/i.test(t) || /sap/i.test(p) || /sap/i.test(n) || /SAPInstance/i.test(t);
                 })
                 : [];
-            const sapPackagesGlobal = (analysis.rpmPackages && analysis.rpmPackages.found && analysis.rpmPackages.packages)
-                ? Object.keys(analysis.rpmPackages.packages).filter(n => /sap|hana|hdb|saptune/i.test(n))
+            const sapPackagesGlobal = (analysis.distroPackages && analysis.distroPackages.found && analysis.distroPackages.packages)
+                ? Object.keys(analysis.distroPackages.packages).filter(n => /sap|hana|hdb|saptune/i.test(n))
                 : [];
             const serviceFilesGlobal = fileListGlobal.filter(fn => fn.endsWith('.service') || fn.includes('/etc/systemd/') || fn.includes('systemctl') || fn.includes('sapstart') || fn.includes('sapstartsrv') || fn.includes('saposcol'));
 
@@ -716,9 +723,9 @@
             // SAP EPIC detection: Look for SAP EPIC-specific packages and pacemaker resources
             const basicEnvEpic = analysis.basicEnvironment && analysis.basicEnvironment.found && analysis.basicEnvironment.epicProductDetected;
             const epicPackagesGlobal = [];
-            if (analysis.rpmPackages && analysis.rpmPackages.packages) {
+            if (analysis.distroPackages && analysis.distroPackages.packages) {
                 const epicPatterns = ['sap-instance-', 'sapstartsrv', 'sap-saptune', 'sap-host-agent', 'lvm2-clvm'];
-                for (const [pkgName, version] of Object.entries(analysis.rpmPackages.packages)) {
+                for (const [pkgName, version] of Object.entries(analysis.distroPackages.packages)) {
                     if (epicPatterns.some(pattern => pkgName.includes(pattern))) {
                         epicPackagesGlobal.push(`${pkgName}-${version}`);
                     }
@@ -1074,11 +1081,12 @@
                                     if (member) {
                                         html += `<li style="margin: 3px 0; font-size: 12px;">`;
                                         html += `<code class="text-muted" style="font-weight: normal;">${member.name}</code>`;
-                                        html += ` <span class="text-muted">- ${member.type}`;
-                                        if (member.provider && member.provider !== 'unknown') {
-                                            html += ` (${member.provider})`;
-                                        }
-                                        html += `</span>`;
+                                        // Build full resource specification: class::provider:type
+                                        const cls = member.class || 'ocf';
+                                        const provider = member.provider || 'unknown';
+                                        const type = member.type;
+                                        const fullSpec = `${cls}::${provider}:${type}`;
+                                        html += ` <span class="text-muted">(${fullSpec})</span>`;
                                         
                                         // Show maintenance status for member
                                         if (member.maintenance) {
@@ -1109,11 +1117,12 @@
                     standaloneResources.forEach(resource => {
                         html += `<li style="margin: 5px 0; font-size: 13px;">`;
                         html += `<code class="text-info" style="font-weight: bold;">${resource.name}</code>`;
-                        html += ` <span class="text-muted">- ${resource.type}`;
-                        if (resource.provider && resource.provider !== 'unknown') {
-                            html += ` (${resource.provider})`;
-                        }
-                        html += `</span>`;
+                        // Build full resource specification: class::provider:type
+                        const cls = resource.class || 'ocf';
+                        const provider = resource.provider || 'unknown';
+                        const type = resource.type;
+                        const fullSpec = `${cls}::${provider}:${type}`;
+                        html += ` <span class="text-muted">(${fullSpec})</span>`;
                         
                         // Show maintenance status
                         if (resource.maintenance) {
@@ -1735,43 +1744,70 @@
                     html += `</div>`;
                 }
                 
-                // Azure Packages section
-                if (analysis.rpmPackages && analysis.rpmPackages.found) {
-                    const pkgs = analysis.rpmPackages;
-                    html += `<div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2);">`;
-                    html += `<p style="margin: 0 0 10px 0; font-weight: bold;">Azure Packages:</p>`;
-                    
-                    if (pkgs.warnings && pkgs.warnings.length > 0) {
-                        html += `<div class="warning-block" style="margin-bottom: 10px;">`;
-                        html += `<p style="margin: 0 0 5px 0; color: #ff9800;"><strong>Package Warnings (${pkgs.warnings.length}):</strong></p>`;
-                        html += `<ul style="margin: 5px 0; padding-left: 20px; font-size: 12px;">`;
-                        pkgs.warnings.forEach(warning => {
-                            html += `<li><strong>${warning.package}:</strong> ${warning.message}`;
-                            if (warning.documentationUrl) {
-                                 html += ` <a href="${warning.documentationUrl}" target="_blank" style="font-size: 11px;">[docs]</a>`;
-                            }
-                            html += `</li>`;
-                        });
-                        html += `</ul>`;
-                        html += `</div>`;
-                    }
-                    
-                    if (pkgs.packages && Object.keys(pkgs.packages).length > 0) {
-                        html += `<details class="subsection">`;
-                        html += `<summary style="cursor: pointer; font-weight: bold;">Installed Packages (${Object.keys(pkgs.packages).length})</summary>`;
-                        html += `<ul style="margin: 10px 0; padding-left: 20px; font-size: 12px;">`;
-                        Object.entries(pkgs.packages).forEach(([pkgName, version]) => {
-                            html += `<li><code>${pkgName}</code>: ${version}</li>`;
-                        });
-                        html += `</ul>`;
-                        html += `</details>`;
-                    } else {
-                        html += `<p style="font-size: 13px;" class="text-muted"><em>No Azure packages found</em></p>`;
-                    }
-                    html += `</div>`;
-                }
-                
                 html += `</div></details>`;
+            }
+            
+            // Distribution Packages section (RPM or DEB) - Always show when packages are found
+            if (analysis.distroPackages && analysis.distroPackages.found) {
+                const pkgs = analysis.distroPackages;
+                
+                // Check if this is dpkg (Debian/Ubuntu) format or RPM raw list
+                if (pkgs.isDpkg || pkgs.isRpmRaw) {
+                    const distroType = pkgs.isDpkg ? 'Debian/Ubuntu' : 'RPM-based';
+                    html += `<details class="content-details">`;
+                    html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">Distribution Packages</summary>`;
+                    html += `<div style="margin-top: 15px;">`;
+                    html += `<p style="font-size: 12px; color: rgba(255,255,255,0.7); margin: 0 0 10px 0;">`;
+                    html += `Found ${pkgs.packageCount || 'unknown'} packages (${distroType}).`;
+                    html += `</p>`;
+                    
+                    // Display raw content in a collapsible section
+                    if (pkgs.rawContent) {
+                        html += `<details class="subsection" open>`;
+                        html += `<summary style="cursor: pointer; font-weight: bold;">View Package List (${pkgs.packageCount} packages)</summary>`;
+                        html += `<div style="margin-top: 10px;">`;
+                        html += `<pre style="background: var(--code-bg); padding: 10px; border: 1px solid var(--code-border); border-radius: 4px; overflow-x: auto; overflow-y: auto; max-height: 400px; font-size: 12px; white-space: pre;">${escapeHtml(pkgs.rawContent)}</pre>`;
+                        html += `</div>`;
+                        html += `</details>`;
+                    }
+                    html += `</div></details>`;
+                } else {
+                    // RPM format (RHEL/SLES) with Azure package validation - show for SAP/cluster environments
+                    if (sapDetected || epicDetected || (corosyncConfig && corosyncConfig.found)) {
+                        html += `<details open class="content-details">`;
+                        html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">Azure Packages</summary>`;
+                        html += `<div style="margin-top: 15px;">`;
+                        
+                        if (pkgs.warnings && pkgs.warnings.length > 0) {
+                            html += `<div class="warning-block" style="margin-bottom: 10px;">`;
+                            html += `<p style="margin: 0 0 5px 0; color: #ff9800;"><strong>Package Warnings (${pkgs.warnings.length}):</strong></p>`;
+                            html += `<ul style="margin: 5px 0; padding-left: 20px; font-size: 12px;">`;
+                            pkgs.warnings.forEach(warning => {
+                                html += `<li><strong>${warning.package}:</strong> ${warning.message}`;
+                                if (warning.documentationUrl) {
+                                     html += ` <a href="${warning.documentationUrl}" target="_blank" style="font-size: 11px;">[docs]</a>`;
+                                }
+                                html += `</li>`;
+                            });
+                            html += `</ul>`;
+                            html += `</div>`;
+                        }
+                        
+                        if (pkgs.packages && Object.keys(pkgs.packages).length > 0) {
+                            html += `<details class="subsection">`;
+                            html += `<summary style="cursor: pointer; font-weight: bold;">Installed Packages (${Object.keys(pkgs.packages).length})</summary>`;
+                            html += `<ul style="margin: 10px 0; padding-left: 20px; font-size: 12px;">`;
+                            Object.entries(pkgs.packages).forEach(([pkgName, version]) => {
+                                html += `<li><code>${pkgName}</code>: ${version}</li>`;
+                            });
+                            html += `</ul>`;
+                            html += `</details>`;
+                        } else {
+                            html += `<p style="font-size: 13px;" class="text-muted"><em>No Azure packages found</em></p>`;
+                        }
+                        html += `</div></details>`;
+                    }
+                }
             }
             
             // Events - group Live Migration, Kernel Reboots, OOM, and XFS Errors (collapsed by default)
@@ -2395,6 +2431,13 @@
                 html += `<p><strong>Archive Size:</strong> ${(compressedSize / 1024 / 1024).toFixed(1)} MB (compressed) → ${(decompressedSize / 1024 / 1024).toFixed(1)} MB (decompressed)</p>`;
             }
             
+            // Show warning if PAX format was detected (non-GNU tar)
+            if (analysis.usedPaxFormat) {
+                html += `<div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 12px; margin: 10px 0;">`;
+                html += `<p style="margin: 0; color: #856404;"><strong>⚠️ Warning:</strong> This file was not packaged by GNU Tar. It is possible this was repackaged before uploading.</p>`;
+                html += `</div>`;
+            }
+            
             html += `<p><strong>Total Entries Parsed:</strong> ${totalParsed}</p>`;
             
             // File types
@@ -2535,6 +2578,13 @@
             // Show compressed/decompressed sizes if available
             if (compressedSize && decompressedSize) {
                 html += `<p><strong>Archive Size:</strong> ${(compressedSize / 1024 / 1024).toFixed(1)} MB (compressed) → ${(decompressedSize / 1024 / 1024).toFixed(1)} MB (decompressed)</p>`;
+            }
+            
+            // Show warning if PAX format was detected (non-GNU tar)
+            if (analysis.usedPaxFormat) {
+                html += `<div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 12px; margin: 10px 0;">`;
+                html += `<p style="margin: 0; color: #856404;"><strong>⚠️ Warning:</strong> This file was not packaged by GNU Tar. It is possible this was repackaged before uploading.</p>`;
+                html += `</div>`;
             }
             
             html += `<p><strong>Total Entries Parsed:</strong> ${totalParsed || 0}</p>`;
