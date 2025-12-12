@@ -890,6 +890,57 @@ tar -cJf "$FIXTURES_DIR/sosreport-deb-raw.tar.xz" sosreport-deb-raw
 rm -rf sosreport-deb-raw
 echo "✓ Created sosreport-deb-raw (22 packages)"
 
+# Test for Azure VM with Ultra Disk and Premium SSD v2
+echo ""
+echo "=== Creating test-azure-vm-storage.tar.xz ==="
+mkdir -p test-data
+cat > test-data/instance_metadata.json << 'EOF'
+{
+  "compute": {
+    "vmSize": "Standard_E32s_v3",
+    "publisher": "SUSE",
+    "offer": "sles-sap-15-sp5",
+    "sku": "gen2",
+    "licenseType": "SLES",
+    "storageProfile": {
+      "osDisk": {
+        "name": "osdisk",
+        "managedDisk": {
+          "storageAccountType": "Premium_LRS"
+        }
+      },
+      "dataDisks": [
+        {
+          "lun": 0,
+          "name": "hana-data",
+          "diskSizeGB": 512,
+          "managedDisk": {
+            "storageAccountType": "UltraSSD_LRS"
+          }
+        },
+        {
+          "lun": 1,
+          "name": "hana-log",
+          "diskSizeGB": 256,
+          "managedDisk": {
+            "storageAccountType": "PremiumV2_LRS"
+          }
+        },
+        {
+          "lun": 2,
+          "name": "hana-shared",
+          "diskSizeGB": 1024,
+          "managedDisk": {
+            "storageAccountType": "Premium_LRS"
+          }
+        }
+      ]
+    }
+  }
+}
+EOF
+create_fixture "test-azure-vm-storage"
+
 echo ""
 echo "========================================="
 echo "✓ All test fixtures created successfully!"

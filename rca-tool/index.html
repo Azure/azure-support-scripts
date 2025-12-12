@@ -820,6 +820,76 @@
                     html += `</div>`;
                 }
                 
+                // Storage subsection (only if we have disk info)
+                if (hasAzureVMInfo && (vm.osDiskType || (vm.dataDisks && vm.dataDisks.length > 0))) {
+                    html += `<div class="subsection">`;
+                    html += `<p style="margin: 0 0 5px 0; font-weight: bold;">Storage:</p>`;
+                    
+                    if (vm.osDiskType) {
+                        let diskTypeDisplay = vm.osDiskType
+                            .replace('_LRS', '')
+                            .replace('_ZRS', ' (ZRS)');
+                        
+                        if (diskTypeDisplay === 'PremiumV2') {
+                            diskTypeDisplay = 'Premium SSD v2';
+                        } else if (diskTypeDisplay === 'UltraSSD') {
+                            diskTypeDisplay = 'Ultra Disk';
+                        } else if (diskTypeDisplay === 'Premium') {
+                            diskTypeDisplay = 'Premium SSD';
+                        } else if (diskTypeDisplay === 'StandardSSD') {
+                            diskTypeDisplay = 'Standard SSD';
+                        } else if (diskTypeDisplay === 'Standard') {
+                            diskTypeDisplay = 'Standard HDD';
+                        }
+                        
+                        const isPremiumV2 = vm.osDiskType === 'PremiumV2_LRS';
+                        const isUltra = vm.osDiskType === 'UltraSSD_LRS';
+                        const badgeClass = isPremiumV2 || isUltra ? 'badge-success' : 'badge-info';
+                        
+                        html += `<p style="margin: 5px 0;"><strong>OS Disk:</strong> <span class="badge ${badgeClass}">${diskTypeDisplay}</span></p>`;
+                    }
+                    
+                    if (vm.dataDisks && vm.dataDisks.length > 0) {
+                        html += `<p style="margin: 10px 0 5px 0;"><strong>Data Disks:</strong> ${vm.dataDisks.length} disk(s)</p>`;
+                        html += `<ul style="margin: 5px 0; padding-left: 20px;">`;
+                        
+                        vm.dataDisks.forEach(disk => {
+                            const diskType = disk.storageAccountType || 'Unknown';
+                            let diskTypeDisplay = diskType
+                                .replace('_LRS', '')
+                                .replace('_ZRS', ' (ZRS)');
+                            
+                            if (diskTypeDisplay === 'PremiumV2') {
+                                diskTypeDisplay = 'Premium SSD v2';
+                            } else if (diskTypeDisplay === 'UltraSSD') {
+                                diskTypeDisplay = 'Ultra Disk';
+                            } else if (diskTypeDisplay === 'Premium') {
+                                diskTypeDisplay = 'Premium SSD';
+                            } else if (diskTypeDisplay === 'StandardSSD') {
+                                diskTypeDisplay = 'Standard SSD';
+                            } else if (diskTypeDisplay === 'Standard') {
+                                diskTypeDisplay = 'Standard HDD';
+                            }
+                            
+                            const isPremiumV2 = diskType === 'PremiumV2_LRS';
+                            const isUltra = diskType === 'UltraSSD_LRS';
+                            const badgeClass = isPremiumV2 || isUltra ? 'badge-success' : 'badge-info';
+                            
+                            let diskInfo = `LUN ${disk.lun}`;
+                            if (disk.diskSizeGB) {
+                                diskInfo += ` (${disk.diskSizeGB} GB)`;
+                            }
+                            diskInfo += `: <span class="badge ${badgeClass}">${diskTypeDisplay}</span>`;
+                            
+                            html += `<li style="margin: 3px 0;">${diskInfo}</li>`;
+                        });
+                        
+                        html += `</ul>`;
+                    }
+                    
+                    html += `</div>`;
+                }
+                
                 // OS Distribution subsection (always show if osRelease data is available)
                 if (hasOSInfo) {
                     const os = analysis.osRelease;

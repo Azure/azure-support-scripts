@@ -21,15 +21,17 @@ Currently, the tool manages:
 |Kernel reboot events|Shutdown, reboots and kernel starts are listed. Shows kernel version when boots|🗸|🗸|🗸|🗸|
 |Out of memory/oomk events|If the system cannot allocate memory for processes or has out of memory events, they are detected and listed.|🗸|n.a.|🗸|🗸|
 |Cluster packages|Validation of packages install in specific version ranges. Needs improvement for non-Suse.|||||
-|AV Detection|MS Defender, Cloudstrike Falcon, Illumio, Trend Micro, Guardicore|||||
+|AV Detection|MS Defender, Cloudstrike Falcon, Illumio, Trend Micro, Guardicore|🗸|n.a.|🗸|🗸|
 |DLM Service Detection|Detects if DLM (Distributed Lock Manager) service is enabled and alerts|🗸|n.a.|🗸|🗸|
-|Kernel parameters and validation|It grabs kernel parameters (sysctl) and displays them raw. If SAP Hana is found, it also validates best practices.|🗸||||
-|Raw fstab|It grab the raw fstab.|🗸||||
-|Azure Site Recovery|It detects if the involflt_start service is enabled.|🗸||🗸||
+|Kernel parameters and validation|It grabs kernel parameters (sysctl) and displays them raw. If SAP Hana is found, it also validates best practices.|🗸|||🗸|
+|Raw fstab|It grab the raw fstab.|🗸|n.a.|🗸|🗸|
+|Azure Site Recovery|It detects if the involflt_start service is enabled.|🗸|n.a.|🗸||
 |XFS corruption|If we see a message about xfs corruption, it is listed as an event.|🗸||🗸|🗸|
 |XFS duplicate UUID|If the is a kernel message about a duplicate UUID XFS mount, it is listed as an event.|🗸||🗸|🗸|
 |NVME Detection|If NVME disks are found, they are listed.|🗸|n.a.||🗸|
 |Network Kernel Parameters|Recommended and optional kernel parameters for network are verified on the collected sysctl.|🗸|n.a.|🗸|🗸|
+|Raw list of distro packages|Shows a raw list of packages from dpkg -l, and dnf list|🗸|n.a.||🗸|
+|Azure Storage Type Detection|Standard SSD, Premium SSDv2, Ultradisk, etc.|🗸|n.a.|n.a.|🗸|
 |(WIP)||𐄂|n.a.|🗸|🗸|
 
 

@@ -874,4 +874,33 @@ test.describe('SAP HANA Cluster Analyzer', () => {
     // Should not show warnings
     expect(resultHTML).not.toContain('Parameters Need Adjustment');
   });
+
+  test('detects and displays Azure storage types (Ultra Disk and Premium SSD v2)', async ({ page }) => {
+    const resultHTML = await uploadAndWaitForAnalysis(page, 'scc_test-azure-vm-storage.tar.xz');
+    
+    // Should show storage section
+    expect(resultHTML).toContain('Storage:');
+    
+    // Should show OS disk type
+    expect(resultHTML).toContain('OS Disk:');
+    expect(resultHTML).toContain('Premium SSD');
+    
+    // Should show data disks section
+    expect(resultHTML).toContain('Data Disks:');
+    expect(resultHTML).toContain('3 disk(s)');
+    
+    // Should detect Ultra Disk
+    expect(resultHTML).toContain('Ultra Disk');
+    expect(resultHTML).toContain('LUN 0');
+    expect(resultHTML).toContain('512 GB');
+    
+    // Should detect Premium SSD v2
+    expect(resultHTML).toContain('Premium SSD v2');
+    expect(resultHTML).toContain('LUN 1');
+    expect(resultHTML).toContain('256 GB');
+    
+    // Should show regular Premium SSD
+    expect(resultHTML).toContain('LUN 2');
+    expect(resultHTML).toContain('1024 GB');
+  });
 });

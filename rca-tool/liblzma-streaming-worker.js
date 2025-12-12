@@ -2,7 +2,7 @@
 // Processes compressed data in chunks to keep memory usage low
 
 const CACHE_BUST = '?v=' + Date.now();
-console.log('[Worker] Loading version: 2025-12-11-rpm-raw-list-v3');
+console.log('[Worker] Loading version: 2025-12-12-scc-sysctl-extraction-v2');
 
 // Import utility functions (only in Web Worker context)
 if (typeof importScripts === 'function') {
@@ -158,13 +158,35 @@ const SCC_RULES = {
             // Parse JSON format (sosreport)
             try {
                 const metadata = JSON.parse(content);
-                // Extract properties from root
-                const vmSize = metadata.vmSize || null;
-                const offer = metadata.offer || null;
-                const publisher = metadata.publisher || null;
-                const sku = metadata.sku || null;
-                const licenseType = metadata.licenseType || null;
-                const billingCode = metadata.billingCode || null;
+                // Extract properties from root or compute object
+                const compute = metadata.compute || metadata;
+                const vmSize = compute.vmSize || metadata.vmSize || null;
+                const offer = compute.offer || metadata.offer || null;
+                const publisher = compute.publisher || metadata.publisher || null;
+                const sku = compute.sku || metadata.sku || null;
+                const licenseType = compute.licenseType || metadata.licenseType || null;
+                const billingCode = compute.billingCode || metadata.billingCode || null;
+                
+                // Extract storage profile information
+                let osDiskType = null;
+                let dataDisks = [];
+                
+                if (compute.storageProfile) {
+                    // Extract OS disk type
+                    if (compute.storageProfile.osDisk && compute.storageProfile.osDisk.managedDisk) {
+                        osDiskType = compute.storageProfile.osDisk.managedDisk.storageAccountType || null;
+                    }
+                    
+                    // Extract data disks
+                    if (compute.storageProfile.dataDisks && Array.isArray(compute.storageProfile.dataDisks)) {
+                        dataDisks = compute.storageProfile.dataDisks.map(disk => ({
+                            lun: disk.lun,
+                            name: disk.name || null,
+                            diskSizeGB: disk.diskSizeGB || null,
+                            storageAccountType: disk.managedDisk ? disk.managedDisk.storageAccountType : null
+                        }));
+                    }
+                }
                 
                 // Determine PAYG vs BYOS based on official Azure rules
                 let billingModel = null;
@@ -249,6 +271,8 @@ const SCC_RULES = {
                 debugLog('[azureVMProperties parser] License Type:', licenseType);
                 debugLog('[azureVMProperties parser] Billing Model:', billingModel);
                 debugLog('[azureVMProperties parser] Detection Method:', detectionMethod);
+                debugLog('[azureVMProperties parser] OS Disk Type:', osDiskType);
+                debugLog('[azureVMProperties parser] Data Disks Count:', dataDisks.length);
                 
                 return {
                     found: true,
@@ -259,7 +283,11 @@ const SCC_RULES = {
                     billingCode: billingCode,
                     licenseType: licenseType,
                     billingModel: billingModel,
-                    detectionMethod: detectionMethod
+                    detectionMethod: detectionMethod,
+                    osDiskType: osDiskType,
+                    dataDisks: dataDisks,
+                    hasUltraDisk: osDiskType === 'UltraSSD_LRS' || dataDisks.some(d => d.storageAccountType === 'UltraSSD_LRS'),
+                    hasPremiumV2: osDiskType === 'PremiumV2_LRS' || dataDisks.some(d => d.storageAccountType === 'PremiumV2_LRS')
                 };
             } catch (e) {
                 console.error('[azureVMProperties parser] Failed to parse JSON:', e);
@@ -3516,13 +3544,58 @@ const SCC_RULES = {
     
     // Rule: Extract kernel tuning parameters from sysctl
     kernelTuning: {
-        filePattern: /sos_commands\/kernel\/sysctl_-a$/,
+        filePattern: /sos_commands\/kernel\/sysctl_-a$|\/env\.txt$/,
         
         parse: function(content, filename) {
             debugLog('[kernelTuning parser] Analyzing kernel parameters in:', filename);
             
+            let sysctlContent = content;
+            
+            // If this is SCC's env.txt, extract just the sysctl section
+            if (filename.includes('env.txt')) {
+                debugLog('[kernelTuning parser] Extracting sysctl from SCC env.txt');
+                
+                // Extract content between "# /sbin/sysctl -a" and next "#==[ Command ]" marker
+                const lines = content.split('\n');
+                const extractedLines = [];
+                let inSection = false;
+                
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i];
+                    
+                    // Start collecting after finding the marker
+                    if (line.includes('# /sbin/sysctl -a')) {
+                        inSection = true;
+                        continue; // Skip the marker line itself
+                    }
+                    
+                    // Stop at next section marker
+                    if (inSection && line.trim().startsWith('#==[ Command ]')) {
+                        break;
+                    }
+                    
+                    // Stop at empty line followed by section marker
+                    if (inSection && line.trim() === '' && i + 1 < lines.length && lines[i + 1].trim().startsWith('#==')) {
+                        break;
+                    }
+                    
+                    // Collect lines while in section
+                    if (inSection) {
+                        extractedLines.push(line);
+                    }
+                }
+                
+                if (extractedLines.length === 0) {
+                    debugLog('[kernelTuning parser] Sysctl section not found in env.txt');
+                    return { found: false };
+                }
+                
+                sysctlContent = extractedLines.join('\n');
+                debugLog('[kernelTuning parser] Extracted', extractedLines.length, 'lines from sysctl section');
+            }
+            
             // Parse sysctl output using utility function
-            const parsed = SCC_RULES.parseKeyValueFile(content, {
+            const parsed = SCC_RULES.parseKeyValueFile(sysctlContent, {
                 pattern: /^([^\s=]+)\s*=\s*(.+)$/,  // sysctl uses "key = value" format
                 skipComments: true,
                 skipEmpty: true
@@ -3661,12 +3734,60 @@ const SCC_RULES = {
     
     // Rule: Extract fstab file
     fstab: {
-        filePattern: /\/etc\/fstab$/,
+        filePattern: /\/etc\/fstab$|\/fs-diskio\.txt$/,
         
         parse: function(content, filename) {
             debugLog('[fstab parser] Analyzing fstab in:', filename);
             
+            // If this is fs-diskio.txt from SCC, extract just the fstab section
+            if (filename.includes('fs-diskio.txt')) {
+                debugLog('[fstab parser] Extracting fstab from SCC fs-diskio.txt');
+                return this.extractFstabFromSCC(content, filename);
+            }
+            
             return SCC_RULES.extractRawFile(content, filename);
+        },
+        
+        // Helper to extract fstab section from SCC's fs-diskio.txt
+        extractFstabFromSCC: function(content, filename) {
+            const lines = content.split('\n');
+            let fstabContent = [];
+            let inFstabSection = false;
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                
+                // Start of fstab section
+                if (line.includes('# /etc/fstab')) {
+                    inFstabSection = true;
+                    continue;
+                }
+                
+                // End of fstab section (empty line or next section marker)
+                if (inFstabSection && (line.trim() === '' || line.startsWith('#=='))) {
+                    break;
+                }
+                
+                // Collect fstab lines
+                if (inFstabSection) {
+                    fstabContent.push(line);
+                }
+            }
+            
+            if (fstabContent.length === 0) {
+                debugLog('[fstab parser] No fstab section found in fs-diskio.txt');
+                return { found: false };
+            }
+            
+            const extractedFstab = fstabContent.join('\n');
+            debugLog('[fstab parser] Extracted', fstabContent.length, 'lines from fstab section');
+            
+            return {
+                found: true,
+                content: extractedFstab,
+                filename: filename,
+                source: 'SCC fs-diskio.txt'
+            };
         }
     },
     
