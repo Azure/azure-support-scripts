@@ -16,17 +16,29 @@ issues = {}
 ######################################################
 class CustomFormatter(logging.Formatter):
 
-    black =    "\x1b[30;1m"
-    grey =     "\x1b[30;0m"
-    red =      "\x1b[31;20m"
-    green =    "\x1b[32;20m"
-    yellow =   "\x1b[33;20m"
-    bright_red = "\x1b[91;1m"
-    bold_red = "\x1b[31;1m"
-    bold_green =    "\x1b[32;1m"
-    bold_yellow =   "\x1b[33;1m"
-    reset =    "\x1b[0m"
-
+    if (sys.stdout.isatty()) { 
+        black =    "\x1b[30;1m"
+        grey =     "\x1b[30;0m"
+        red =      "\x1b[31;20m"
+        green =    "\x1b[32;20m"
+        yellow =   "\x1b[33;20m"
+        bright_red = "\x1b[91;1m"
+        bold_red = "\x1b[31;1m"
+        bold_green =    "\x1b[32;1m"
+        bold_yellow =   "\x1b[33;1m"
+        reset =    "\x1b[0m"
+    } else {
+        black =    ""
+        grey =     ""
+        red =      ""
+        green =    ""
+        yellow =   ""
+        bright_red = ""
+        bold_red = ""
+        bold_green =    ""
+        bold_yellow =   ""
+        reset =    ""
+    }
 
     # format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
     format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
