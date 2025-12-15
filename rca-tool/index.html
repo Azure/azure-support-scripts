@@ -22,8 +22,9 @@
         <div id="drop-zone">
             <h2>Drag and Drop Support File</h2>
             <p>Choose a .tar.gz or .tar.xz cluster file (hb_report, crm_report, supportconfig, or sosreport)</p>
+            <p>Or a plain text console log file (.log)</p>
             <p style='font-size: 0.9em;'>Supports both gzip and XZ compression</p>
-            <input type="file" id="file-input" accept=".txz,.tar.xz,.tar.gz,.tgz" aria-label="Drag and drop support file (.tar.gz or .tar.xz)">
+            <input type="file" id="file-input" accept=".txz,.tar.xz,.tar.gz,.tgz,.log" aria-label="Drag and drop support file (.tar.gz, .tar.xz, or .log)">
         </div>
         <pre id="output"></pre>
     </div>
@@ -190,6 +191,115 @@
             });
         }
 
+        // Process plain text console log files (no TAR, no compression)
+        async function processPlainTextLog(textData, filename, outputElement) {
+            console.log(`Processing plain text log: ${filename}`);
+            
+            outputElement.innerHTML = `<div class="progress-container">
+                <p class="progress-title">Analyzing ${filename}...</p>
+                <div class="progress-bar-wrapper">
+                    <div class="progress-bar">
+                        <div id="progress-fill" class="progress-fill" style="width: 50%"></div>
+                    </div>
+                    <p id="progress-text" class="progress-text">Processing console log...</p>
+                </div>
+            </div>`;
+            
+            const progressFill = document.getElementById('progress-fill');
+            const progressText = document.getElementById('progress-text');
+            
+            try {
+                // Create worker for analysis
+                const worker = new Worker('liblzma-streaming-worker.js?v=' + Date.now());
+                const timeout = setTimeout(() => {
+                    worker.terminate();
+                    throw new Error('Analysis timeout');
+                }, 60000); // 1 minute timeout for plain text
+                
+                const result = await new Promise((resolve, reject) => {
+                    worker.onmessage = (e) => {
+                        const msg = e.data;
+                        
+                        console.log('[Main] Received message from worker:', msg);
+                        
+                        if (msg.ready) {
+                            console.log('[Main] Worker ready, setting debug mode...');
+                            worker.postMessage({ command: 'set_debug', enabled: DEBUG_MODE });
+                            
+                            // Send plain text for analysis with synthetic filename
+                            const syntheticFilename = filename.endsWith('.log') ? filename : filename + '.log';
+                            worker.postMessage({
+                                cmd: 'analyze_plaintext',
+                                textData: textData.buffer,
+                                filename: syntheticFilename
+                            }, [textData.buffer]);
+                            return;
+                        }
+                        
+                        // Check success BEFORE progress (message can have both fields)
+                        if (msg.success) {
+                            console.log('[Main] Success message detected, resolving promise...');
+                            clearTimeout(timeout);
+                            worker.terminate();
+                            resolve(msg.analysis);
+                            return;
+                        }
+                        
+                        if (msg.error) {
+                            console.log('[Main] Error message detected:', msg.error);
+                            clearTimeout(timeout);
+                            worker.terminate();
+                            reject(new Error(msg.error));
+                            return;
+                        }
+                        
+                        if (msg.progress !== undefined) {
+                            progressFill.style.width = msg.progress + '%';
+                            progressText.textContent = `Analyzing: ${msg.progress}%`;
+                            return;
+                        }
+                        
+                        console.log('[Main] Unhandled message type:', msg);
+                    };
+                    
+                    worker.onerror = (err) => {
+                        console.error('[Main] Worker error event:', err);
+                        console.error('[Main] Error message:', err.message);
+                        console.error('[Main] Error filename:', err.filename);
+                        console.error('[Main] Error lineno:', err.lineno);
+                        console.error('[Main] Error colno:', err.colno);
+                        console.error('[Main] Error error:', err.error);
+                        clearTimeout(timeout);
+                        worker.terminate();
+                        reject(new Error('Worker error: ' + (err.message || 'Unknown error') + 
+                                        ' at ' + (err.filename || 'unknown') + ':' + (err.lineno || '?')));
+                    };
+                });
+                
+                progressFill.style.width = '100%';
+                progressText.textContent = 'Analysis complete';
+                
+                // Format results
+                const analysisHTML = formatStreamingAnalysis(result, textData.length, textData.length, filename);
+                
+                outputElement.innerHTML = `
+                    <div style="text-align: left; max-width: 800px; margin: 0 auto;">
+                        ${analysisHTML}
+                    </div>
+                `;
+                
+            } catch (err) {
+                console.error('Plain text analysis failed:', err);
+                outputElement.innerHTML = `
+                    <div style="text-align: center; color: red;">
+                        <h3>Analysis Failed</h3>
+                        <p><strong>File:</strong> ${filename}</p>
+                        <p><strong>Error:</strong> ${err.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
         // Load Pako library asynchronously for gzip decompression
         let pakoLoaded = false;
         async function loadPako() {
@@ -291,10 +401,15 @@
                 };
                 
                 worker.onerror = function(error) {
+                    console.error('[Main] Worker error event:', error);
+                    console.error('[Main] Error message:', error.message);
+                    console.error('[Main] Error filename:', error.filename);
+                    console.error('[Main] Error lineno:', error.lineno);
+                    console.error('[Main] Error details:', error);
                     clearTimeout(timeout);
                     worker.terminate();
-                    console.error('Worker error:', error);
-                    reject(new Error(`Worker error: ${error.message}`));
+                    reject(new Error('Worker error: ' + (error.message || 'Unknown error') + 
+                                    ' at ' + (error.filename || 'unknown') + ':' + (error.lineno || '?')));
                 };
                 
                 // Send data to worker with transferable object
@@ -313,10 +428,10 @@
             });
         }
         
-        // Process compressed TAR files (gzip or XZ) with actual decompression
+        // Process compressed TAR files (gzip or XZ) with actual decompression, or plain text console logs
         window.processLargeXZFile = async function(compressedData, filename, outputElement) {
             try {
-                console.log(`Processing compressed file: ${filename} (${compressedData.length} bytes)`);
+                console.log(`Processing file: ${filename} (${compressedData.length} bytes)`);
                 
                 // Detect file format by magic bytes
                 const isGzip = compressedData[0] === 0x1f && compressedData[1] === 0x8b;
@@ -324,14 +439,44 @@
                             compressedData[2] === 0x7a && compressedData[3] === 0x58 && 
                             compressedData[4] === 0x5a && compressedData[5] === 0x00;
                 
+                // Check if it's plain text by looking for mostly printable ASCII in first 512 bytes
+                // and absence of null bytes (which indicate binary)
+                let isProbablyText = false;
+                if (!isGzip && !isXZ) {
+                    const sampleSize = Math.min(512, compressedData.length);
+                    let printableCount = 0;
+                    let hasNullByte = false;
+                    
+                    for (let i = 0; i < sampleSize; i++) {
+                        const byte = compressedData[i];
+                        if (byte === 0) {
+                            hasNullByte = true;
+                            break;
+                        }
+                        // Count printable ASCII (space to ~) and common whitespace (tab, newline, carriage return)
+                        if ((byte >= 0x20 && byte <= 0x7e) || byte === 0x09 || byte === 0x0a || byte === 0x0d) {
+                            printableCount++;
+                        }
+                    }
+                    
+                    // If >80% of sampled bytes are printable and no null bytes, it's probably text
+                    isProbablyText = !hasNullByte && (printableCount / sampleSize) > 0.8;
+                }
+                
                 let compressionType = 'unknown';
                 if (isGzip) compressionType = 'gzip';
                 else if (isXZ) compressionType = 'xz';
+                else if (isProbablyText) compressionType = 'plaintext';
                 
-                console.log(`Detected compression format: ${compressionType}`);
+                console.log(`Detected format: ${compressionType}`);
+                
+                // Handle plain text console logs
+                if (isProbablyText) {
+                    return await processPlainTextLog(compressedData, filename, outputElement);
+                }
                 
                 if (!isGzip && !isXZ) {
-                    throw new Error(`Unknown compression format. Expected XZ (.tar.xz) or gzip (.tar.gz), but file signature doesn't match either format.`);
+                    throw new Error(`Unknown file format. Expected XZ (.tar.xz), gzip (.tar.gz), or plain text (.log).`);
                 }
                 
                 // Update UI to show decompression in progress
@@ -664,6 +809,7 @@
             console.log('[DEBUG] kernelReboots:', analysis.kernelReboots);
             console.log('[DEBUG] oomKiller:', analysis.oomKiller);
             console.log('[DEBUG] xfsErrors:', analysis.xfsErrors);
+            console.log('[DEBUG] emergencyMode:', analysis.emergencyMode);
             console.log('[DEBUG] distroPackages:', analysis.distroPackages);
             console.log('[DEBUG] pacemakerResources:', analysis.pacemakerResources);
             console.log('[DEBUG] kernelTuning:', analysis.kernelTuning);
@@ -1914,6 +2060,9 @@
                 sortedEvents.forEach(event => {
                     html += `<li style="margin-bottom: 8px;">`;
                     html += `<strong class="text-info">${event.timestamp}</strong>`;
+                    if (event.lineNumber) {
+                        html += ` <span style="font-size: 11px;" class="text-muted">| Line: ${event.lineNumber}</span>`;
+                    }
                     html += `<br><span style="font-size: 12px;" class="text-muted">Source: ${event.sourceFile}</span>`;
                     html += `</li>`;
                 });
@@ -2077,6 +2226,50 @@
             } else {
                 html += `<p class="text-muted"><em>No XFS filesystem errors were detected in the analyzed files.</em></p>`;
                 html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection patterns: "XFS (...): Please unmount", "metadata corruption", "internal error"</em></p>`;
+            }
+            html += `</div></details>`;
+
+            // Emergency Mode Events - Always show
+            const emergencyMode = analysis.emergencyMode || { found: false, count: 0, events: [] };
+            const hasEmergencyMode = emergencyMode && emergencyMode.count > 0;
+            const emergencyModeCount = emergencyMode ? emergencyMode.count : 0;
+            const emergencyBlockClass = hasEmergencyMode ? 'danger-block' : 'info-block';
+            html += `<details class="${emergencyBlockClass}">`;
+            html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
+            html += `Emergency Mode Events`;
+            html += ` <span style="font-size: 12px; font-weight: normal;">(${emergencyModeCount} event${emergencyModeCount !== 1 ? 's' : ''} found)</span>`;
+            html += `</summary>`;
+            html += `<div style="margin-top: 15px;">`;
+            
+            if (hasEmergencyMode) {
+                html += '<p><strong>Detected emergency mode events:</strong></p>';
+                html += '<ul style="margin: 10px 0; max-height: 300px; overflow-y: auto;">';
+                
+                // Sort events by line number (chronological order)
+                const sortedEmergency = [...emergencyMode.events].sort((a, b) => {
+                    return a.lineNumber - b.lineNumber;
+                });
+                
+                sortedEmergency.forEach(event => {
+                    html += `<li style="margin-bottom: 12px; padding: 8px; border-radius: 4px;" class="bg-code">`;
+                    html += `<strong class="text-danger">${event.timestamp}</strong>`;
+                    html += `<br><span style="font-weight: bold;">System entered emergency mode</span>`;
+                    if (event.lineNumber) {
+                        html += `<br><span style="font-size: 11px;" class="text-muted">Line: ${event.lineNumber}</span>`;
+                    }
+                    html += `<br><span style="font-size: 11px;" class="text-muted">Source: ${event.sourceFile}</span>`;
+                    if (event.rawLine) {
+                        html += `<br><span class="event-raw-line">${event.rawLine}</span>`;
+                    }
+                    html += `</li>`;
+                });
+                
+                html += '</ul>';
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection pattern: "You are in emergency mode"</em></p>`;
+                html += `<p style="margin-top: 5px; font-size: 12px;" class="text-danger"><strong>⚠ Warning:</strong> Emergency mode indicates the system failed to boot normally. Review console logs for boot failures.</p>`;
+            } else {
+                html += `<p class="text-muted"><em>No emergency mode events were detected in the analyzed files.</em></p>`;
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection pattern: "You are in emergency mode"</em></p>`;
             }
             html += `</div></details>`;
 

@@ -109,8 +109,8 @@ function grepLines(content, patterns, options = {}) {
  * @returns {string|null} Extracted timestamp or null if not found
  */
 function extractTimestamp(line) {
-    // Try kernel timestamp format [time.microseconds]
-    const kernelMatch = line.match(/\[(\d+\.\d+)\]/);
+    // Try kernel timestamp format [time.microseconds] (with optional leading spaces)
+    const kernelMatch = line.match(/\[\s*(\d+\.\d+)\]/);
     if (kernelMatch) return kernelMatch[1] + 's (kernel uptime)';
     
     // Try ISO timestamp

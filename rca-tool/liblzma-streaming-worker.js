@@ -2,7 +2,26 @@
 // Processes compressed data in chunks to keep memory usage low
 
 const CACHE_BUST = '?v=' + Date.now();
-console.log('[Worker] Loading version: 2025-12-12-scc-sysctl-extraction-v2');
+console.log('[Worker] Loading version: 2025-12-12-plaintext-console-logs-v1');
+
+// Global error handler to catch uncaught exceptions
+self.onerror = function(message, source, lineno, colno, error) {
+    console.error('[Worker] Uncaught error:', message);
+    console.error('[Worker] Source:', source, 'Line:', lineno, 'Column:', colno);
+    console.error('[Worker] Error object:', error);
+    if (error && error.stack) {
+        console.error('[Worker] Stack trace:', error.stack);
+    }
+    // Try to send error message to main thread
+    try {
+        self.postMessage({ 
+            error: 'Worker uncaught error: ' + message + ' at ' + source + ':' + lineno 
+        });
+    } catch (e) {
+        console.error('[Worker] Failed to send error message:', e);
+    }
+    return true; // Prevent default error handling
+};
 
 // Import utility functions (only in Web Worker context)
 if (typeof importScripts === 'function') {
@@ -2876,6 +2895,8 @@ const SCC_RULES = {
                             // Extract timestamp from the heartbeat line
                             const timestamp = SCC_RULES.extractTimestamp(lines[heartbeatLine]);
                             
+                            debugLog('[liveMigration parser] Extracted timestamp:', timestamp, 'from line:', lines[heartbeatLine].substring(0, 100));
+                            
                             migrations.push({
                                 timestamp: timestamp || 'Unknown',
                                 lineNumber: heartbeatLine + 1,
@@ -2899,8 +2920,52 @@ const SCC_RULES = {
             debugLog('[liveMigration parser] Found', migrations.length, 'Live Migration events');
             
             return {
+                found: migrations.length > 0,
                 count: migrations.length,
                 events: migrations
+            };
+        }
+    },
+    
+    // Rule: Detect Emergency Mode events from console logs
+    emergencyMode: {
+        // Target file path patterns - primarily console logs
+        filePattern: /\/(messages|localmessages|journalctl[^\/]*|console.*\.log)(?:[.-]\d+)?(?:\.txt)?$/,
+        
+        // Parse function receives file content as string
+        // Detects emergency mode events by finding the pattern:
+        // - "You are in emergency mode."
+        // Returns array of detected emergency mode events with timestamps
+        parse: function(content, filename) {
+            const lines = content.split('\n');
+            const emergencyEvents = [];
+            
+            debugLog('[emergencyMode parser] Analyzing', lines.length, 'lines for emergency mode events');
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                
+                // Pattern: "You are in emergency mode."
+                if (line.match(/You are in emergency mode/i)) {
+                    const timestamp = SCC_RULES.extractTimestamp(line);
+                    
+                    emergencyEvents.push({
+                        timestamp: timestamp || 'Date not detected',
+                        lineNumber: i + 1,
+                        rawLine: line.trim(),
+                        sourceFile: filename
+                    });
+                    
+                    debugLog('[emergencyMode parser] ✓ Detected emergency mode at line', i + 1, ':', timestamp);
+                }
+            }
+            
+            debugLog('[emergencyMode parser] Found', emergencyEvents.length, 'emergency mode events');
+            
+            return {
+                found: emergencyEvents.length > 0,
+                count: emergencyEvents.length,
+                events: emergencyEvents
             };
         }
     },
@@ -2931,7 +2996,8 @@ const SCC_RULES = {
                 // Match both formats:
                 // - "kernel: Linux version 5.14.0"
                 // - "kernel: [    0.000000][    T0] Linux version 5.14.21-150400.24.103-default"
-                const kernelMatch = line.match(/kernel:\s*(?:\[\s*[\d\.]+\]\s*(?:\[\s*T\d+\]\s*)?)?Linux version\s+([\d\.\-\w]+)/i);
+                // - "[    0.000000] Linux version 5.15.0-1042-azure" (console log format)
+                const kernelMatch = line.match(/(?:kernel:\s*)?(?:\[\s*[\d\.]+\]\s*(?:\[\s*T\d+\]\s*)?)?Linux version\s+([\d\.\-\w]+)/i);
                 if (kernelMatch) {
                     const timestamp = SCC_RULES.extractTimestamp(line);
                     const kernelVersion = kernelMatch[1];
@@ -4576,6 +4642,100 @@ self.onmessage = async function(e) {
     if (e.data.command === 'set_debug') {
         DEBUG_MODE = e.data.enabled;
         debugLog(`[Worker] Debug mode ${DEBUG_MODE ? 'enabled' : 'disabled'}`);
+        return;
+    }
+    
+    // Handle plain text console log analysis (no TAR, no compression)
+    if (e.data.cmd === 'analyze_plaintext') {
+        try {
+            const { textData, filename } = e.data;
+            debugLog(`[Worker] Starting plain text analysis: ${filename}, ${textData.byteLength} bytes`);
+            
+            // Convert to text
+            const decoder = new TextDecoder('utf-8');
+            const textContent = decoder.decode(new Uint8Array(textData));
+            
+            // Create a synthetic analysis structure matching TAR analysis format
+            const analysis = {
+                reportType: 'console-log',
+                reportName: filename,
+                fileCount: 1,
+                totalSize: textData.byteLength,
+                // Add empty arrays for formatter compatibility
+                directories: [],
+                files: [filename],
+                fileTypes: { 'log': 1 },
+                // Initialize event arrays to avoid undefined errors in formatter
+                oomKiller: { found: false, events: [] },
+                kernelReboots: { found: false, events: [] },
+                liveMigration: { found: false, events: [] },
+                xfsErrors: { found: false, events: [] },
+                emergencyMode: { found: false, events: [] }
+            };
+            
+            // Run event detection parsers that work on kernel logs
+            const eventParsers = {
+                oomKiller: SCC_RULES.oomKiller,
+                kernelReboots: SCC_RULES.kernelReboots,
+                liveMigration: SCC_RULES.liveMigration,
+                xfsErrors: SCC_RULES.xfsErrors,
+                emergencyMode: SCC_RULES.emergencyMode
+            };
+            
+            let eventsFound = 0;
+            
+            for (const [parserName, parser] of Object.entries(eventParsers)) {
+                if (parser && parser.parse) {
+                    debugLog(`[Worker] Running parser: ${parserName}`);
+                    const result = parser.parse(textContent, filename);
+                    
+                    if (result) {
+                        // Add sourceFile to all events for plain text logs
+                        if (result.events && Array.isArray(result.events)) {
+                            result.events.forEach(event => {
+                                if (!event.sourceFile) {
+                                    event.sourceFile = filename;
+                                }
+                            });
+                        }
+                        
+                        // Always store the result, even if found=false
+                        analysis[parserName] = result;
+                        
+                        if (result.found && result.events) {
+                            eventsFound += result.events.length;
+                            debugLog(`[Worker] ${parserName}: found ${result.events.length} events`);
+                        }
+                    }
+                }
+            }
+            
+            debugLog(`[Worker] Plain text analysis complete: ${eventsFound} total events`);
+            
+            // Validate analysis object before sending
+            debugLog(`[Worker] Analysis object keys:`, Object.keys(analysis));
+            
+            try {
+                // Test if the analysis object can be serialized
+                JSON.stringify(analysis);
+                debugLog(`[Worker] Analysis object successfully serialized`);
+            } catch (serErr) {
+                console.error('[Worker] Analysis serialization error:', serErr);
+                self.postMessage({ error: 'Failed to serialize analysis: ' + serErr.message });
+                return;
+            }
+            
+            self.postMessage({
+                success: true,
+                analysis: analysis,
+                progress: 100
+            });
+            
+        } catch (err) {
+            console.error('[Worker] Plain text analysis error:', err);
+            console.error('[Worker] Error stack:', err.stack);
+            self.postMessage({ error: 'Plain text analysis failed: ' + err.message + '\nStack: ' + err.stack });
+        }
         return;
     }
     
