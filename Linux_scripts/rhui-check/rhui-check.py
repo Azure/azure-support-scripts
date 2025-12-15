@@ -16,29 +16,16 @@ issues = {}
 ######################################################
 class CustomFormatter(logging.Formatter):
 
-    if (sys.stdout.isatty()) { 
-        black =    "\x1b[30;1m"
-        grey =     "\x1b[30;0m"
-        red =      "\x1b[31;20m"
-        green =    "\x1b[32;20m"
-        yellow =   "\x1b[33;20m"
-        bright_red = "\x1b[91;1m"
-        bold_red = "\x1b[31;1m"
-        bold_green =    "\x1b[32;1m"
-        bold_yellow =   "\x1b[33;1m"
-        reset =    "\x1b[0m"
-    } else {
-        black =    ""
-        grey =     ""
-        red =      ""
-        green =    ""
-        yellow =   ""
-        bright_red = ""
-        bold_red = ""
-        bold_green =    ""
-        bold_yellow =   ""
-        reset =    ""
-    }
+    black =    "\x1b[30;1m"
+    grey =     "\x1b[30;0m"
+    red =      "\x1b[31;20m"
+    green =    "\x1b[32;20m"
+    yellow =   "\x1b[33;20m"
+    bright_red = "\x1b[91;1m"
+    bold_red = "\x1b[31;1m"
+    bold_green =    "\x1b[32;1m"
+    bold_yellow =   "\x1b[33;1m"
+    reset =    "\x1b[0m"
 
     # format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
     format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -63,9 +50,15 @@ def start_logging(debug_level = False):
 
     logger = logging.getLogger(__name__)
 
+    plain_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     console_handler = logging.StreamHandler()
-    color_formatter = CustomFormatter()
-    console_handler.setFormatter(color_formatter)    
+
+    if (sys.stdout.isatty()):
+        color_formatter = CustomFormatter()
+        console_handler.setFormatter(color_formatter)    
+    else:
+        console_handler.setFormatter(plain_formatter)    
+
     console_handler.setLevel(logging.INFO)
 
     logger.addHandler(console_handler)
@@ -76,7 +69,6 @@ def start_logging(debug_level = False):
     try:
         log_filename = '/var/log/rhuicheck.log'
         file_handler = logging.FileHandler(filename=log_filename)
-        plain_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         file_handler.setFormatter(plain_formatter)    
     except:
         logger.critical("Unable to create log file in /var/log/rhuicheck.log, make sure the script is running with root privileges, the filesystem has enough space and it's not in Read-Only mode.")
