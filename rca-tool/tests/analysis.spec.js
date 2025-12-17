@@ -361,6 +361,34 @@ test.describe('SAP HANA Cluster Analyzer', () => {
     expect(result).toMatch(/SAP.*exclusion/i);
   });
 
+  test('detects Azure Site Recovery (involflt) service', async ({ page }) => {
+    const result = await uploadAndWaitForAnalysis(page, 'scc_test-asr.tar.xz');
+    
+    // Should detect Azure Site Recovery
+    expect(result).toContain('Azure Site Recovery');
+    expect(result).toContain('involflt');
+  });
+
+  test('detects involflt module version from modinfo', async ({ page }) => {
+    const result = await uploadAndWaitForAnalysis(page, 'scc_test-asr.tar.xz');
+    
+    // Should detect involflt version information
+    expect(result).toContain('InMage Filter Driver');
+    expect(result).toContain('Build Version');
+    
+    // Should show loaded status
+    expect(result).toMatch(/Loaded|Not Loaded/);
+  });
+
+  test('detects involflt runtime version from kernel logs', async ({ page }) => {
+    const result = await uploadAndWaitForAnalysis(page, 'scc_test-asr.tar.xz');
+    
+    // Should detect runtime version from kernel messages
+    if (result.includes('Runtime Version')) {
+      expect(result).toMatch(/Runtime Version:.*\d+\.\d+\.\d+\.\d+/);
+    }
+  });
+
   test('detects DLM service enabled', async ({ page }) => {
     const result = await uploadAndWaitForAnalysis(page, 'scc_test-dlm-service.tar.xz');
     

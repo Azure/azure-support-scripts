@@ -2,7 +2,7 @@
 // Processes compressed data in chunks to keep memory usage low
 
 const CACHE_BUST = '?v=' + Date.now();
-console.log('[Worker] Loading version: 2025-12-12-plaintext-console-logs-v1');
+console.log('[Worker] Loading version: 2025-12-17-asr-kernver');
 
 // Global error handler to catch uncaught exceptions
 self.onerror = function(message, source, lineno, colno, error) {
@@ -51,6 +51,17 @@ function debugLog(...args) {
              firstArg.includes('Resource') || 
              firstArg.includes('fencing') || 
              firstArg.includes('STONITH'))) {
+            console.log(...args);
+        }
+    } else if (DEBUG_MODE === 'app') {
+        // Only log application/service-related messages
+        const firstArg = args[0];
+        if (typeof firstArg === 'string' && 
+            (firstArg.includes('involflt') || 
+             firstArg.includes('antivirus') || 
+             firstArg.includes('azure') || 
+             firstArg.includes('ASR') ||
+             firstArg.includes('parser]'))) {
             console.log(...args);
         }
     }
@@ -566,6 +577,134 @@ const SCC_RULES = {
                 registrationServer: registrationServer,
                 registrationType: registrationType
             };
+        }
+    },
+    
+    // Rule: Extract involflt (Microsoft InMage/ASR filter driver) version from modules.txt
+    involfltVersion: {
+        filePattern: /modules\.txt$/,
+        
+        parse: function(content, filename) {
+            debugLog('[involfltVersion parser] Analyzing involflt version in:', filename);
+            
+            let version = null;
+            let buildDate = null;
+            let filename_path = null;
+            let description = null;
+            let loaded = false;
+            
+            // Extract modinfo involflt section from modules.txt
+            const lines = content.split('\n');
+            const modinfoLines = [];
+            let inSection = false;
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                
+                // Check if involflt is in the loaded modules list (format: "involflt              897024  14")
+                if (!loaded && line.match(/^involflt\s+\d+/)) {
+                    loaded = true;
+                    debugLog('[involfltVersion parser] involflt is loaded');
+                }
+                
+                // Start collecting after finding the modinfo involflt command marker
+                if (line.includes('# /sbin/modinfo involflt')) {
+                    inSection = true;
+                    debugLog('[involfltVersion parser] Found modinfo involflt section at line', i + 1);
+                    continue; // Skip the marker line itself
+                }
+                
+                // Stop at next Command section marker
+                if (inSection && line.trim().startsWith('#==[ Command ]')) {
+                    debugLog('[involfltVersion parser] Found end of modinfo section at line', i + 1);
+                    break;
+                }
+                
+                // Collect lines while in section
+                if (inSection) {
+                    modinfoLines.push(line);
+                }
+            }
+            
+            // Parse the extracted modinfo section
+            if (modinfoLines.length > 0) {
+                debugLog('[involfltVersion parser] Extracted', modinfoLines.length, 'lines from modinfo section');
+                
+                for (const line of modinfoLines) {
+                    // Extract version (format: "version:        Oct 23 2024 [ 02:41:25 ]")
+                    const versionMatch = line.match(/^version:\s*(.+)$/);
+                    if (versionMatch) {
+                        version = versionMatch[1].trim();
+                        
+                        // Try to extract just the date part
+                        const dateMatch = version.match(/([A-Za-z]+\s+\d+\s+\d{4})/);
+                        if (dateMatch) {
+                            buildDate = dateMatch[1];
+                        }
+                        
+                        debugLog('[involfltVersion parser] Version:', version);
+                    }
+                    
+                    // Extract filename path
+                    const filenameMatch = line.match(/^filename:\s*(.+)$/);
+                    if (filenameMatch) {
+                        filename_path = filenameMatch[1].trim();
+                        debugLog('[involfltVersion parser] Filename:', filename_path);
+                    }
+                    
+                    // Extract description
+                    const descMatch = line.match(/^description:\s*(.+)$/);
+                    if (descMatch) {
+                        description = descMatch[1].trim();
+                        debugLog('[involfltVersion parser] Description:', description);
+                    }
+                }
+            }
+            
+            if (!version && !loaded) {
+                debugLog('[involfltVersion parser] involflt not found');
+                return { found: false };
+            }
+            
+            return {
+                found: true,
+                loaded: loaded,
+                version: version,
+                buildDate: buildDate,
+                filename: filename_path,
+                description: description,
+                source: 'modinfo'
+            };
+        }
+    },
+    
+    // Rule: Extract involflt runtime version from kernel messages
+    involfltKernelVersion: {
+        filePattern: /messages.*\.txt$|boot\.txt$/,
+        
+        parse: function(content, filename) {
+            debugLog('[involfltKernelVersion parser] Analyzing involflt kernel version in:', filename);
+            debugLog('[involfltKernelVersion parser] Content length:', content.length);
+            
+            // Search for pattern: "involflt[involflt_init:XXXX (INFO)]: Version - X.X.X.X"
+            // Make regex more flexible to handle variations
+            const versionMatch = content.match(/involflt\[involflt_init[^\]]*\]:\s*Version\s*-\s*([\d.]+)/i);
+            
+            if (versionMatch) {
+                const version = versionMatch[1].trim();
+                debugLog('[involfltKernelVersion parser] Found kernel version:', version);
+                
+                return {
+                    found: true,
+                    version: version,
+                    source: 'kernel_log',
+                    detectionFile: filename
+                };
+            }
+            
+            debugLog('[involfltKernelVersion parser] No kernel version found in file');
+            // Don't return {found: false} - return null so we don't overwrite a previous positive result
+            return null;
         }
     },
     
@@ -4621,6 +4760,20 @@ class IncrementalTARParser {
                                         this.analysisResults[ruleName] = result;
                                         debugLog(`[TAR Parser] Rule '${ruleName}' replaced with newer result`);
                                     }
+                                } else if (ruleName === 'involfltKernelVersion') {
+                                    // involfltKernelVersion: preserve positive result (found: true) once found
+                                    const existing = this.analysisResults[ruleName];
+                                    
+                                    if (!existing || !existing.found) {
+                                        // No existing result or existing is negative - update if we have a result
+                                        if (result) {
+                                            this.analysisResults[ruleName] = result;
+                                            debugLog(`[TAR Parser] Rule '${ruleName}' parsed successfully:`, result);
+                                        }
+                                    } else {
+                                        // Already have a positive result - keep it
+                                        debugLog(`[TAR Parser] Rule '${ruleName}' already found, keeping existing result`);
+                                    }
                                 } else {
                                     // Other single file rules - replace result
                                     this.analysisResults[ruleName] = result;
@@ -4927,6 +5080,8 @@ class IncrementalTARParser {
             kernelTuning: this.analysisResults.kernelTuning || null,
             fstab: this.analysisResults.fstab || null,
             nvmeList: this.analysisResults.nvmeList || null,
+            involfltVersion: this.analysisResults.involfltVersion || null,
+            involfltKernelVersion: this.analysisResults.involfltKernelVersion || null,
             usedPaxFormat: this.usedPaxFormat || false,  // Flag if PAX format was detected
             // Cross-validation results
             nodesInHosts: nodesInHosts,

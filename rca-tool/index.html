@@ -818,7 +818,7 @@
                 console.log('[DEBUG] Resources detail:', analysis.pacemakerResources.resources);
             }
             
-            const { fileCount, directories, fileTypes, files, totalParsed, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, kernelReboots, oomKiller, xfsErrors, corosyncConfig, distroPackages, antivirus, kernelTuning, fstab, nvmeList } = analysis;
+            const { fileCount, directories, fileTypes, files, totalParsed, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, kernelReboots, oomKiller, xfsErrors, corosyncConfig, distroPackages, antivirus, kernelTuning, fstab, nvmeList, involfltVersion, involfltKernelVersion } = analysis;
 
             // Compute a reusable SAP detection flag early so UI sections can be gated
             const dirListGlobal = (directories || []).map(d => (d || '').toLowerCase());
@@ -2576,27 +2576,77 @@
                     html += `</div>`;
                 }
                 
-                // Azure Site Recovery
-                if (antivirusData.azureSiteRecovery && antivirusData.azureSiteRecovery.detected) {
+                // Azure Site Recovery - show if ASR detected OR involflt found
+                if ((antivirusData.azureSiteRecovery && antivirusData.azureSiteRecovery.detected) || (analysis.involfltVersion && analysis.involfltVersion.found)) {
                     const asr = antivirusData.azureSiteRecovery;
+                    const hasASR = asr && asr.detected;
                     const statusColorClass = 'text-info';
                     const statusBorderColor = 'var(--info-color)';
                     const statusIcon = 'ℹ';
 
                     html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor};">`;
                     html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} Azure Site Recovery</p>`;
-                    html += `<p style="margin: 8px 0 0 0; font-size: 13px;">${asr.message}</p>`;
                     
-                    if (asr.detectionFile && asr.detectionLine) {
-                        html += `<p style="margin: 10px 0 0 0; font-size: 12px;" class="text-muted">`;
-                        html += `<strong>Detected in:</strong> <code>${asr.detectionFile}</code> at line ${asr.detectionLine}`;
-                        html += `</p>`;
-                        if (asr.detectionContent) {
-                            html += `<p style="margin: 5px 0 0 0; font-size: 11px;" class="text-muted">`;
-                            html += `<code>${asr.detectionContent}</code>`;
+                    if (hasASR) {
+                        html += `<p style="margin: 8px 0 0 0; font-size: 13px;">${asr.message}</p>`;
+                        
+                        if (asr.detectionFile && asr.detectionLine) {
+                            html += `<p style="margin: 10px 0 0 0; font-size: 12px;" class="text-muted">`;
+                            html += `<strong>Detected in:</strong> <code>${asr.detectionFile}</code> at line ${asr.detectionLine}`;
                             html += `</p>`;
+                            if (asr.detectionContent) {
+                                html += `<p style="margin: 5px 0 0 0; font-size: 11px;" class="text-muted">`;
+                                html += `<code>${asr.detectionContent}</code>`;
+                                html += `</p>`;
+                            }
                         }
                     }
+                    
+                    // Add involflt version information if available
+                    if (DEBUG_MODE === 'app') {
+                        console.log('[APP DEBUG] involfltVersion:', involfltVersion);
+                        console.log('[APP DEBUG] involfltKernelVersion:', involfltKernelVersion);
+                    }
+                    if ((involfltVersion && involfltVersion.found) || (involfltKernelVersion && involfltKernelVersion.found)) {
+                        if (DEBUG_MODE === 'app') {
+                            console.log('[APP DEBUG] Displaying involflt info');
+                        }
+                        
+                        html += `<div class="info-block" style="margin-top: 12px;">`;
+                        html += `<p style="margin: 0 0 8px 0; font-size: 12px; font-weight: bold;">InMage Filter Driver (involflt):</p>`;
+                        
+                        // Module load status (from modinfo)
+                        if (involfltVersion && involfltVersion.found) {
+                            if (involfltVersion.loaded) {
+                                html += `<p style="margin: 5px 0;"><span class="badge badge-success" style="font-size: 11px;">Loaded</span></p>`;
+                            } else {
+                                html += `<p style="margin: 5px 0;"><span class="badge badge-warning" style="font-size: 11px;">Not Loaded</span></p>`;
+                            }
+                        }
+                        
+                        // Runtime version from kernel logs
+                        if (involfltKernelVersion && involfltKernelVersion.found && involfltKernelVersion.version) {
+                            html += `<p style="margin: 5px 0; font-size: 12px;"><strong>Runtime Version:</strong> <code>${involfltKernelVersion.version}</code></p>`;
+                        }
+                        
+                        // Build version from modinfo
+                        if (involfltVersion && involfltVersion.found && involfltVersion.version) {
+                            html += `<p style="margin: 5px 0; font-size: 12px;"><strong>Build Version:</strong> <code>${involfltVersion.version}</code></p>`;
+                        }
+                        
+                        // Build date
+                        if (involfltVersion && involfltVersion.buildDate) {
+                            html += `<p style="margin: 5px 0; font-size: 12px;"><strong>Build Date:</strong> <code>${involfltVersion.buildDate}</code></p>`;
+                        }
+                        
+                        // Module location
+                        if (involfltVersion && involfltVersion.filename) {
+                            html += `<p style="margin: 5px 0; font-size: 11px;" class="text-muted"><strong>Location:</strong> <code>${involfltVersion.filename}</code></p>`;
+                        }
+                        
+                        html += `</div>`;
+                    }
+                    
                     html += `</div>`;
                 }
                 
