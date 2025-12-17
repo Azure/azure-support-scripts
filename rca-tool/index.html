@@ -810,6 +810,7 @@
             console.log('[DEBUG] oomKiller:', analysis.oomKiller);
             console.log('[DEBUG] xfsErrors:', analysis.xfsErrors);
             console.log('[DEBUG] emergencyMode:', analysis.emergencyMode);
+            console.log('[DEBUG] sshService:', analysis.sshService);
             console.log('[DEBUG] distroPackages:', analysis.distroPackages);
             console.log('[DEBUG] pacemakerResources:', analysis.pacemakerResources);
             console.log('[DEBUG] kernelTuning:', analysis.kernelTuning);
@@ -955,6 +956,33 @@
                         
                         if (vm.detectionMethod) {
                             html += `<p style="margin: 5px 0; font-size: 12px;" class="text-muted"><em>Detected via: ${vm.detectionMethod}</em></p>`;
+                        }
+                        
+                        // Show SUSE registration information if available
+                        if (vm.registrationServer || vm.suseRegistrationServer) {
+                            html += `<div style="margin-top: 10px; padding-left: 15px; border-left: 3px solid #5bc0de;">`;
+                            html += `<p style="margin: 5px 0; font-size: 13px; font-weight: bold;">SUSE Registration:</p>`;
+                            
+                            const regServer = vm.registrationServer || vm.suseRegistrationServer;
+                            const regType = vm.registrationType || vm.suseRegistrationType;
+                            
+                            if (regType) {
+                                html += `<p style="margin: 5px 0; font-size: 12px;"><strong>Type:</strong> ${regType}</p>`;
+                            }
+                            
+                            if (regServer) {
+                                html += `<p style="margin: 5px 0; font-size: 12px;"><strong>Server:</strong> <code style="font-size: 11px;">${regServer}</code></p>`;
+                            }
+                            
+                            // If there's a mismatch, show alternative billing model
+                            if (vm.alternativeBillingModel) {
+                                html += `<p style="margin: 5px 0; font-size: 12px;" class="text-warning"><em>⚠ Alternative detection suggests: ${vm.alternativeBillingModel}</em></p>`;
+                                if (vm.alternativeDetectionMethod) {
+                                    html += `<p style="margin: 5px 0; font-size: 11px;" class="text-muted"><em>${vm.alternativeDetectionMethod}</em></p>`;
+                                }
+                            }
+                            
+                            html += `</div>`;
                         }
                     } else {
                         html += `<p style="margin: 5px 0;" class="text-muted"><em>Unable to determine billing model</em></p>`;
@@ -1151,6 +1179,20 @@
                             if (node.resourcesRunning > 0) {
                                 html += ` <span class="text-muted">(${node.resourcesRunning} resources)</span>`;
                             }
+                            
+                            // Show source information for offline nodes
+                            if (node.status === 'offline' && node.sourceFile) {
+                                html += `<br><span style="font-size: 11px; color: #888; margin-left: 15px;">`;
+                                html += `Found in: <code style="font-size: 10px;">${node.sourceFile.split('/').pop()}</code>`;
+                                if (node.sourceLine) {
+                                    html += ` line ${node.sourceLine}`;
+                                }
+                                if (node.sourcePattern) {
+                                    html += ` (pattern: <code style="font-size: 10px;">${node.sourcePattern}</code>)`;
+                                }
+                                html += `</span>`;
+                            }
+                            
                             html += `</li>`;
                         });
                         html += `</ul>`;
@@ -2270,6 +2312,59 @@
             } else {
                 html += `<p class="text-muted"><em>No emergency mode events were detected in the analyzed files.</em></p>`;
                 html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection pattern: "You are in emergency mode"</em></p>`;
+            }
+            html += `</div></details>`;
+
+            // SSH Service Issues - Always show
+            const sshService = analysis.sshService || { found: false, count: 0, events: [] };
+            const hasSSHIssues = sshService && sshService.count > 0;
+            const sshIssuesCount = sshService ? sshService.count : 0;
+            const sshBlockClass = hasSSHIssues ? 'danger-block' : 'info-block';
+            html += `<details class="${sshBlockClass}">`;
+            html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
+            html += `SSH Service Issues`;
+            html += ` <span style="font-size: 12px; font-weight: normal;">(${sshIssuesCount} issue${sshIssuesCount !== 1 ? 's' : ''} found)</span>`;
+            html += `</summary>`;
+            html += `<div style="margin-top: 15px;">`;
+            
+            if (hasSSHIssues) {
+                html += '<p><strong>Detected SSH service issues:</strong></p>';
+                html += '<ul style="margin: 10px 0; max-height: 300px; overflow-y: auto;">';
+                
+                // Sort events by line number (chronological order)
+                const sortedSSH = [...sshService.events].sort((a, b) => {
+                    return a.lineNumber - b.lineNumber;
+                });
+                
+                sortedSSH.forEach(event => {
+                    html += `<li style="margin-bottom: 12px; padding: 8px; border-radius: 4px;" class="bg-code">`;
+                    html += `<strong class="text-danger">${event.timestamp}</strong>`;
+                    html += `<br><span style="font-weight: bold;">${event.message}</span>`;
+                    
+                    // Add specific guidance based on issue type
+                    if (event.issueType === 'ssh_start_failed') {
+                        html += `<br><span style="font-size: 12px;" class="text-warning">⚠ OpenSSH server failed to start</span>`;
+                    } else if (event.issueType === 'ssh_permission_error') {
+                        html += `<br><span style="font-size: 12px;" class="text-warning">⚠ Permission issue detected</span>`;
+                    }
+                    
+                    if (event.lineNumber) {
+                        html += `<br><span style="font-size: 11px;" class="text-muted">Line: ${event.lineNumber}</span>`;
+                    }
+                    html += `<br><span style="font-size: 11px;" class="text-muted">Source: ${event.sourceFile}</span>`;
+                    if (event.rawLine) {
+                        html += `<br><span class="event-raw-line">${event.rawLine}</span>`;
+                    }
+                    html += `</li>`;
+                });
+                
+                html += '</ul>';
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection patterns: "Failed to start OpenSSH server daemon", "/var/empty/sshd must be owned by root"</em></p>`;
+                html += `<p style="margin-top: 5px; font-size: 12px;" class="text-danger"><strong>⚠ Warning:</strong> SSH service issues may prevent remote access to the system.</p>`;
+                html += `<p style="margin-top: 5px; font-size: 12px;"><strong>Recommended action:</strong> Check SSH configuration and /var/empty/sshd permissions: <code>ls -ld /var/empty/sshd && systemctl status sshd</code></p>`;
+            } else {
+                html += `<p class="text-muted"><em>No SSH service issues were detected in the analyzed files.</em></p>`;
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection patterns: "Failed to start OpenSSH server daemon", "/var/empty/sshd must be owned by root"</em></p>`;
             }
             html += `</div></details>`;
 

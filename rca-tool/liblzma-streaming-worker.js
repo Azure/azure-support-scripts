@@ -455,6 +455,120 @@ const SCC_RULES = {
         }
     },
     
+    // Rule: Extract SUSE registration information from cloudregister.txt (supportconfig)
+    suseCloudRegister: {
+        filePattern: /public_cloud\/cloudregister\.txt$/,
+        
+        parse: function(content, filename) {
+            console.log('[suseCloudRegister] *** PARSING ***', filename);
+            console.log('[suseCloudRegister] Content length:', content.length);
+            debugLog('[suseCloudRegister parser] Analyzing SUSE cloud registration in:', filename);
+            
+            let billingModel = null;
+            let detectionMethod = null;
+            let registrationServer = null;
+            let registrationType = null;
+            
+            // Performance optimization: cloudregister.txt can be huge (1GB+)
+            // Only read first 100KB which should contain registration info
+            const maxChars = 100 * 1024; // 100 KB
+            const truncatedContent = content.length > maxChars ? content.substring(0, maxChars) : content;
+            console.log('[suseCloudRegister] Truncated length:', truncatedContent.length);
+            
+            // Parse cloudregister.txt to extract registration information
+            const lines = truncatedContent.split('\n');
+            console.log('[suseCloudRegister] Number of lines:', lines.length);
+            
+            // Show first few lines for debugging
+            console.log('[suseCloudRegister] First 3 lines:', lines.slice(0, 3));
+            
+            // Limit search to first 1000 lines for performance
+            const searchLimit = Math.min(1000, lines.length);
+            console.log('[suseCloudRegister] Searching first', searchLimit, 'lines');
+            
+            for (let i = 0; i < searchLimit; i++) {
+                const line = lines[i].trim();
+                
+                // Pattern 1: Log format: "Registration: /usr/sbin/SUSEConnect --url https://..."
+                const connectMatch = line.match(/SUSEConnect\s+--url\s+(https?:\/\/[^\s]+)/i);
+                if (connectMatch) {
+                    registrationServer = connectMatch[1].trim();
+                    console.log('[suseCloudRegister] *** FOUND on line', i, '***:', registrationServer);
+                    debugLog('[suseCloudRegister parser] Found registration server (SUSEConnect):', registrationServer);
+                    break; // Found it, no need to continue
+                }
+                
+                // Pattern 2: Simple key=value format: "url = https://..."
+                if (line.match(/url/i) && line.includes('=')) {
+                    const urlMatch = line.match(/url\s*=\s*(.+)/i);
+                    if (urlMatch) {
+                        registrationServer = urlMatch[1].trim();
+                        console.log('[suseCloudRegister] *** FOUND (url=) on line', i, '***:', registrationServer);
+                        debugLog('[suseCloudRegister parser] Found registration server (url=):', registrationServer);
+                        break;
+                    }
+                }
+                
+                // Pattern 3: Simple key=value format: "server = https://..."
+                if (line.match(/server/i) && line.includes('=')) {
+                    const serverMatch = line.match(/server\s*=\s*(.+)/i);
+                    if (serverMatch && !registrationServer) {
+                        registrationServer = serverMatch[1].trim();
+                        console.log('[suseCloudRegister] *** FOUND (server=) on line', i, '***:', registrationServer);
+                        debugLog('[suseCloudRegister parser] Found registration server (server=):', registrationServer);
+                        break;
+                    }
+                }
+            }
+            
+            console.log('[suseCloudRegister] Final registrationServer:', registrationServer);
+            
+            // Determine BYOS vs PAYG based on registration server
+            if (registrationServer) {
+                const serverLower = registrationServer.toLowerCase();
+                
+                // PAYG indicators: Microsoft-managed SMT servers
+                if (serverLower.includes('smt-azure') || 
+                    serverLower.includes('smt.suse.de') ||
+                    serverLower.includes('susecloud.net') ||
+                    serverLower.includes('update.suse.com')) {
+                    billingModel = 'PAYG';
+                    registrationType = 'Microsoft SMT (Subscription Management Tool)';
+                    detectionMethod = `Cloud Registration: ${registrationServer}`;
+                    debugLog('[suseCloudRegister parser] Detected PAYG via SMT server');
+                }
+                // BYOS indicators: SUSE Customer Center or custom RMT
+                else if (serverLower.includes('scc.suse.com') ||
+                         serverLower.includes('customer.suse.com')) {
+                    billingModel = 'BYOS';
+                    registrationType = 'SUSE Customer Center (SCC)';
+                    detectionMethod = `Cloud Registration: ${registrationServer}`;
+                    debugLog('[suseCloudRegister parser] Detected BYOS via SCC');
+                }
+                // Custom RMT server (likely BYOS)
+                else if (serverLower.includes('rmt') || !serverLower.includes('suse')) {
+                    billingModel = 'BYOS';
+                    registrationType = 'Custom RMT Server';
+                    detectionMethod = `Cloud Registration: ${registrationServer}`;
+                    debugLog('[suseCloudRegister parser] Detected likely BYOS via custom RMT');
+                }
+            }
+            
+            if (!billingModel) {
+                debugLog('[suseCloudRegister parser] Could not determine billing model from cloudregister.txt');
+                return { found: false };
+            }
+            
+            return {
+                found: true,
+                billingModel: billingModel,
+                detectionMethod: detectionMethod,
+                registrationServer: registrationServer,
+                registrationType: registrationType
+            };
+        }
+    },
+    
     // Rule: Parse basic-environment.txt (supportconfig) as additional fallback for OS identification
     basicEnvironment: {
         filePattern: /basic-environment\.txt$/,
@@ -2047,10 +2161,19 @@ const SCC_RULES = {
                         const attrs = nodeState.attributes;
                         const nodeName = attrs.uname || attrs.name;
                         const nodeId = attrs.id;
-                        const online = attrs.crmd === 'online';
-                        const in_ccm = attrs.in_ccm === 'true';
+                        
+                        // in_ccm and crmd can be timestamps (Unix epoch) or boolean strings
+                        // A node is in cluster membership if in_ccm is present and non-zero
+                        // A node has crmd running if crmd is present and non-zero
+                        const in_ccm_value = attrs.in_ccm || attrs['in_ccm'];
+                        const crmd_value = attrs.crmd;
+                        const in_ccm = in_ccm_value && in_ccm_value !== '0' && in_ccm_value !== 'false';
+                        const crmd_running = crmd_value && crmd_value !== '0' && crmd_value !== 'false';
                         const join = attrs.join;
                         const expected = attrs.expected;
+                        
+                        // Node is online if it's in CCM, has crmd running, and is a member
+                        const online = in_ccm && crmd_running && (join === 'member' || expected === 'member');
                         
                         // Check if this is the DC node
                         const is_dc = (nodeId === dcNode || nodeName === dcNode);
@@ -2061,9 +2184,9 @@ const SCC_RULES = {
                             status = 'standby';
                         } else if (attrs.maintenance === 'true') {
                             status = 'maintenance';
-                        } else if (online && in_ccm) {
+                        } else if (online) {
                             status = 'online';
-                        } else if (!online) {
+                        } else if (!crmd_running) {
                             status = 'offline';
                         } else {
                             status = 'pending';
@@ -2076,7 +2199,10 @@ const SCC_RULES = {
                                 online: online,
                                 isDC: is_dc,
                                 resourcesRunning: 0,  // CIB doesn't have this, would need to count resources
-                                type: 'member'
+                                type: 'member',
+                                sourceFile: filename,
+                                sourceLine: 0,
+                                sourcePattern: '<node_state> (CIB XML)'
                             });
                             
                             debugLog('[clusterStatus parser] Found node_state:', nodeName, status, 
@@ -2085,7 +2211,7 @@ const SCC_RULES = {
                     });
                 }
                 
-                // Parse node elements from crm_mon format
+                // Parse node elements from crm_mon format (these have online attribute)
                 const nodeElements = querySelectorAll(elements, 'node');
                 nodeElements.forEach(node => {
                     const attrs = node.attributes;
@@ -2101,7 +2227,9 @@ const SCC_RULES = {
                     const resources_running = parseInt(attrs.resources_running) || 0;
                     const type = attrs.type || 'member';
                     
-                    if (nodeName && !nodeStatuses.find(n => n.name === nodeName)) {
+                    // Only process if this node has online status attribute (crm_mon format)
+                    // Skip CIB configuration nodes that don't have status
+                    if (nodeName && attrs.online !== undefined && !nodeStatuses.find(n => n.name === nodeName)) {
                         let status = 'unknown';
                         if (unclean) status = 'UNCLEAN';
                         else if (shutdown) status = 'shutdown';
@@ -2117,10 +2245,13 @@ const SCC_RULES = {
                             online: online,
                             isDC: is_dc,
                             resourcesRunning: resources_running,
-                            type: type
+                            type: type,
+                            sourceFile: filename,
+                            sourceLine: 0,
+                            sourcePattern: '<node online="..."> (crm_mon XML)'
                         });
                         
-                        debugLog('[clusterStatus parser] Found node (crm_mon):', nodeName, status, 
+                        debugLog('[clusterStatus parser] Found node (crm_mon XML):', nodeName, status, 
                                 is_dc ? '(DC)' : '', `(${resources_running} resources)`);
                     }
                 });
@@ -2218,7 +2349,10 @@ const SCC_RULES = {
                                     online: true,
                                     isDC: name === dcNode,
                                     resourcesRunning: 0,
-                                    type: 'member'
+                                    type: 'member',
+                                    sourceFile: filename,
+                                    sourceLine: i + 1,
+                                    sourcePattern: 'Online: [ ... ]'
                                 });
                                 debugLog('[clusterStatus parser] Found node (text):', name, 'online');
                             }
@@ -2236,7 +2370,10 @@ const SCC_RULES = {
                                     online: false,
                                     isDC: false,
                                     resourcesRunning: 0,
-                                    type: 'member'
+                                    type: 'member',
+                                    sourceFile: filename,
+                                    sourceLine: i + 1,
+                                    sourcePattern: 'Offline: [ ... ]'
                                 });
                                 debugLog('[clusterStatus parser] Found node (text):', name, 'offline');
                             }
@@ -2256,7 +2393,10 @@ const SCC_RULES = {
                                 online: status === 'online',
                                 isDC: nodeName === dcNode,
                                 resourcesRunning: 0,
-                                type: 'member'
+                                type: 'member',
+                                sourceFile: filename,
+                                sourceLine: i + 1,
+                                sourcePattern: '* Node <name>: <status>'
                             });
                             debugLog('[clusterStatus parser] Found node (text line):', nodeName, status);
                         }
@@ -2966,6 +3106,66 @@ const SCC_RULES = {
                 found: emergencyEvents.length > 0,
                 count: emergencyEvents.length,
                 events: emergencyEvents
+            };
+        }
+    },
+    
+    // Rule: Detect SSH Service issues from message logs
+    sshService: {
+        // Target file path patterns - messages, syslog, journalctl, console logs
+        filePattern: /\/(messages|localmessages|syslog|journalctl[^\/]*|console.*\.log)(?:[.-]\d+)?(?:\.txt)?$/,
+        
+        // Parse function receives file content as string
+        // Detects SSH service failures and permission issues:
+        // - "Failed to start OpenSSH server daemon."
+        // - "/var/empty/sshd must be owned by root and not group or world-writable."
+        // Returns array of detected SSH service issues with timestamps
+        parse: function(content, filename) {
+            const lines = content.split('\n');
+            const sshIssues = [];
+            
+            debugLog('[sshService parser] Analyzing', lines.length, 'lines for SSH service issues');
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                
+                let issueType = null;
+                let message = null;
+                
+                // Pattern 1: "Failed to start OpenSSH server daemon."
+                if (line.match(/Failed to start OpenSSH server daemon/i)) {
+                    issueType = 'ssh_start_failed';
+                    message = 'Failed to start OpenSSH server daemon';
+                }
+                
+                // Pattern 2: "/var/empty/sshd must be owned by root and not group or world-writable."
+                if (line.match(/\/var\/empty\/sshd must be owned by root and not group or world-writable/i)) {
+                    issueType = 'ssh_permission_error';
+                    message = '/var/empty/sshd must be owned by root and not group or world-writable';
+                }
+                
+                if (issueType) {
+                    const timestamp = SCC_RULES.extractTimestamp(line);
+                    
+                    sshIssues.push({
+                        timestamp: timestamp || 'Date not detected',
+                        lineNumber: i + 1,
+                        issueType: issueType,
+                        message: message,
+                        rawLine: line.trim(),
+                        sourceFile: filename
+                    });
+                    
+                    debugLog('[sshService parser] ✓ Detected SSH issue at line', i + 1, ':', timestamp, 'type:', issueType);
+                }
+            }
+            
+            debugLog('[sshService parser] Found', sshIssues.length, 'SSH service issues');
+            
+            return {
+                found: sshIssues.length > 0,
+                count: sshIssues.length,
+                events: sshIssues
             };
         }
     },
@@ -3974,6 +4174,7 @@ class IncrementalTARParser {
         this.nextLongFilename = null; // For GNU TAR long filename extension
         this.paxExtendedHeaders = {};  // For PAX extended attributes
         this.usedPaxFormat = false;  // Track if PAX extended headers were used
+        this.processedLogFiles = {}; // Track processed log files to limit rotations (performance optimization)
     }
 
     // Add decompressed chunk to buffer and parse what we can
@@ -4191,6 +4392,34 @@ class IncrementalTARParser {
             return;
         }
         
+        // Performance optimization: Limit processing of compressed rotated log files
+        // Track which base log files we've seen and limit compressed rotations to 3 most recent
+        // Uncompressed rotated logs are processed without limit
+        if (!this.processedLogFiles) {
+            this.processedLogFiles = {}; // Track: baseFileName -> [rotation numbers for compressed files]
+        }
+        
+        // Check if this is a compressed rotated log file (messages.1.gz, messages-20241215.bz2, etc.)
+        const compressedRotationMatch = filename.match(/\/(messages|localmessages|journalctl[^/]*|pacemaker\.log|corosync\.log)([.-]\d+)?(?:\.gz|\.bz2|\.xz)$/);
+        if (compressedRotationMatch) {
+            const baseFile = compressedRotationMatch[1];
+            const rotation = compressedRotationMatch[2] || '.current';
+            
+            if (!this.processedLogFiles[baseFile]) {
+                this.processedLogFiles[baseFile] = [];
+            }
+            
+            // Limit to 3 versions of compressed log files (current + 2 rotations)
+            // This prevents processing dozens of old compressed rotated logs
+            if (this.processedLogFiles[baseFile].length >= 3) {
+                debugLog(`[TAR Parser] Skipping compressed rotated log (limit reached):`, filename);
+                return;
+            }
+            
+            this.processedLogFiles[baseFile].push(rotation);
+            debugLog(`[TAR Parser] Processing compressed log file ${baseFile} rotation ${rotation} (${this.processedLogFiles[baseFile].length}/3)`);
+        }
+        
         // Debug: Log when we see key files
         if (filename.endsWith('dpkg_-l') || filename.endsWith('os-release')) {
             debugLog(`[TAR Parser] Processing file:`, filename, `size=${size}`);
@@ -4211,12 +4440,21 @@ class IncrementalTARParser {
                 
                 // Extract file content
                 const dataOffset = offset + 512;
-                if (this.buffer.length >= dataOffset + size) {
-                    const content = this.extractFileContent(dataOffset, size);
+                
+                // Special case: cloudregister.txt can be huge (1GB+), only extract first 100KB
+                let extractSize = size;
+                if (ruleName === 'suseCloudRegister') {
+                    const maxSize = 100 * 1024; // 100 KB
+                    extractSize = Math.min(size, maxSize);
+                    debugLog(`[TAR Parser] cloudregister.txt size ${size} bytes, extracting first ${extractSize} bytes`);
+                }
+                
+                if (this.buffer.length >= dataOffset + extractSize) {
+                    const content = this.extractFileContent(dataOffset, extractSize);
                     if (content) {
-                        // For rules that process multiple files (like liveMigration, kernelReboots, oomKiller, and xfsErrors)
+                        // For rules that process multiple files (like liveMigration, kernelReboots, oomKiller, xfsErrors, emergencyMode, and sshService)
                         // we need to accumulate results instead of replacing
-                        const isMultiFileRule = ruleName === 'liveMigration' || ruleName === 'kernelReboots' || ruleName === 'oomKiller' || ruleName === 'xfsErrors';
+                        const isMultiFileRule = ruleName === 'liveMigration' || ruleName === 'kernelReboots' || ruleName === 'oomKiller' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService';
                         
                         // NOTE: We don't store file content in extractedFiles anymore to save memory
                         // Content is parsed immediately and discarded
@@ -4234,12 +4472,16 @@ class IncrementalTARParser {
                                     };
                                 }
                                 
-                                // For kernelReboots and xfsErrors, deduplicate events based on timestamp and relevant fields
-                                if (ruleName === 'kernelReboots' || ruleName === 'xfsErrors') {
+                                // For kernelReboots, xfsErrors, emergencyMode, and sshService, deduplicate events based on timestamp and relevant fields
+                                if (ruleName === 'kernelReboots' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService') {
                                     // Define comparison fields for each rule type
                                     const comparisonFields = ruleName === 'kernelReboots' 
                                         ? ['timestamp', 'type', 'kernelVersion']
-                                        : ['timestamp', 'device', 'message'];
+                                        : ruleName === 'xfsErrors'
+                                        ? ['timestamp', 'device', 'message']
+                                        : ruleName === 'emergencyMode'
+                                        ? ['timestamp', 'lineNumber']
+                                        : ['timestamp', 'issueType', 'message']; // sshService
                                     
                                     // Add sourceFile to new events
                                     const newEventsWithSource = result.events.map(event => ({
@@ -4402,6 +4644,69 @@ class IncrementalTARParser {
             console.error('[TAR Parser] Failed to decode file content:', e);
             return null;
         }
+    }
+    
+    mergeAzureVMProperties() {
+        const azureVMProps = this.analysisResults.azureVMProperties;
+        const suseCloudReg = this.analysisResults.suseCloudRegister;
+        
+        // If no Azure VM properties found, return null
+        if (!azureVMProps) {
+            // If we have SUSE cloud registration, create a minimal Azure VM properties object
+            if (suseCloudReg && suseCloudReg.found) {
+                return {
+                    billingModel: suseCloudReg.billingModel,
+                    detectionMethod: suseCloudReg.detectionMethod + ' (SUSE only)',
+                    registrationServer: suseCloudReg.registrationServer,
+                    registrationType: suseCloudReg.registrationType
+                };
+            }
+            return null;
+        }
+        
+        // If no SUSE cloud registration or it didn't find anything, return Azure VM properties as-is
+        if (!suseCloudReg || !suseCloudReg.found) {
+            return azureVMProps;
+        }
+        
+        // Both sources available - merge intelligently
+        const merged = { ...azureVMProps };
+        
+        // If azureVMProperties doesn't have billing model, use SUSE cloud registration
+        if (!merged.billingModel && suseCloudReg.billingModel) {
+            merged.billingModel = suseCloudReg.billingModel;
+            merged.detectionMethod = suseCloudReg.detectionMethod;
+            merged.registrationServer = suseCloudReg.registrationServer;
+            merged.registrationType = suseCloudReg.registrationType;
+            debugLog('[mergeAzureVMProperties] Using SUSE cloud registration for billing model');
+        }
+        // If both have billing models, prefer SUSE cloud registration for SUSE VMs
+        // (it's more reliable and specific to SUSE)
+        else if (merged.billingModel && suseCloudReg.billingModel) {
+            // Add SUSE registration as additional information
+            merged.suseRegistrationServer = suseCloudReg.registrationServer;
+            merged.suseRegistrationType = suseCloudReg.registrationType;
+            merged.suseDetectionMethod = suseCloudReg.detectionMethod;
+            
+            // If they disagree, log a warning and prefer SUSE cloud registration for SUSE systems
+            if (merged.billingModel !== suseCloudReg.billingModel) {
+                debugLog(`[mergeAzureVMProperties] Billing model mismatch: Azure metadata says ${merged.billingModel}, SUSE registration says ${suseCloudReg.billingModel}`);
+                // For SUSE systems, prefer the SUSE cloud registration (it's more accurate)
+                if (merged.publisher && merged.publisher.toLowerCase() === 'suse') {
+                    merged.billingModel = suseCloudReg.billingModel;
+                    merged.detectionMethod = suseCloudReg.detectionMethod + ' (preferred over Azure metadata)';
+                    debugLog('[mergeAzureVMProperties] Using SUSE cloud registration for SUSE VM');
+                } else {
+                    // For non-SUSE, add SUSE data as secondary source
+                    merged.alternativeBillingModel = suseCloudReg.billingModel;
+                    merged.alternativeDetectionMethod = suseCloudReg.detectionMethod;
+                }
+            } else {
+                debugLog('[mergeAzureVMProperties] Both sources agree on billing model:', merged.billingModel);
+            }
+        }
+        
+        return merged;
     }
 
     getAnalysis() {
@@ -4601,7 +4906,7 @@ class IncrementalTARParser {
             isSCCReport: this.isSCCReport,
             sccReportName: this.sccReportName,
             // Rule-based analysis results
-            azureVMProperties: this.analysisResults.azureVMProperties || null,
+            azureVMProperties: this.mergeAzureVMProperties(),
             osRelease: this.analysisResults.osRelease || this.analysisResults.sysinfo || this.analysisResults.basicEnvironment || null,
             clusterNodes: clusterNodes,
             nodeToIpMap: nodeToIpMap,
@@ -4647,15 +4952,20 @@ self.onmessage = async function(e) {
     
     // Handle plain text console log analysis (no TAR, no compression)
     if (e.data.cmd === 'analyze_plaintext') {
+        console.log('[Worker] Received analyze_plaintext command');
         try {
             const { textData, filename } = e.data;
+            console.log(`[Worker] Starting plain text analysis: ${filename}, ${textData.byteLength} bytes`);
             debugLog(`[Worker] Starting plain text analysis: ${filename}, ${textData.byteLength} bytes`);
             
             // Convert to text
+            console.log('[Worker] Converting to text...');
             const decoder = new TextDecoder('utf-8');
             const textContent = decoder.decode(new Uint8Array(textData));
+            console.log('[Worker] Text decoded, length:', textContent.length);
             
             // Create a synthetic analysis structure matching TAR analysis format
+            console.log('[Worker] Creating analysis structure...');
             const analysis = {
                 reportType: 'console-log',
                 reportName: filename,
@@ -4670,24 +4980,32 @@ self.onmessage = async function(e) {
                 kernelReboots: { found: false, events: [] },
                 liveMigration: { found: false, events: [] },
                 xfsErrors: { found: false, events: [] },
-                emergencyMode: { found: false, events: [] }
+                emergencyMode: { found: false, events: [] },
+                sshService: { found: false, events: [] }
             };
+            console.log('[Worker] Analysis structure created');
             
             // Run event detection parsers that work on kernel logs
+            console.log('[Worker] Preparing event parsers...');
             const eventParsers = {
                 oomKiller: SCC_RULES.oomKiller,
                 kernelReboots: SCC_RULES.kernelReboots,
                 liveMigration: SCC_RULES.liveMigration,
                 xfsErrors: SCC_RULES.xfsErrors,
-                emergencyMode: SCC_RULES.emergencyMode
+                emergencyMode: SCC_RULES.emergencyMode,
+                sshService: SCC_RULES.sshService
             };
+            console.log('[Worker] Event parsers ready, starting analysis...');
             
             let eventsFound = 0;
             
             for (const [parserName, parser] of Object.entries(eventParsers)) {
+                console.log(`[Worker] Checking parser: ${parserName}`);
                 if (parser && parser.parse) {
+                    console.log(`[Worker] Running parser: ${parserName}`);
                     debugLog(`[Worker] Running parser: ${parserName}`);
                     const result = parser.parse(textContent, filename);
+                    console.log(`[Worker] Parser ${parserName} completed`);
                     
                     if (result) {
                         // Add sourceFile to all events for plain text logs
