@@ -941,6 +941,92 @@ cat > test-data/instance_metadata.json << 'EOF'
 EOF
 create_fixture "test-azure-vm-storage"
 
+################################################################################
+# Test: Azure Site Recovery (involflt) detection
+################################################################################
+echo ""
+echo "=== Creating test-asr.tar.xz ==="
+mkdir -p test-data
+
+# Create systemd-status.txt with involflt_start service
+cat > test-data/systemd-status.txt << 'EOF'
+#==[ Command ]======================================#
+# /bin/systemctl status --all
+● involflt_start.service - InMage Filter Driver Start Service
+   Loaded: loaded (/etc/systemd/system/involflt_start.service; enabled; vendor preset: disabled)
+   Active: active (exited) since Sun 2025-10-12 05:15:04 UTC; 3 months ago
+  Process: 497 ExecStart=/sbin/involflt_init.sh start (code=exited, status=0/SUCCESS)
+ Main PID: 497 (code=exited, status=0/SUCCESS)
+    Tasks: 0
+   Memory: 0B
+   CGroup: /system.slice/involflt_start.service
+
+Oct 12 05:15:02 p1laasspcr005 systemd[1]: Starting InMage Filter Driver Start Service...
+Oct 12 05:15:04 p1laasspcr005 systemd[1]: Started InMage Filter Driver Start Service.
+
+● systemd-journald.service - Journal Service
+   Loaded: loaded (/usr/lib/systemd/system/systemd-journald.service; static; vendor preset: disabled)
+   Active: active (running) since Sun 2025-10-12 05:15:02 UTC; 3 months ago
+     Docs: man:systemd-journald.service(8)
+           man:journald.conf(5)
+ Main PID: 265 (systemd-journal)
+   Status: "Processing requests..."
+    Tasks: 1
+   Memory: 43.8M
+   CGroup: /system.slice/systemd-journald.service
+           └─265 /usr/lib/systemd/systemd-journald
+EOF
+
+# Create modules.txt with involflt module information
+cat > test-data/modules.txt << 'EOF'
+#==[ Command ]======================================#
+# /sbin/lsmod
+Module                  Size  Used by
+involflt              897024  14
+xt_CHECKSUM            16384  1
+ipt_MASQUERADE         16384  3
+xt_conntrack           16384  1
+ipt_REJECT             16384  2
+nf_reject_ipv4         16384  1 ipt_REJECT
+
+#==[ Command ]======================================#
+# /sbin/modinfo involflt
+filename:       /lib/modules/5.14.21-150400.24.173-default/kernel/drivers/char/involflt.ko
+version:        Oct 23 2024 [ 02:41:25 ]
+license:        GPL v2
+description:    Microsoft Filter Driver
+author:         Microsoft Corporation
+srcversion:     E4F8D9C3A1B2F0E5A6D7C89
+alias:          char-major-10-237
+depends:        
+retpoline:      Y
+name:           involflt
+vermagic:       5.14.21-150400.24.173-default SMP mod_unload modversions 
+
+#==[ Command ]======================================#
+# /sbin/modprobe -c
+EOF
+
+# Create messages.txt with involflt kernel log version
+cat > test-data/messages-20251013.txt << 'EOF'
+Oct 12 05:15:01 p1laasspcr005 kernel: Linux version 5.14.21-150400.24.173-default (geeko@buildhost) (gcc (SUSE Linux) 7.5.0, GNU ld (GNU Binutils; SUSE Linux Enterprise 15) 2.37) #1 SMP PREEMPT_DYNAMIC Tue Aug 13 09:20:16 UTC 2024 (c6c0d6b)
+Oct 12 05:15:02 p1laasspcr005 kernel: Command line: BOOT_IMAGE=/boot/vmlinuz-5.14.21-150400.24.173-default root=UUID=a1b2c3d4-e5f6-7890-abcd-ef1234567890 console=ttyS0,115200n8 earlyprintk=ttyS0,115200 rootdelay=300
+Oct 12 05:15:02 p1laasspcr005 kernel: involflt: loading out-of-tree module taints kernel.
+Oct 12 05:15:02 p1laasspcr005 kernel: involflt: module verification failed: signature and/or required key missing - tainting kernel
+Oct 12 05:15:02 p1laasspcr005 kernel: involflt[involflt_init:3458 (INFO)]: Version - 9.63.1.7235
+Oct 12 05:15:02 p1laasspcr005 kernel: involflt[alloc_data_pages:687 (INFO)]: Data Mode Init: Allocated pages 16384 Page size 4096
+Oct 12 05:15:02 p1laasspcr005 kernel: involflt[alloc_data_pages:687 (INFO)]: Data Mode Init: Allocated pages 2044160 Page size 4096
+Oct 12 05:15:02 p1laasspcr005 kernel: involflt[init_work_queue:151 (INFO)]: worker thread with pid = 507  has created
+Oct 12 05:15:02 p1laasspcr005 kernel: involflt[init_work_queue:151 (INFO)]: worker thread with pid = 508  has created
+Oct 12 05:15:02 p1laasspcr005 kernel: involflt[create_service_thread:65 (INFO)]: kernel thread with pid = 509 has created
+Oct 12 05:15:02 p1laasspcr005 kernel: involflt[create_alloc_thread:1859 (INFO)]: inmallocd thread with pid = 510 has created
+Oct 12 05:15:02 p1laasspcr005 kernel: involflt[involflt_init:3527 (INFO)]: Mirror capability is not supported by involflt driver
+Oct 12 05:15:02 p1laasspcr005 kernel: involflt[involflt_init:3548 (INFO)]: Successfully loaded involflt target module from initrd
+Oct 12 05:15:04 p1laasspcr005 systemd[1]: Started InMage Filter Driver Start Service.
+EOF
+
+create_fixture "test-asr"
+
 echo ""
 echo "========================================="
 echo "✓ All test fixtures created successfully!"
