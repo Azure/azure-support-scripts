@@ -1501,8 +1501,8 @@ const SCC_RULES = {
     pacemakerResources: {
         // Target file patterns - pacemaker CIB (Cluster Information Base) or crm config
         // supportconfig: */ha.txt (contains embedded crm_mon or cib.xml sections)
-        // sosreport/crm_report: */cib.xml, */crm_mon*.txt, */crm*config, */pacemaker.log
-        filePattern: /cib\.xml$|\/crm_mon.*\.txt$|\/crm.*config$|pacemaker\.log$|\/ha\.txt$/,
+        // sosreport/crm_report: */cib.xml, */crm_mon*.txt, */crm*config, */pcs_config, */pcs_status*, */pacemaker.log
+        filePattern: /cib\.xml$|\/crm_mon.*\.txt$|\/crm.*config$|pacemaker\.log$|\/ha\.txt$|\/pcs_config$|\/pcs_status/,
         
         parse: function(content, filename) {
             debugLog('[pacemakerResources parser] Analyzing pacemaker configuration in:', filename);
@@ -1792,9 +1792,188 @@ const SCC_RULES = {
             
             let currentGroup = null;  // Track current group when parsing crm_mon output
             let currentClone = null;  // Track current clone/master-slave set
+            let inPcsResourcesSection = false;  // Track if we're in pcs_config Resources section
+            let inPcsConstraintsSection = false;  // Track if we're in Constraints section
             
             for (const line of contentLines) {
                 const trimmed = line.trim();
+                
+                // Detect pcs_config/pcs_status sections
+                if (trimmed === 'Resources:' || trimmed === 'Full List of Resources:') {
+                    inPcsResourcesSection = true;
+                    inPcsConstraintsSection = false;
+                    debugLog('[pacemakerResources parser] Entered pcs Resources section');
+                    continue;
+                }
+                
+                if (trimmed.match(/^(Stonith Devices|Location Constraints|Ordering Constraints|Colocation Constraints|Ticket Constraints|Fencing Levels|Node Attributes|Migration Summary|Tickets|PCSD Status|Daemon Status):/)) {
+                    inPcsResourcesSection = false;
+                    if (trimmed.match(/Constraints:/)) {
+                        inPcsConstraintsSection = true;
+                        debugLog('[pacemakerResources parser] Entered pcs Constraints section');
+                    }
+                    continue;
+                }
+                
+                // Parse pcs_config resource format: "  Resource: name (class=ocf provider=heartbeat type=IPaddr2)"
+                if (inPcsResourcesSection && trimmed.match(/^Resource:/)) {
+                    const pcsResourceMatch = trimmed.match(/^Resource:\s+(\S+)\s+\(class=(\S+)(?:\s+provider=(\S+))?\s+type=([^)]+)\)/);
+                    if (pcsResourceMatch) {
+                        const [, name, cls, provider, type] = pcsResourceMatch;
+                        const newResource = {
+                            name: name,
+                            type: type,
+                            provider: provider || 'heartbeat',
+                            class: cls,
+                            format: 'pcs_config',
+                            node: null,
+                            groupMember: currentGroup ? true : false,
+                            groupName: currentGroup || null,
+                            cloneMember: currentClone ? true : false,
+                            cloneName: currentClone || null
+                        };
+                        resources.push(newResource);
+                        
+                        if (currentGroup) {
+                            const group = groupData.find(g => g.name === currentGroup);
+                            if (group && !group.members.includes(name)) {
+                                group.members.push(name);
+                            }
+                        } else if (currentClone) {
+                            const clone = groupData.find(g => g.name === currentClone);
+                            if (clone && !clone.members.includes(name)) {
+                                clone.members.push(name);
+                            }
+                        }
+                        
+                        debugLog('[pacemakerResources parser] Found resource (pcs_config):', name, type);
+                        continue;
+                    }
+                }
+                
+                // Parse pcs_config group format: "  Group: g_ipnc_db2pjr_PJR"
+                if (inPcsResourcesSection && trimmed.match(/^Group:/)) {
+                    const pcsGroupMatch = trimmed.match(/^Group:\s+(\S+)/);
+                    if (pcsGroupMatch) {
+                        const groupName = pcsGroupMatch[1];
+                        currentGroup = groupName;
+                        currentClone = null;
+                        
+                        let group = groupData.find(g => g.name === groupName);
+                        if (!group) {
+                            group = {
+                                name: groupName,
+                                type: 'group',
+                                members: [],
+                                node: null
+                            };
+                            groupData.push(group);
+                        }
+                        debugLog('[pacemakerResources parser] Found Group (pcs_config):', groupName);
+                        continue;
+                    }
+                }
+                
+                // Parse pcs_config clone format: "  Clone: Db2_HADR_PJR-master"
+                if (inPcsResourcesSection && trimmed.match(/^Clone:/)) {
+                    const pcsCloneMatch = trimmed.match(/^Clone:\s+(\S+)/);
+                    if (pcsCloneMatch) {
+                        const cloneName = pcsCloneMatch[1];
+                        currentClone = cloneName;
+                        currentGroup = null;
+                        
+                        let clone = groupData.find(g => g.name === cloneName);
+                        if (!clone) {
+                            clone = {
+                                name: cloneName,
+                                type: 'clone',
+                                members: [],
+                                node: null
+                            };
+                            groupData.push(clone);
+                        }
+                        debugLog('[pacemakerResources parser] Found Clone (pcs_config):', cloneName);
+                        continue;
+                    }
+                }
+                
+                // Parse pcs_status resource format: "  * rsc_st_azure        (stonith:fence_azure_arm):       Started pjrw4100-db"
+                if (trimmed.match(/^\*\s+\S+\s+\([\w:]+\):\s+(Started|Stopped|Master|Slave)/)) {
+                    const pcsStatusMatch = trimmed.match(/^\*\s+(\S+)\s+\(([\w:]+)\):\s+(\w+)(?:\s+(\S+))?/);
+                    if (pcsStatusMatch) {
+                        const [, name, typeString, status, node] = pcsStatusMatch;
+                        
+                        // Parse type string (could be "stonith:fence_azure_arm" or "ocf::heartbeat:IPaddr2")
+                        let cls, provider, type;
+                        if (typeString.includes('::')) {
+                            [cls, provider, type] = typeString.split('::');
+                            provider = provider.replace(':', '');
+                        } else if (typeString.includes(':')) {
+                            [cls, type] = typeString.split(':');
+                            provider = 'heartbeat';
+                        } else {
+                            cls = 'ocf';
+                            provider = 'heartbeat';
+                            type = typeString;
+                        }
+                        
+                        // Check if resource already exists
+                        const existing = resources.find(r => r.name === name);
+                        if (existing) {
+                            existing.node = node || null;
+                            existing.status = status;
+                            debugLog('[pacemakerResources parser] Enriched resource (pcs_status):', name, 'on', node);
+                        } else {
+                            resources.push({
+                                name: name,
+                                type: type,
+                                provider: provider,
+                                class: cls,
+                                format: 'pcs_status',
+                                node: node || null,
+                                status: status,
+                                groupMember: currentGroup ? true : false,
+                                groupName: currentGroup || null
+                            });
+                            debugLog('[pacemakerResources parser] Found resource (pcs_status):', name, type, 'on', node);
+                        }
+                        continue;
+                    }
+                }
+                
+                // Parse pcs_config constraints: "  promote Db2_HADR_PJR-master then start g_ipnc_db2pjr_PJR (kind:Mandatory)"
+                if (inPcsConstraintsSection) {
+                    const pcsOrderMatch = trimmed.match(/^(\w+)\s+(\S+)\s+then\s+(\w+)\s+(\S+)\s+\(kind:(\w+)\)(?:\s+\(id:([^)]+)\))?/);
+                    if (pcsOrderMatch) {
+                        const [, firstAction, firstResource, thenAction, thenResource, kind, id] = pcsOrderMatch;
+                        constraints.push({
+                            id: id || `order-${firstResource}-${thenResource}`,
+                            type: 'order',
+                            firstResource: firstResource,
+                            firstAction: firstAction,
+                            thenResource: thenResource,
+                            thenAction: thenAction,
+                            kind: kind
+                        });
+                        debugLog('[pacemakerResources parser] Found order constraint (pcs_config):', firstResource, firstAction, '->', thenResource, thenAction);
+                        continue;
+                    }
+                    
+                    // Parse colocation: "  g_ipnc_db2pjr_PJR with Db2_HADR_PJR-master (score:INFINITY)"
+                    const pcsColocMatch = trimmed.match(/^(\S+)\s+with\s+(\S+)\s+\(score:(\S+)\)/);
+                    if (pcsColocMatch) {
+                        const [, resource, withResource, score] = pcsColocMatch;
+                        constraints.push({
+                            id: `colocation-${resource}-${withResource}`,
+                            type: 'colocation',
+                            resource: resource,
+                            withResource: withResource,
+                            score: score
+                        });
+                        debugLog('[pacemakerResources parser] Found colocation constraint (pcs_config):', resource, 'with', withResource);
+                        continue;
+                    }
+                }
                 
                 // Detect Clone Set or Primary/Secondary Set lines
                 // * Clone Set: cln_azure-events [rsc_azure-events] (maintenance):
@@ -2196,8 +2375,8 @@ const SCC_RULES = {
     
     // Rule: Extract cluster health/status from crm_mon XML output or CIB
     clusterStatus: {
-        // Target file patterns - crm_mon XML output or cib.xml
-        filePattern: /cib\.xml$|\/crm_mon.*\.txt$|\/crm_mon.*\.xml$|\/ha\.txt$/,
+        // Target file patterns - crm_mon XML output, cib.xml, or pcs_status
+        filePattern: /cib\.xml$|\/crm_mon.*\.txt$|\/crm_mon.*\.xml$|\/ha\.txt$|\/pcs_status/,
         
         parse: function(content, filename) {
             debugLog('[clusterStatus parser] Analyzing cluster status in:', filename);
@@ -2436,13 +2615,34 @@ const SCC_RULES = {
                 }
             }
             
-            // Parse text-based crm_mon output if no XML found
+            // Parse text-based crm_mon output or pcs_status if no XML found
             if (nodeStatuses.length === 0) {
                 const lines = content.split('\n');
                 let inNodesSection = false;
                 
                 for (const line of lines) {
                     const trimmed = line.trim();
+                    
+                    // pcs_status header format: "Cluster name: <name>"
+                    const pcsClusterMatch = trimmed.match(/^Cluster name:\s+(.+)/i);
+                    if (pcsClusterMatch) {
+                        clusterName = pcsClusterMatch[1];
+                        debugLog('[clusterStatus parser] Found cluster name (pcs_status):', clusterName);
+                    }
+                    
+                    // pcs_status resource count: "  * 5 resource instances configured"
+                    const pcsResourcesMatch = trimmed.match(/^\*?\s*(\d+)\s+resource\s+instances?\s+configured/i);
+                    if (pcsResourcesMatch) {
+                        resourcesConfigured = parseInt(pcsResourcesMatch[1]);
+                        debugLog('[clusterStatus parser] Found resources configured (pcs_status):', resourcesConfigured);
+                    }
+                    
+                    // pcs_status node count: "  * 2 nodes configured"
+                    const pcsNodesMatch = trimmed.match(/^\*?\s*(\d+)\s+nodes?\s+configured/i);
+                    if (pcsNodesMatch) {
+                        nodesConfigured = parseInt(pcsNodesMatch[1]);
+                        debugLog('[clusterStatus parser] Found nodes configured (pcs_status):', nodesConfigured);
+                    }
                     
                     // Extract cluster name and DC from header
                     const stackMatch = trimmed.match(/Stack:\s+(\w+)/i);
@@ -2570,8 +2770,8 @@ const SCC_RULES = {
     
     // Rule: Detect fencing/STONITH configuration
     fencingConfig: {
-        // Target file patterns - match cib.xml anywhere in the archive
-        filePattern: /cib\.xml$|\/crm_mon.*\.txt$|\/crm.*config$|stonith|\/ha\.txt$/,
+        // Target file patterns - match cib.xml anywhere in the archive, pcs_config, pcs_property
+        filePattern: /cib\.xml$|\/crm_mon.*\.txt$|\/crm.*config$|stonith|\/ha\.txt$|\/pcs_config$|\/pcs_property/,
         
         parse: function(content, filename) {
             debugLog('[fencingConfig parser] Analyzing fencing configuration in:', filename);
@@ -2678,25 +2878,25 @@ const SCC_RULES = {
                 });
             }
             
-            // Parse line-by-line for non-XML formats (crm config, etc.)
+            // Parse line-by-line for non-XML formats (crm config, pcs config, etc.)
             const lines = content.split('\n');
             for (let lineNum = 0; lineNum < lines.length; lineNum++) {
                 const line = lines[lineNum];
                 const trimmed = line.trim();
                 
                 // Check if STONITH is enabled (non-XML format)
-                // Format: stonith-enabled=true
-                if (trimmed.match(/stonith-enabled[=\s]*true/i) && !trimmed.includes('<')) {
+                // Format: stonith-enabled=true or stonith-enabled: true (pcs format)
+                if (trimmed.match(/stonith-enabled[=:\s]*true/i) && !trimmed.includes('<')) {
                     stonithEnabled = true;
                     stonithSourceFile = filename;
-                    stonithSourcePattern = 'stonith-enabled=true';
+                    stonithSourcePattern = 'stonith-enabled: true';
                     debugLog('[fencingConfig parser] STONITH is enabled at line', lineNum + 1);
                 }
                 
-                if (trimmed.match(/stonith-enabled[=\s]*false/i) && !trimmed.includes('<')) {
+                if (trimmed.match(/stonith-enabled[=:\s]*false/i) && !trimmed.includes('<')) {
                     stonithEnabled = false;
                     stonithSourceFile = filename;
-                    stonithSourcePattern = 'stonith-enabled=false';
+                    stonithSourcePattern = 'stonith-enabled: false';
                     debugLog('[fencingConfig parser] STONITH is disabled at line', lineNum + 1);
                 }
                 
@@ -2716,6 +2916,24 @@ const SCC_RULES = {
                             pattern: 'crm: primitive ... fence_azure_arm'
                         });
                         debugLog('[fencingConfig parser] Found Azure fencing agent (crm):', deviceName, 'at line', lineNum + 1);
+                    }
+                }
+                
+                // Detect pcs_config format: Resource: <name> (class=stonith type=fence_azure_arm)
+                const pcsAzureFenceMatch = trimmed.match(/^Resource:\s+([^\s]+)\s+\(class=stonith\s+type=fence_azure_arm/);
+                if (pcsAzureFenceMatch) {
+                    const deviceName = pcsAzureFenceMatch[1];
+                    if (!fencingDevices.find(d => d.name === deviceName)) {
+                        fencingDevices.push({
+                            name: deviceName,
+                            type: 'fence_azure_arm',
+                            agent: 'Azure Fencing Agent',
+                            cloud: 'Azure',
+                            sourceFile: filename,
+                            sourceLine: lineNum + 1,
+                            pattern: 'pcs: Resource ... (class=stonith type=fence_azure_arm)'
+                        });
+                        debugLog('[fencingConfig parser] Found Azure fencing agent (pcs):', deviceName, 'at line', lineNum + 1);
                     }
                 }
                 
@@ -2750,6 +2968,37 @@ const SCC_RULES = {
                         });
                         debugLog('[fencingConfig parser] Found fencing device (crm):', deviceName, agentType, 'at line', lineNum + 1);
                     }
+                }
+                
+                // Detect pcs_config format for other stonith types: Resource: <name> (class=stonith type=<type>)
+                const pcsFenceMatch = trimmed.match(/^Resource:\s+([^\s]+)\s+\(class=stonith\s+type=([^)\s]+)/);
+                if (pcsFenceMatch && !fencingDevices.find(d => d.name === pcsFenceMatch[1])) {
+                    const [, deviceName, agentType] = pcsFenceMatch;
+                    let agent = agentType;
+                    let cloud = null;
+                    
+                    // Identify cloud-specific agents
+                    if (agentType.includes('azure')) {
+                        agent = 'Azure Fencing';
+                        cloud = 'Azure';
+                    } else if (agentType.includes('aws')) {
+                        agent = 'AWS Fencing';
+                        cloud = 'AWS';
+                    } else if (agentType.includes('gce')) {
+                        agent = 'GCP Fencing';
+                        cloud = 'GCP';
+                    }
+                    
+                    fencingDevices.push({
+                        name: deviceName,
+                        type: agentType,
+                        agent: agent,
+                        cloud: cloud,
+                        sourceFile: filename,
+                        sourceLine: lineNum + 1,
+                        pattern: `pcs: Resource ... (class=stonith type=${agentType})`
+                    });
+                    debugLog('[fencingConfig parser] Found fencing device (pcs):', deviceName, agentType, 'at line', lineNum + 1);
                 }
             }
             
@@ -3654,9 +3903,9 @@ const SCC_RULES = {
     distroPackages: {
         // Target file patterns
         // supportconfig: */rpm.txt
-        // sosreport (RHEL/SLES): */installed-rpms or */sos_commands/rpm/package-data or */sos_commands/dnf/dnf_list_installed
+        // sosreport (RHEL/SLES): */installed-rpms or */sos_commands/rpm/package-data or */sos_commands/dnf/dnf_list_installed or */sos_commands/yum/yum_list_installed
         // sosreport (Debian/Ubuntu): */sos_commands/dpkg/dpkg_-l (installed-debs is a symlink)
-        filePattern: /\/(rpm\.txt|installed-rpms|package-data|dpkg_-l|dnf[_-]list[_-]installed)$/,
+        filePattern: /\/(rpm\.txt|installed-rpms|package-data|dpkg_-l|dnf[_-]list[_-]installed|yum[_-]list[_-]installed)$/,
         
         // Parse function receives package list content
         // Validates Azure-required packages with specific version requirements
@@ -3677,10 +3926,25 @@ const SCC_RULES = {
                 };
             }
             
-            // If this is a dnf list file, return raw content for display
-            if (filename && (filename.includes('dnf_list_installed') || filename.includes('dnf-list-installed') || filename.includes('dnf_list-installed'))) {
-                const pkgCount = lines.filter(l => l.trim() && !l.startsWith('Installed') && !l.startsWith('Last metadata')).length;
-                debugLog('[distroPackages parser] Detected dnf format, returning raw content');
+            // If this is a dnf/yum list file, return raw content for display
+            if (filename && (filename.includes('dnf_list_installed') || filename.includes('dnf-list-installed') || filename.includes('dnf_list-installed') || filename.includes('yum_list_installed') || filename.includes('yum-list-installed') || filename.includes('yum_list-installed'))) {
+                // Filter out yum/dnf header lines before displaying
+                const filteredLines = lines.filter(l => {
+                    const trimmed = l.trim();
+                    if (!trimmed) return true; // Keep empty lines for formatting
+                    // Skip header lines
+                    if (l.startsWith('Installed Packages') || 
+                        l.startsWith('Last metadata') || 
+                        l.startsWith('Loaded plugins') ||
+                        l.match(/^:\s+(manager|plugins)/) ||  // Continuation lines from Loaded plugins
+                        l.match(/^Repository.*is listed more than once/)) {
+                        return false;
+                    }
+                    return true;
+                });
+                const filteredContent = filteredLines.join('\n');
+                const pkgCount = lines.filter(l => l.trim() && !l.startsWith('Installed') && !l.startsWith('Last metadata') && !l.startsWith('Loaded plugins')).length;
+                debugLog('[distroPackages parser] Detected dnf/yum format, returning raw content');
                 debugLog('[distroPackages parser] Filename:', filename);
                 debugLog('[distroPackages parser] Content length:', content.length);
                 debugLog('[distroPackages parser] Package count:', pkgCount);
@@ -3688,7 +3952,51 @@ const SCC_RULES = {
                 return {
                     found: true,
                     isRpmRaw: true,
-                    rawContent: content,
+                    rawContent: filteredContent,
+                    filename: filename,
+                    packageCount: pkgCount
+                };
+            }
+            
+            // If this is rpm.txt from supportconfig (SUSE), return raw content for display
+            if (filename && filename.includes('rpm.txt')) {
+                // Extract the section with package list (usually after "# rpm -qa --queryformat")
+                // Filter out command headers and keep the formatted package list
+                const filteredLines = [];
+                let inPackageList = false;
+                
+                for (const line of lines) {
+                    // Detect start of package list section
+                    if (line.match(/^# rpm -qa --queryformat.*NAME.*DISTRIBUTION.*VERSION/i)) {
+                        inPackageList = true;
+                        continue; // Skip the command line itself
+                    }
+                    // Detect start of a new command section (end of package list)
+                    if (line.startsWith('#==[ Command ]======') || line.match(/^# rpm -qa --queryformat.*SIGPGP/i)) {
+                        inPackageList = false;
+                    }
+                    
+                    // Include lines if we're in the package list section
+                    if (inPackageList) {
+                        filteredLines.push(line);
+                    }
+                }
+                
+                const filteredContent = filteredLines.join('\n');
+                const pkgCount = filteredLines.filter(l => {
+                    const trimmed = l.trim();
+                    // Count only package lines (not header or empty lines)
+                    return trimmed && !trimmed.startsWith('NAME') && !trimmed.startsWith('DISTRIBUTION');
+                }).length;
+                
+                debugLog('[distroPackages parser] Detected rpm.txt format (SUSE supportconfig), returning raw content');
+                debugLog('[distroPackages parser] Filename:', filename);
+                debugLog('[distroPackages parser] Package count:', pkgCount);
+                
+                return {
+                    found: true,
+                    isRpmRaw: true,
+                    rawContent: filteredContent,
                     filename: filename,
                     packageCount: pkgCount
                 };

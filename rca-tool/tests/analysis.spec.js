@@ -309,6 +309,21 @@ test.describe('SAP HANA Cluster Analyzer', () => {
     expect(result).toContain('Cluster nodes');
   });
 
+  test('detects fencing configuration in pcs_config format', async ({ page }) => {
+    const result = await uploadAndWaitForAnalysis(page, 'scc_test-fencing-pcs.tar.xz');
+    const sapDetected = isSapDetectedFromResult(result);
+    if (!sapDetected) {
+      console.log('Skipping pcs_config fencing assertions: SAP not detected in fixture');
+      return;
+    }
+
+    // Should detect stonith-enabled
+    expect(result).toMatch(/stonith.*enabled.*true/i);
+    
+    // Should detect Azure fencing agent
+    expect(result).toMatch(/rsc_st_azure|fence_azure_arm/i);
+  });
+
   test('detects kernel reboots', async ({ page }) => {
     const result = await uploadAndWaitForAnalysis(page, 'scc_test-kernel-reboots.tar.xz');
     
@@ -930,5 +945,53 @@ test.describe('SAP HANA Cluster Analyzer', () => {
     // Should show regular Premium SSD
     expect(resultHTML).toContain('LUN 2');
     expect(resultHTML).toContain('1024 GB');
+  });
+
+  test('displays raw RPM package list from dnf_list_installed', async ({ page }) => {
+    const resultHTML = await uploadAndWaitForAnalysis(page, 'sosreport-rpm-raw.tar.xz');
+    
+    // Should show Distribution Packages section with raw content
+    expect(resultHTML).toContain('Distribution Packages');
+    
+    // Should display package names from dnf list
+    expect(resultHTML).toContain('GConf2');
+    expect(resultHTML).toContain('NetworkManager');
+    expect(resultHTML).toContain('PackageKit');
+    
+    // Should show package count
+    expect(resultHTML).toMatch(/\d+\s+packages/i);
+  });
+
+  test('displays raw RPM package list from yum_list_installed', async ({ page }) => {
+    const resultHTML = await uploadAndWaitForAnalysis(page, 'sosreport-yum-raw.tar.xz');
+    
+    // Should show Distribution Packages section with raw content
+    expect(resultHTML).toContain('Distribution Packages');
+    
+    // Should display package names from yum list
+    expect(resultHTML).toContain('BladeLogic_RSCD_Agent');
+    expect(resultHTML).toContain('GConf2');
+    expect(resultHTML).toContain('NetworkManager');
+    
+    // Should show package count
+    expect(resultHTML).toMatch(/\d+\s+packages/i);
+    
+    // Should handle yum plugin headers
+    expect(resultHTML).not.toContain('Loaded plugins');
+  });
+
+  test('displays raw DEB package list from dpkg_-l', async ({ page }) => {
+    const resultHTML = await uploadAndWaitForAnalysis(page, 'sosreport-deb-raw.tar.xz');
+    
+    // Should show Distribution Packages section with raw content
+    expect(resultHTML).toContain('Distribution Packages');
+    
+    // Should display package names from dpkg
+    expect(resultHTML).toContain('accountsservice');
+    expect(resultHTML).toContain('bash');
+    expect(resultHTML).toContain('systemd');
+    
+    // Should show package count
+    expect(resultHTML).toMatch(/\d+\s+packages/i);
   });
 });

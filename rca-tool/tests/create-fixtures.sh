@@ -291,6 +291,42 @@ primitive stonith-fence_azure_arm stonith:fence_azure_arm \
 EOF
 create_fixture "test-fencing"
 
+# 6b. Test for fencing configuration (pcs_config format)
+echo ""
+echo "=== Creating test-fencing-pcs.tar.xz ==="
+mkdir -p test-data/sos_commands/pacemaker
+cat > test-data/sos_commands/pacemaker/pcs_config << 'EOF'
+Cluster Name: mycluster
+Corosync Nodes:
+ node1 node2
+Pacemaker Nodes:
+ node1 node2
+
+Resources:
+  Clone: hana_scale_clone
+    Resource: hana_scale (class=ocf provider=suse type=SAPHanaController)
+
+Stonith Devices:
+  Resource: rsc_st_azure (class=stonith type=fence_azure_arm)
+    Attributes: rsc_st_azure-instance_attributes
+      login=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+      pcmk_host_map=node1:vm-node1;node2:vm-node2
+      resourceGroup=myResourceGroup
+      subscriptionId=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+      tenantId=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    Operations:
+      monitor: rsc_st_azure-monitor-interval-3600
+        interval=3600
+Fencing Levels:
+
+Cluster Properties:
+ cluster-infrastructure: corosync
+ cluster-name: mycluster
+ stonith-enabled: true
+ stonith-timeout: 900
+EOF
+create_fixture "test-fencing-pcs"
+
 # 7. Test for kernel reboot detection
 echo ""
 echo "=== Creating test-kernel-reboots.tar.xz ==="
@@ -852,6 +888,35 @@ EOF
 tar -cJf "$FIXTURES_DIR/sosreport-rpm-raw.tar.xz" sosreport-rpm-raw
 rm -rf sosreport-rpm-raw
 echo "✓ Created sosreport-rpm-raw (14 packages)"
+
+# Test for raw YUM package list display (RHEL 7 style)
+echo ""
+echo "=== Creating sosreport-yum-raw.tar.xz ==="
+mkdir -p sosreport-yum-raw/sos_commands/yum
+cat > sosreport-yum-raw/sos_commands/yum/yum_list_installed << 'EOF'
+Loaded plugins: langpacks, product-id, search-disabled-repos, subscription-
+              : manager
+Repository packages-microsoft-com-prod is listed more than once in the configuration
+Installed Packages
+BladeLogic_RSCD_Agent.x86_64        24.4.01-59               installed          
+GConf2.x86_64                       3.2.6-8.el7              @DVD               
+GeoIP.x86_64                        1.5.0-14.el7             @DVD               
+ModemManager.x86_64                 1.6.10-4.el7             @DVD               
+NetworkManager.x86_64               1:1.18.8-2.el7_9         @repo/$releasever  
+NetworkManager-glib.x86_64          1:1.18.8-2.el7_9         @repo/$releasever  
+PackageKit.x86_64                   1.1.10-2.el7             @DVD               
+PackageKit-glib.x86_64              1.1.10-2.el7             @DVD               
+PyYAML.x86_64                       3.10-11.el7              @DVD               
+acl.x86_64                          2.2.51-15.el7            @DVD               
+bash.x86_64                         4.2.46-35.el7_9          @repo/$releasever  
+bind-export-libs.x86_64             32:9.11.4-26.P2.el7_9.15 @repo/$releasever  
+binutils.x86_64                     2.27-44.base.el7_9.1     @repo/$releasever  
+bzip2.x86_64                        1.0.6-13.el7             @DVD               
+ca-certificates.noarch              2022.2.54-74.el7_9       @repo/$releasever  
+EOF
+tar -cJf "$FIXTURES_DIR/sosreport-yum-raw.tar.xz" sosreport-yum-raw
+rm -rf sosreport-yum-raw
+echo "✓ Created sosreport-yum-raw (15 packages)"
 
 # Test for raw DEB package list display
 echo ""

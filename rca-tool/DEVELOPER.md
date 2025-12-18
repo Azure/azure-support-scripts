@@ -30,7 +30,7 @@ Currently, the tool manages:
 |XFS duplicate UUID|If the is a kernel message about a duplicate UUID XFS mount, it is listed as an event.|🗸||🗸|🗸|🗸|
 |NVME Detection|If NVME disks are found, they are listed.|🗸|n.a.||🗸||
 |Network Kernel Parameters|Recommended and optional kernel parameters for network are verified on the collected sysctl.|🗸|n.a.|🗸|🗸||
-|Raw list of distro packages|Shows a raw list of packages from dpkg -l, and dnf list|🗸|n.a.||🗸||
+|Raw list of distro packages|Shows a raw list of packages from dpkg -l, dnf list, yum list and rpm.txt|🗸|n.a.|🗸|🗸||
 |Azure Storage Type Detection|Standard SSD, Premium SSDv2, Ultradisk, etc.|🗸|n.a.|n.a.|🗸||
 |SSH error detection|Failed to start and permission errors|𐄂|n.a.|🗸|🗸|🗸|
 |(WIP)||𐄂|n.a.|🗸|🗸||
