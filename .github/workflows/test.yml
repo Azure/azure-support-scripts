@@ -28,8 +28,16 @@ jobs:
         cd rca-tool/liblzma-wasm
         chmod +x build-liblzma-streaming.sh
         ./build-liblzma-streaming.sh
+    
+    - name: Install project dependencies
+      run: npm ci
+      working-directory: rca-tool
         
-    - name: Install dependencies, Playwright and running tests
+    - name: Build RCA Tool
+      run: npm run build
+      working-directory: rca-tool
+        
+    - name: Install test dependencies
       run: npm ci
       working-directory: rca-tool/tests
 
