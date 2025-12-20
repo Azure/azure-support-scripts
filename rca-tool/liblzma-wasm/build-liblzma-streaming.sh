@@ -24,6 +24,7 @@ fi
 echo "Configuring liblzma with emscripten..."
 cd "$SRC_DIR"
 emconfigure ./configure \
+    --host=wasm32-unknown-emscripten \
     --disable-shared \
     --enable-static \
     --disable-xz \
