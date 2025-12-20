@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RCA Tool - WASM</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="./styles.css">
 </head>
 <body class="dark-mode">
     <button id="theme-toggle" aria-label="Toggle dark mode">
@@ -811,6 +812,7 @@
             console.log('[DEBUG] xfsErrors:', analysis.xfsErrors);
             console.log('[DEBUG] emergencyMode:', analysis.emergencyMode);
             console.log('[DEBUG] sshService:', analysis.sshService);
+            console.log('[DEBUG] automation:', analysis.automation);
             console.log('[DEBUG] distroPackages:', analysis.distroPackages);
             console.log('[DEBUG] pacemakerResources:', analysis.pacemakerResources);
             console.log('[DEBUG] kernelTuning:', analysis.kernelTuning);
@@ -818,7 +820,7 @@
                 console.log('[DEBUG] Resources detail:', analysis.pacemakerResources.resources);
             }
             
-            const { fileCount, directories, fileTypes, files, totalParsed, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, kernelReboots, oomKiller, xfsErrors, corosyncConfig, distroPackages, antivirus, kernelTuning, fstab, nvmeList, involfltVersion, involfltKernelVersion } = analysis;
+            const { fileCount, directories, fileTypes, files, totalParsed, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, kernelReboots, oomKiller, xfsErrors, corosyncConfig, distroPackages, antivirus, automation, kernelTuning, fstab, nvmeList, involfltVersion, involfltKernelVersion } = analysis;
 
             // Compute a reusable SAP detection flag early so UI sections can be gated
             const dirListGlobal = (directories || []).map(d => (d || '').toLowerCase());
@@ -2368,6 +2370,70 @@
             }
             html += `</div></details>`;
 
+            // Automation - Always show
+            const hasAutomation = automation && automation.count > 0;
+            const automationCount = automation ? automation.count : 0;
+            html += `<details class="info-block">`;
+            html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
+            html += `Automation Tools Usage`;
+            html += ` <span style="font-size: 12px; font-weight: normal;">(${automationCount} event${automationCount !== 1 ? 's' : ''} found)</span>`;
+            html += `</summary>`;
+            html += `<div style="margin-top: 15px;">`;
+            
+            if (hasAutomation) {
+                // Group events by tool type
+                const eventsByTool = {};
+                automation.events.forEach(event => {
+                    if (!eventsByTool[event.toolType]) {
+                        eventsByTool[event.toolType] = [];
+                    }
+                    eventsByTool[event.toolType].push(event);
+                });
+                
+                html += '<p><strong>Detected automation tool executions:</strong></p>';
+                
+                // Display events grouped by tool
+                for (const [toolType, events] of Object.entries(eventsByTool)) {
+                    const toolName = toolType.charAt(0).toUpperCase() + toolType.slice(1);
+                    html += `<details open style="margin-top: 10px;">`;
+                    html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
+                    html += `${toolName} <span style="font-size: 12px; font-weight: normal;">(${events.length} execution${events.length !== 1 ? 's' : ''})</span>`;
+                    html += `</summary>`;
+                    html += '<ul style="margin: 10px 0; max-height: 400px; overflow-y: auto;">';
+                    
+                    // Sort events by line number (chronological order)
+                    const sortedEvents = [...events].sort((a, b) => {
+                        return a.lineNumber - b.lineNumber;
+                    });
+                    
+                    sortedEvents.forEach(event => {
+                        html += `<li style="margin-bottom: 12px; padding: 8px; border-radius: 4px;" class="bg-code">`;
+                        html += `<strong class="text-info">${event.timestamp}</strong>`;
+                        if (event.patternType) {
+                            html += ` <span style="font-size: 11px; background-color: #28a745; color: white; padding: 2px 6px; border-radius: 3px;">${event.patternType}</span>`;
+                        }
+                        if (event.command) {
+                            html += `<br><span style="font-size: 12px; font-family: monospace;">${event.command}</span>`;
+                        }
+                        if (event.lineNumber) {
+                            html += `<br><span style="font-size: 11px;" class="text-muted">Line: ${event.lineNumber}</span>`;
+                        }
+                        html += `<br><span style="font-size: 11px;" class="text-muted">Source: ${event.sourceFile}</span>`;
+                        html += `</li>`;
+                    });
+                    
+                    html += '</ul>';
+                    html += `</details>`;
+                }
+                
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection patterns: "ansible-command:", "ansible-setup:", "puppet-agent:", "puppet apply", "puppet-run:", "chef-client[PID]:", "chef-solo[PID]:", "chef-apply[PID]:"</em></p>`;
+                html += `<p style="margin-top: 5px; font-size: 12px;"><em>Note: Automation tools can help with system management but should be coordinated with maintenance windows for cluster environments.</em></p>`;
+            } else {
+                html += `<p class="text-muted"><em>No automation tool usage was detected in the analyzed files.</em></p>`;
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection patterns: "ansible-command:", "ansible-setup:", "puppet-agent:", "puppet apply", "puppet-run:", "chef-client[PID]:", "chef-solo[PID]:", "chef-apply[PID]:" (Future: SaltStack)</em></p>`;
+            }
+            html += `</div></details>`;
+
             // Close Events grouping
             html += `</div></details>`;
             
@@ -2402,7 +2468,7 @@
             
             if (!hasAntivirus) {
                 html += `<p class="text-muted"><em>No Azure services, antivirus or security software was detected in the analyzed files.</em></p>`;
-                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Checked for: Azure Site Recovery, CrowdStrike Falcon Sensor, Microsoft Defender for Endpoint (mdatp), Illumio, Trend Micro Deep Security, Guardicore Agent</em></p>`;
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Checked for: Azure Site Recovery, CrowdStrike Falcon Sensor, Microsoft Defender for Endpoint (mdatp), Illumio, Trend Micro Deep Security, Guardicore Agent, Puppet Agent, Chef Client</em></p>`;
             } else {
                 // Falcon Sensor
                 if (antivirusData.falconSensor && antivirusData.falconSensor.detected) {
@@ -2570,6 +2636,54 @@
                         if (guardicore.detectionContent) {
                             html += `<p style="margin: 5px 0 0 0; font-size: 11px;" class="text-muted">`;
                             html += `<code>${guardicore.detectionContent}</code>`;
+                            html += `</p>`;
+                        }
+                    }
+                    html += `</div>`;
+                }
+                
+                // Puppet Agent
+                if (antivirusData.puppetAgent && antivirusData.puppetAgent.detected) {
+                    const puppet = antivirusData.puppetAgent;
+                    const statusColorClass = 'text-info';
+                    const statusBorderColor = 'var(--info-color)';
+                    const statusIcon = 'ℹ';
+
+                    html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor};">`;
+                    html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} Puppet Agent</p>`;
+                    html += `<p style="margin: 8px 0 0 0; font-size: 13px;">${puppet.message}</p>`;
+                    
+                    if (puppet.detectionFile && puppet.detectionLine) {
+                        html += `<p style="margin: 10px 0 0 0; font-size: 12px;" class="text-muted">`;
+                        html += `<strong>Detected in:</strong> <code>${puppet.detectionFile}</code> at line ${puppet.detectionLine}`;
+                        html += `</p>`;
+                        if (puppet.detectionContent) {
+                            html += `<p style="margin: 5px 0 0 0; font-size: 11px;" class="text-muted">`;
+                            html += `<code>${puppet.detectionContent}</code>`;
+                            html += `</p>`;
+                        }
+                    }
+                    html += `</div>`;
+                }
+                
+                // Chef Client
+                if (antivirusData.chefClient && antivirusData.chefClient.detected) {
+                    const chef = antivirusData.chefClient;
+                    const statusColorClass = 'text-info';
+                    const statusBorderColor = 'var(--info-color)';
+                    const statusIcon = 'ℹ';
+
+                    html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor};">`;
+                    html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} Chef Client</p>`;
+                    html += `<p style="margin: 8px 0 0 0; font-size: 13px;">${chef.message}</p>`;
+                    
+                    if (chef.detectionFile && chef.detectionLine) {
+                        html += `<p style="margin: 10px 0 0 0; font-size: 12px;" class="text-muted">`;
+                        html += `<strong>Detected in:</strong> <code>${chef.detectionFile}</code> at line ${chef.detectionLine}`;
+                        html += `</p>`;
+                        if (chef.detectionContent) {
+                            html += `<p style="margin: 5px 0 0 0; font-size: 11px;" class="text-muted">`;
+                            html += `<code>${chef.detectionContent}</code>`;
                             html += `</p>`;
                         }
                     }

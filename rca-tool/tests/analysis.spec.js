@@ -42,8 +42,8 @@ function isSapDetectedFromResult(resultHtml) {
 test.describe('SAP HANA Cluster Analyzer', () => {
   
   test.beforeEach(async ({ page }) => {
-    // Use empty string instead of '/' to properly use baseURL
-    await page.goto('');
+    // Navigate to the built version in dist/
+    await page.goto('/dist/');
     await expect(page.locator('h1')).toContainText('RCA Tool');
   });
 
@@ -424,6 +424,28 @@ test.describe('SAP HANA Cluster Analyzer', () => {
       // Should show migration timestamps
       expect(result).toMatch(/\d{4}-\d{2}-\d{2}|\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}/);
     }
+  });
+
+  test('detects automation tool usage (Ansible)', async ({ page }) => {
+    // Listen to console messages
+    page.on('console', msg => console.log('BROWSER:', msg.text()));
+    page.on('pageerror', err => console.error('PAGE ERROR:', err));
+    
+    const result = await uploadAndWaitForAnalysis(page, 'scc_test-automation.tar.xz');
+    
+    // Should detect automation tools
+    expect(result).toContain('Automation Tools Usage');
+    
+    // Should show Ansible executions
+    expect(result).toContain('Ansible');
+    expect(result).toMatch(/5 execution/i);
+    
+    // Should show ansible commands
+    expect(result).toContain('yum install -y httpd');
+    expect(result).toContain('Invoked with name=httpd');
+    
+    // Should show detection pattern
+    expect(result).toContain('ansible-command:');
   });
 
   test('theme toggle cycles through all modes', async ({ page }) => {

@@ -40,20 +40,21 @@ jobs:
         cd rca-tool/liblzma-wasm
         chmod +x build-liblzma-streaming.sh
         ./build-liblzma-streaming.sh
+    
+    - name: Install Node.js dependencies
+      run: npm ci
+      working-directory: rca-tool
+        
+    - name: Build with Vite
+      run: bash build.sh
+      working-directory: rca-tool
         
     - name: Prepare deployment directory
       run: |
         cd rca-tool/
         mkdir -p _site
-        # Copy HTML, CSS and worker JS from root
-        cp index.html _site/
-        cp styles.css _site/
-        cp liblzma-streaming-worker.js _site/
-        cp rca-utilities.js _site/
-        # Copy built WASM files
-        mkdir -p _site/liblzma-wasm/dist-streaming/
-        cp liblzma-wasm/dist-streaming/liblzma-xz-streaming.js _site/liblzma-wasm/dist-streaming/
-        cp liblzma-wasm/dist-streaming/liblzma-xz-streaming.wasm _site/liblzma-wasm/dist-streaming/
+        # Copy Vite build output
+        cp -r dist/* _site/
         cp README.md _site/ || true
         
     - name: List deployment files

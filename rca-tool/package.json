@@ -1,0 +1,27 @@
+{
+  "name": "rca-tool",
+  "version": "1.0.0",
+  "description": "RCA Tool - SAP HANA Cluster Analyzer for supportconfig/sosreport analysis",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "bash build.sh",
+    "build:vite": "vite build",
+    "preview": "vite preview",
+    "prepare": "mkdir -p public && cp -r liblzma-wasm public/ 2>/dev/null || true"
+  },
+  "keywords": [
+    "sap",
+    "hana",
+    "cluster",
+    "analyzer",
+    "supportconfig",
+    "sosreport"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "terser": "^5.44.1",
+    "vite": "^5.0.0"
+  }
+}

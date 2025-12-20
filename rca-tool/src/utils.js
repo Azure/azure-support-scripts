@@ -538,6 +538,17 @@ function compareVersion(actual, expected, operator) {
     }
 }
 
+/**
+ * Strip ANSI escape codes (terminal color codes) from text
+ * @param {string} text - Text containing ANSI codes
+ * @returns {string} Clean text without ANSI codes
+ */
+function stripAnsiCodes(text) {
+    if (!text) return text;
+    // Remove ANSI escape sequences: \033[...m or \x1b[...m or #033[...m
+    return text.replace(/(?:\033|\x1b|#033)\[[0-9;]*m/g, '');
+}
+
 // Export utilities object for use in Web Worker
 const RCA_UTILITIES = {
     grepLines,
@@ -551,5 +562,6 @@ const RCA_UTILITIES = {
     detectSecuritySoftware,
     extractSection,
     parseKeyValueFile,
-    extractRawFile
+    extractRawFile,
+    stripAnsiCodes
 };

@@ -25,7 +25,13 @@ self.onerror = function(message, source, lineno, colno, error) {
 
 // Import utility functions (only in Web Worker context)
 if (typeof importScripts === 'function') {
-    importScripts('rca-utilities.js' + CACHE_BUST);
+    importScripts('utils.js' + CACHE_BUST);
+    // Import external parser modules
+    importScripts('parsers/packages.js' + CACHE_BUST);
+    importScripts('parsers/distribution.js' + CACHE_BUST);
+    importScripts('parsers/services.js' + CACHE_BUST);
+    importScripts('parsers/system.js' + CACHE_BUST);
+    importScripts('parsers/azure.js' + CACHE_BUST);
     console.log('[Worker] Running in Web Worker context');
     console.log('[Worker] Browser:', typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown');
 }
@@ -118,6 +124,10 @@ const SCC_RULES = {
         return RCA_UTILITIES.extractTimestamp(line);
     },
     
+    stripAnsiCodes: function(text) {
+        return RCA_UTILITIES.stripAnsiCodes(text);
+    },
+    
     deduplicateEvents: function(existingEvents, newEvents, comparisonFields, debugLog) {
         if (typeof RCA_UTILITIES !== 'undefined') {
             return RCA_UTILITIES.deduplicateEvents(existingEvents, newEvents, comparisonFields, debugLog);
@@ -168,754 +178,6 @@ const SCC_RULES = {
         // Check if filename matches any report pattern
         isSCCReport: function(filename) {
             return this.filenamePatterns.some(pattern => pattern.test(filename));
-        }
-    },
-    
-    // Rule: Extract Azure VM properties from instance_metadata.json or public_cloud/metadata.txt
-    azureVMProperties: {
-        filePattern: /(?:instance_metadata\.json|public_cloud\/metadata\.txt)$/,
-        
-        parse: function(content, filename) {
-            debugLog('[azureVMProperties parser] Analyzing Azure VM metadata in:', filename);
-            
-            // Check if this is a key-value text file (SCC format) or JSON (sosreport format)
-            if (filename.endsWith('metadata.txt')) {
-                // Parse SCC format: key: value pairs
-                debugLog('[azureVMProperties parser] Parsing SCC metadata.txt format');
-                return this.parseSCCMetadata(content);
-            }
-            
-            // Parse JSON format (sosreport)
-            try {
-                const metadata = JSON.parse(content);
-                // Extract properties from root or compute object
-                const compute = metadata.compute || metadata;
-                const vmSize = compute.vmSize || metadata.vmSize || null;
-                const offer = compute.offer || metadata.offer || null;
-                const publisher = compute.publisher || metadata.publisher || null;
-                const sku = compute.sku || metadata.sku || null;
-                const licenseType = compute.licenseType || metadata.licenseType || null;
-                const billingCode = compute.billingCode || metadata.billingCode || null;
-                
-                // Extract storage profile information
-                let osDiskType = null;
-                let dataDisks = [];
-                
-                if (compute.storageProfile) {
-                    // Extract OS disk type
-                    if (compute.storageProfile.osDisk && compute.storageProfile.osDisk.managedDisk) {
-                        osDiskType = compute.storageProfile.osDisk.managedDisk.storageAccountType || null;
-                    }
-                    
-                    // Extract data disks
-                    if (compute.storageProfile.dataDisks && Array.isArray(compute.storageProfile.dataDisks)) {
-                        dataDisks = compute.storageProfile.dataDisks.map(disk => ({
-                            lun: disk.lun,
-                            name: disk.name || null,
-                            diskSizeGB: disk.diskSizeGB || null,
-                            storageAccountType: disk.managedDisk ? disk.managedDisk.storageAccountType : null
-                        }));
-                    }
-                }
-                
-                // Determine PAYG vs BYOS based on official Azure rules
-                let billingModel = null;
-                let detectionMethod = null;
-                
-                // Normalize licenseType: treat empty or whitespace-only strings as not-available
-                const licenseTypeUpper = (typeof licenseType === 'string' && licenseType.trim() !== '') ? licenseType.trim().toUpperCase() : null;
-                
-                // Rule 1: License Type takes precedence (highest confidence)
-                if (licenseTypeUpper) {
-                    // BYOS License Types
-                    if (licenseTypeUpper === 'RHEL_BYOS' || 
-                        licenseTypeUpper === 'SLES_BYOS') {
-                        billingModel = 'BYOS';
-                        detectionMethod = `License Type: ${licenseType}`;
-                    }
-                    // PAYG License Types - RHEL
-                    else if (licenseTypeUpper === 'RHEL_BASE' ||
-                             licenseTypeUpper === 'RHEL_SAPAPPS' ||
-                             licenseTypeUpper === 'RHEL_BASESAPHA' ||
-                             licenseTypeUpper === 'RHEL_SAPHA' ||
-                             licenseTypeUpper === 'RHEL_EUS') {
-                        billingModel = 'PAYG';
-                        detectionMethod = `License Type: ${licenseType}`;
-                    }
-                    // PAYG License Types - SLES
-                    else if (licenseTypeUpper === 'SLES' ||
-                             licenseTypeUpper === 'SLES_SAP' ||
-                             licenseTypeUpper === 'SLES_STANDARD' ||
-                             licenseTypeUpper === 'SLES_HPC') {
-                        billingModel = 'PAYG';
-                        detectionMethod = `License Type: ${licenseType}`;
-                    }
-                    // PAYG License Types - Ubuntu Pro
-                    else if (licenseTypeUpper === 'UBUNTU_PRO') {
-                        billingModel = 'PAYG';
-                        detectionMethod = `License Type: ${licenseType}`;
-                    }
-                }
-                
-                // Rule 2: Billing Code (if no license type or license type is N/A/NONE)
-                // If we still don't have a billing model, or the licenseType is missing/empty/NONE/N/A, try billingCode
-                if (!billingModel || !licenseTypeUpper || licenseTypeUpper === 'N/A' || licenseTypeUpper === 'NONE') {
-                    if (billingCode) {
-                        // BYOS Billing Codes
-                        if (billingCode === 'Linux_IaaS' ||
-                            billingCode === 'Linux_IaaS_Canonical' ||
-                            billingCode === 'Linux_IaaS_Software_Store' ||
-                            billingCode === 'Linux_IaaS_Oracle' ||
-                            billingCode === 'Linux_IaaS_OpenLogic' ||
-                            billingCode === 'Linux_IaaS_Software_RedHat_Support_on_Store' ||
-                            billingCode === 'Linux_IaaS_Software_suse_sles_hpc_byos' ||
-                            billingCode === 'Linux_IaaS_Software_suse_sles_sap_byos' ||
-                            billingCode === 'Linux_IaaS_Software_SUSE_BYOS') {
-                            billingModel = 'BYOS';
-                            detectionMethod = `Billing Code: ${billingCode}`;
-                        }
-                        // PAYG Billing Codes
-                        else if (billingCode === 'Linux_IaaS_SUSE' ||
-                                 billingCode === 'Linux_IaaS_RedHat_Support' ||
-                                 billingCode === 'Linux_IaaS_Software_SLES_Basic' ||
-                                 billingCode === 'Linux_IaaS_Software_SUSE_Support' ||
-                                 billingCode === 'Linux_IaaS_Software_RedHat_Support' ||
-                                 billingCode === 'Linux_IaaS_Software_RedHat_HA' ||
-                                 billingCode === 'Linux_IaaS_Software_RedHat_SAP_HA' ||
-                                 billingCode === 'Linux_IaaS_Software_SLES_for_HPC_Priority' ||
-                                 billingCode === 'Linux_IaaS_Software_SLES_for_SAP' ||
-                                 billingCode === 'Linux_IaaS_Software_SLES_Standard' ||
-                                 billingCode === 'Linux_IaaS_Software_RedHat-SAP_BusApp') {
-                            billingModel = 'PAYG';
-                            detectionMethod = `Billing Code: ${billingCode}`;
-                        }
-                    }
-                }
-                
-                
-                debugLog('[azureVMProperties parser] VM Size:', vmSize);
-                debugLog('[azureVMProperties parser] Publisher:', publisher);
-                debugLog('[azureVMProperties parser] Offer:', offer);
-                debugLog('[azureVMProperties parser] SKU:', sku);
-                debugLog('[azureVMProperties parser] Billing Code:', billingCode);
-                debugLog('[azureVMProperties parser] License Type:', licenseType);
-                debugLog('[azureVMProperties parser] Billing Model:', billingModel);
-                debugLog('[azureVMProperties parser] Detection Method:', detectionMethod);
-                debugLog('[azureVMProperties parser] OS Disk Type:', osDiskType);
-                debugLog('[azureVMProperties parser] Data Disks Count:', dataDisks.length);
-                
-                return {
-                    found: true,
-                    vmSize: vmSize,
-                    publisher: publisher,
-                    offer: offer,
-                    sku: sku,
-                    billingCode: billingCode,
-                    licenseType: licenseType,
-                    billingModel: billingModel,
-                    detectionMethod: detectionMethod,
-                    osDiskType: osDiskType,
-                    dataDisks: dataDisks,
-                    hasUltraDisk: osDiskType === 'UltraSSD_LRS' || dataDisks.some(d => d.storageAccountType === 'UltraSSD_LRS'),
-                    hasPremiumV2: osDiskType === 'PremiumV2_LRS' || dataDisks.some(d => d.storageAccountType === 'PremiumV2_LRS')
-                };
-            } catch (e) {
-                console.error('[azureVMProperties parser] Failed to parse JSON:', e);
-                return { found: false };
-            }
-        },
-        
-        // Helper function to parse SCC metadata.txt format (key: value pairs)
-        parseSCCMetadata: function(content) {
-            debugLog('[azureVMProperties parser] Parsing SCC metadata key-value format');
-            const lines = content.split('\n');
-            
-            let vmSize = null;
-            let offer = null;
-            let publisher = null;
-            let sku = null;
-            let licenseType = null;
-            let billingCode = null;
-            
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed) continue;
-                
-                // Parse key: value format
-                const match = trimmed.match(/^(\w+):\s*(.+)$/);
-                if (match) {
-                    const key = match[1];
-                    const value = match[2].trim();
-                    
-                    switch (key) {
-                        case 'vmSize':
-                            vmSize = value;
-                            break;
-                        case 'offer':
-                            offer = value;
-                            break;
-                        case 'publisher':
-                            publisher = value;
-                            break;
-                        case 'sku':
-                            sku = value;
-                            break;
-                        case 'licenseType':
-                            licenseType = value;
-                            break;
-                        case 'billingCode':
-                            billingCode = value;
-                            break;
-                    }
-                }
-            }
-            
-            // Determine PAYG vs BYOS based on official Azure rules
-            let billingModel = null;
-            let detectionMethod = null;
-            
-            // Normalize licenseType: treat empty or whitespace-only strings as not-available
-            const licenseTypeUpper = (typeof licenseType === 'string' && licenseType.trim() !== '') ? licenseType.trim().toUpperCase() : null;
-            
-            // Rule 1: License Type takes precedence (highest confidence)
-            if (licenseTypeUpper) {
-                // BYOS License Types
-                if (licenseTypeUpper === 'RHEL_BYOS' || 
-                    licenseTypeUpper === 'SLES_BYOS') {
-                    billingModel = 'BYOS';
-                    detectionMethod = `License Type: ${licenseType}`;
-                }
-                // PAYG License Types - RHEL
-                else if (licenseTypeUpper === 'RHEL_BASE' ||
-                         licenseTypeUpper === 'RHEL_SAPAPPS' ||
-                         licenseTypeUpper === 'RHEL_BASESAPHA' ||
-                         licenseTypeUpper === 'RHEL_SAPHA' ||
-                         licenseTypeUpper === 'RHEL_EUS') {
-                    billingModel = 'PAYG';
-                    detectionMethod = `License Type: ${licenseType}`;
-                }
-                // PAYG License Types - SLES
-                else if (licenseTypeUpper === 'SLES' ||
-                         licenseTypeUpper === 'SLES_SAP' ||
-                         licenseTypeUpper === 'SLES_STANDARD' ||
-                         licenseTypeUpper === 'SLES_HPC') {
-                    billingModel = 'PAYG';
-                    detectionMethod = `License Type: ${licenseType}`;
-                }
-                // PAYG License Types - Ubuntu Pro
-                else if (licenseTypeUpper === 'UBUNTU_PRO') {
-                    billingModel = 'PAYG';
-                    detectionMethod = `License Type: ${licenseType}`;
-                }
-            }
-            
-            // Rule 2: Billing Code (if no license type or license type is N/A/NONE)
-            if (!billingModel || !licenseTypeUpper || licenseTypeUpper === 'N/A' || licenseTypeUpper === 'NONE') {
-                if (billingCode) {
-                    // BYOS Billing Codes
-                    if (billingCode === 'Linux_IaaS' ||
-                        billingCode === 'Linux_IaaS_Canonical' ||
-                        billingCode === 'Linux_IaaS_Software_Store' ||
-                        billingCode === 'Linux_IaaS_Oracle' ||
-                        billingCode === 'Linux_IaaS_OpenLogic' ||
-                        billingCode === 'Linux_IaaS_Software_RedHat_Support_on_Store' ||
-                        billingCode === 'Linux_IaaS_Software_suse_sles_hpc_byos' ||
-                        billingCode === 'Linux_IaaS_Software_suse_sles_sap_byos' ||
-                        billingCode === 'Linux_IaaS_Software_SUSE_BYOS') {
-                        billingModel = 'BYOS';
-                        detectionMethod = `Billing Code: ${billingCode}`;
-                    }
-                    // PAYG Billing Codes
-                    else if (billingCode === 'Linux_IaaS_SUSE' ||
-                             billingCode === 'Linux_IaaS_RedHat_Support' ||
-                             billingCode === 'Linux_IaaS_Software_SLES_Basic' ||
-                             billingCode === 'Linux_IaaS_Software_SUSE_Support' ||
-                             billingCode === 'Linux_IaaS_Software_RedHat_Support' ||
-                             billingCode === 'Linux_IaaS_Software_RedHat_HA' ||
-                             billingCode === 'Linux_IaaS_Software_RedHat_SAP_HA' ||
-                             billingCode === 'Linux_IaaS_Software_SLES_for_HPC_Priority' ||
-                             billingCode === 'Linux_IaaS_Software_SLES_for_SAP' ||
-                             billingCode === 'Linux_IaaS_Software_SLES_Standard' ||
-                             billingCode === 'Linux_IaaS_Software_RedHat-SAP_BusApp') {
-                        billingModel = 'PAYG';
-                        detectionMethod = `Billing Code: ${billingCode}`;
-                    }
-                }
-            }
-            
-            debugLog('[azureVMProperties parser] VM Size:', vmSize);
-            debugLog('[azureVMProperties parser] Publisher:', publisher);
-            debugLog('[azureVMProperties parser] Offer:', offer);
-            debugLog('[azureVMProperties parser] SKU:', sku);
-            debugLog('[azureVMProperties parser] Billing Code:', billingCode);
-            debugLog('[azureVMProperties parser] License Type:', licenseType);
-            debugLog('[azureVMProperties parser] Billing Model:', billingModel);
-            debugLog('[azureVMProperties parser] Detection Method:', detectionMethod);
-            
-            return {
-                found: true,
-                vmSize: vmSize,
-                publisher: publisher,
-                offer: offer,
-                sku: sku,
-                billingCode: billingCode,
-                licenseType: licenseType,
-                billingModel: billingModel,
-                detectionMethod: detectionMethod
-            };
-        }
-    },
-    
-    // Rule: Extract SUSE registration information from cloudregister.txt (supportconfig)
-    suseCloudRegister: {
-        filePattern: /public_cloud\/cloudregister\.txt$/,
-        
-        parse: function(content, filename) {
-            console.log('[suseCloudRegister] *** PARSING ***', filename);
-            console.log('[suseCloudRegister] Content length:', content.length);
-            debugLog('[suseCloudRegister parser] Analyzing SUSE cloud registration in:', filename);
-            
-            let billingModel = null;
-            let detectionMethod = null;
-            let registrationServer = null;
-            let registrationType = null;
-            
-            // Performance optimization: cloudregister.txt can be huge (1GB+)
-            // Only read first 100KB which should contain registration info
-            const maxChars = 100 * 1024; // 100 KB
-            const truncatedContent = content.length > maxChars ? content.substring(0, maxChars) : content;
-            console.log('[suseCloudRegister] Truncated length:', truncatedContent.length);
-            
-            // Parse cloudregister.txt to extract registration information
-            const lines = truncatedContent.split('\n');
-            console.log('[suseCloudRegister] Number of lines:', lines.length);
-            
-            // Show first few lines for debugging
-            console.log('[suseCloudRegister] First 3 lines:', lines.slice(0, 3));
-            
-            // Limit search to first 1000 lines for performance
-            const searchLimit = Math.min(1000, lines.length);
-            console.log('[suseCloudRegister] Searching first', searchLimit, 'lines');
-            
-            for (let i = 0; i < searchLimit; i++) {
-                const line = lines[i].trim();
-                
-                // Pattern 1: Log format: "Registration: /usr/sbin/SUSEConnect --url https://..."
-                const connectMatch = line.match(/SUSEConnect\s+--url\s+(https?:\/\/[^\s]+)/i);
-                if (connectMatch) {
-                    registrationServer = connectMatch[1].trim();
-                    console.log('[suseCloudRegister] *** FOUND on line', i, '***:', registrationServer);
-                    debugLog('[suseCloudRegister parser] Found registration server (SUSEConnect):', registrationServer);
-                    break; // Found it, no need to continue
-                }
-                
-                // Pattern 2: Simple key=value format: "url = https://..."
-                if (line.match(/url/i) && line.includes('=')) {
-                    const urlMatch = line.match(/url\s*=\s*(.+)/i);
-                    if (urlMatch) {
-                        registrationServer = urlMatch[1].trim();
-                        console.log('[suseCloudRegister] *** FOUND (url=) on line', i, '***:', registrationServer);
-                        debugLog('[suseCloudRegister parser] Found registration server (url=):', registrationServer);
-                        break;
-                    }
-                }
-                
-                // Pattern 3: Simple key=value format: "server = https://..."
-                if (line.match(/server/i) && line.includes('=')) {
-                    const serverMatch = line.match(/server\s*=\s*(.+)/i);
-                    if (serverMatch && !registrationServer) {
-                        registrationServer = serverMatch[1].trim();
-                        console.log('[suseCloudRegister] *** FOUND (server=) on line', i, '***:', registrationServer);
-                        debugLog('[suseCloudRegister parser] Found registration server (server=):', registrationServer);
-                        break;
-                    }
-                }
-            }
-            
-            console.log('[suseCloudRegister] Final registrationServer:', registrationServer);
-            
-            // Determine BYOS vs PAYG based on registration server
-            if (registrationServer) {
-                const serverLower = registrationServer.toLowerCase();
-                
-                // PAYG indicators: Microsoft-managed SMT servers
-                if (serverLower.includes('smt-azure') || 
-                    serverLower.includes('smt.suse.de') ||
-                    serverLower.includes('susecloud.net') ||
-                    serverLower.includes('update.suse.com')) {
-                    billingModel = 'PAYG';
-                    registrationType = 'Microsoft SMT (Subscription Management Tool)';
-                    detectionMethod = `Cloud Registration: ${registrationServer}`;
-                    debugLog('[suseCloudRegister parser] Detected PAYG via SMT server');
-                }
-                // BYOS indicators: SUSE Customer Center or custom RMT
-                else if (serverLower.includes('scc.suse.com') ||
-                         serverLower.includes('customer.suse.com')) {
-                    billingModel = 'BYOS';
-                    registrationType = 'SUSE Customer Center (SCC)';
-                    detectionMethod = `Cloud Registration: ${registrationServer}`;
-                    debugLog('[suseCloudRegister parser] Detected BYOS via SCC');
-                }
-                // Custom RMT server (likely BYOS)
-                else if (serverLower.includes('rmt') || !serverLower.includes('suse')) {
-                    billingModel = 'BYOS';
-                    registrationType = 'Custom RMT Server';
-                    detectionMethod = `Cloud Registration: ${registrationServer}`;
-                    debugLog('[suseCloudRegister parser] Detected likely BYOS via custom RMT');
-                }
-            }
-            
-            if (!billingModel) {
-                debugLog('[suseCloudRegister parser] Could not determine billing model from cloudregister.txt');
-                return { found: false };
-            }
-            
-            return {
-                found: true,
-                billingModel: billingModel,
-                detectionMethod: detectionMethod,
-                registrationServer: registrationServer,
-                registrationType: registrationType
-            };
-        }
-    },
-    
-    // Rule: Extract involflt (Microsoft InMage/ASR filter driver) version from modules.txt
-    involfltVersion: {
-        filePattern: /modules\.txt$/,
-        
-        parse: function(content, filename) {
-            debugLog('[involfltVersion parser] Analyzing involflt version in:', filename);
-            
-            let version = null;
-            let buildDate = null;
-            let filename_path = null;
-            let description = null;
-            let loaded = false;
-            
-            // Extract modinfo involflt section from modules.txt
-            const lines = content.split('\n');
-            const modinfoLines = [];
-            let inSection = false;
-            
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                
-                // Check if involflt is in the loaded modules list (format: "involflt              897024  14")
-                if (!loaded && line.match(/^involflt\s+\d+/)) {
-                    loaded = true;
-                    debugLog('[involfltVersion parser] involflt is loaded');
-                }
-                
-                // Start collecting after finding the modinfo involflt command marker
-                if (line.includes('# /sbin/modinfo involflt')) {
-                    inSection = true;
-                    debugLog('[involfltVersion parser] Found modinfo involflt section at line', i + 1);
-                    continue; // Skip the marker line itself
-                }
-                
-                // Stop at next Command section marker
-                if (inSection && line.trim().startsWith('#==[ Command ]')) {
-                    debugLog('[involfltVersion parser] Found end of modinfo section at line', i + 1);
-                    break;
-                }
-                
-                // Collect lines while in section
-                if (inSection) {
-                    modinfoLines.push(line);
-                }
-            }
-            
-            // Parse the extracted modinfo section
-            if (modinfoLines.length > 0) {
-                debugLog('[involfltVersion parser] Extracted', modinfoLines.length, 'lines from modinfo section');
-                
-                for (const line of modinfoLines) {
-                    // Extract version (format: "version:        Oct 23 2024 [ 02:41:25 ]")
-                    const versionMatch = line.match(/^version:\s*(.+)$/);
-                    if (versionMatch) {
-                        version = versionMatch[1].trim();
-                        
-                        // Try to extract just the date part
-                        const dateMatch = version.match(/([A-Za-z]+\s+\d+\s+\d{4})/);
-                        if (dateMatch) {
-                            buildDate = dateMatch[1];
-                        }
-                        
-                        debugLog('[involfltVersion parser] Version:', version);
-                    }
-                    
-                    // Extract filename path
-                    const filenameMatch = line.match(/^filename:\s*(.+)$/);
-                    if (filenameMatch) {
-                        filename_path = filenameMatch[1].trim();
-                        debugLog('[involfltVersion parser] Filename:', filename_path);
-                    }
-                    
-                    // Extract description
-                    const descMatch = line.match(/^description:\s*(.+)$/);
-                    if (descMatch) {
-                        description = descMatch[1].trim();
-                        debugLog('[involfltVersion parser] Description:', description);
-                    }
-                }
-            }
-            
-            if (!version && !loaded) {
-                debugLog('[involfltVersion parser] involflt not found');
-                return { found: false };
-            }
-            
-            return {
-                found: true,
-                loaded: loaded,
-                version: version,
-                buildDate: buildDate,
-                filename: filename_path,
-                description: description,
-                source: 'modinfo'
-            };
-        }
-    },
-    
-    // Rule: Extract involflt runtime version from kernel messages
-    involfltKernelVersion: {
-        filePattern: /messages.*\.txt$|boot\.txt$/,
-        
-        parse: function(content, filename) {
-            debugLog('[involfltKernelVersion parser] Analyzing involflt kernel version in:', filename);
-            debugLog('[involfltKernelVersion parser] Content length:', content.length);
-            
-            // Search for pattern: "involflt[involflt_init:XXXX (INFO)]: Version - X.X.X.X"
-            // Make regex more flexible to handle variations
-            const versionMatch = content.match(/involflt\[involflt_init[^\]]*\]:\s*Version\s*-\s*([\d.]+)/i);
-            
-            if (versionMatch) {
-                const version = versionMatch[1].trim();
-                debugLog('[involfltKernelVersion parser] Found kernel version:', version);
-                
-                return {
-                    found: true,
-                    version: version,
-                    source: 'kernel_log',
-                    detectionFile: filename
-                };
-            }
-            
-            debugLog('[involfltKernelVersion parser] No kernel version found in file');
-            // Don't return {found: false} - return null so we don't overwrite a previous positive result
-            return null;
-        }
-    },
-    
-    // Rule: Parse basic-environment.txt (supportconfig) as additional fallback for OS identification
-    basicEnvironment: {
-        filePattern: /basic-environment\.txt$/,
-
-        parse: function(content, filename) {
-            debugLog('[basicEnvironment parser] Analyzing basic-environment in:', filename);
-            const lines = content.split('\n');
-            let prettyName = null;
-            let name = null;
-            let product = null;
-            let skipSection = false;
-
-            for (let i = 0; i < lines.length; i++) {
-                const raw = lines[i];
-                const trimmed = raw.trim();
-
-                // Treat lines starting with '#' as section headers in supportconfig dumps
-                if (trimmed.startsWith('#')) {
-                    // If the header references a .rpmsave file, skip the following section
-                    if (trimmed.toLowerCase().includes('.rpmsave')) {
-                        skipSection = true;
-                    } else {
-                        // New header — stop skipping
-                        skipSection = false;
-                    }
-                    continue;
-                }
-
-                if (skipSection) continue;
-
-                if (!trimmed) continue;
-
-                // Look for PRETTY_NAME= or NAME= lines (similar to /etc/os-release)
-                const prettyMatch = trimmed.match(/^PRETTY_NAME=(?:"|')?([^"']+)(?:"|')?$/i);
-                if (prettyMatch) {
-                    prettyName = prettyMatch[1].trim();
-                    debugLog('[basicEnvironment parser] Found PRETTY_NAME:', prettyName);
-                    break;
-                }
-
-                const nameMatch = trimmed.match(/^NAME=(?:"|')?([^"']+)(?:"|')?$/i);
-                if (nameMatch) {
-                    name = nameMatch[1].trim();
-                    debugLog('[basicEnvironment parser] Found NAME:', name);
-                    // don't break — prefer PRETTY_NAME if present later
-                }
-
-                // Some basic-environment dumps include a 'Product: ...' line
-                const prodMatch = trimmed.match(/^Product:\s*(.+)$/i);
-                if (prodMatch) {
-                    product = prodMatch[1].trim();
-                    debugLog('[basicEnvironment parser] Found Product:', product);
-                }
-            }
-
-            const distribution = prettyName || product || name;
-            if (!distribution) {
-                debugLog('[basicEnvironment parser] No distribution info found');
-                return { found: false };
-            }
-
-            // Detect SAP-specific product name (e.g. "SUSE Linux Enterprise Server for SAP Applications")
-            let sapProductDetected = false;
-            // Detect EPIC-specific product name
-            let epicProductDetected = false;
-            try {
-                const checkFields = [prettyName, product, name].filter(Boolean);
-                for (const f of checkFields) {
-                    if (/\bSAP\b|for\s+SAP|SAP\s+Applications/i.test(f)) {
-                        sapProductDetected = true;
-                    }
-                    if (/\bEPIC\b|Enterprise\s+Portal\s+Integration|for\s+EPIC/i.test(f)) {
-                        epicProductDetected = true;
-                    }
-                }
-            } catch (e) {
-                // ignore regex errors
-            }
-
-            return {
-                found: true,
-                prettyName: prettyName,
-                name: name,
-                distribution: distribution,
-                sapProductDetected: sapProductDetected,
-                epicProductDetected: epicProductDetected
-            };
-        }
-    },
-    
-    // Rule: Extract OS release information from /etc/os-release
-    osRelease: {
-        // Match os-release files from various report types:
-        // - /usr/lib/os-release (sosreport - real file, not the /etc symlink)
-        // - /etc/os-release (crm_report)
-        // - sysinfo.txt (supportconfig SUSE)
-        filePattern: /\/usr\/lib\/os-release$|\/etc\/os-release$|\/sysinfo\.txt$/,
-        
-        parse: function(content, filename) {
-            debugLog('[osRelease parser] Analyzing OS release information in:', filename);
-            
-            // Check if this is sysinfo.txt (supportconfig SUSE format)
-            if (filename.endsWith('sysinfo.txt')) {
-                return this.parseSysinfo(content, filename);
-            }
-            
-            // Parse os-release format (sosreport, crm_report)
-            const lines = content.split('\n');
-            let name = null;
-            let version = null;
-            let versionId = null;
-            let prettyName = null;
-            
-            for (const line of lines) {
-                const trimmed = line.trim();
-                
-                // Skip empty lines and comments
-                if (!trimmed || trimmed.startsWith('#')) continue;
-                
-                // Parse NAME="Distribution Name"
-                const nameMatch = trimmed.match(/^NAME=["']?([^"']+)["']?$/);
-                if (nameMatch) {
-                    name = nameMatch[1];
-                    debugLog('[osRelease parser] Found NAME:', name);
-                }
-                
-                // Parse VERSION="Major.Minor (Codename)" or VERSION="Major.Minor"
-                const versionMatch = trimmed.match(/^VERSION=["']?([^"']+)["']?$/);
-                if (versionMatch) {
-                    version = versionMatch[1];
-                    debugLog('[osRelease parser] Found VERSION:', version);
-                }
-                
-                // Parse VERSION_ID="Major.Minor"
-                const versionIdMatch = trimmed.match(/^VERSION_ID=["']?([^"']+)["']?$/);
-                if (versionIdMatch) {
-                    versionId = versionIdMatch[1];
-                    debugLog('[osRelease parser] Found VERSION_ID:', versionId);
-                }
-                
-                // Parse PRETTY_NAME="Full Distribution Name with Version"
-                const prettyNameMatch = trimmed.match(/^PRETTY_NAME=["']?([^"']+)["']?$/);
-                if (prettyNameMatch) {
-                    prettyName = prettyNameMatch[1];
-                    debugLog('[osRelease parser] Found PRETTY_NAME:', prettyName);
-                }
-            }
-            
-            // Extract major and minor version from VERSION_ID
-            let majorVersion = null;
-            let minorVersion = null;
-            if (versionId) {
-                const parts = versionId.split('.');
-                majorVersion = parts[0] || null;
-                minorVersion = parts[1] || null;
-            }
-            
-            debugLog('[osRelease parser] Parsed OS info:', {
-                name: name,
-                version: version,
-                majorVersion: majorVersion,
-                minorVersion: minorVersion
-            });
-            
-            return {
-                found: true,
-                name: name,
-                version: version,
-                versionId: versionId,
-                prettyName: prettyName,
-                majorVersion: majorVersion,
-                minorVersion: minorVersion
-            };
-        },
-        
-        // Helper function to parse sysinfo.txt (SUSE supportconfig format)
-        parseSysinfo: function(content, filename) {
-            debugLog('[osRelease parser] Parsing sysinfo.txt format');
-            const lines = content.split('\n');
-            let distribution = null;
-
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed) continue;
-
-                // Look for lines like: Distribution: SUSE Linux Enterprise Server 12 SP3
-                const distMatch = trimmed.match(/^Distribution:\s*(.+)$/i);
-                if (distMatch) {
-                    distribution = distMatch[1].trim();
-                    debugLog('[osRelease parser] Found Distribution:', distribution);
-                    break;
-                }
-            }
-
-            if (!distribution) {
-                debugLog('[osRelease parser] No Distribution line found in sysinfo.txt');
-                return { found: false };
-            }
-
-            return {
-                found: true,
-                name: null,
-                version: null,
-                versionId: null,
-                prettyName: distribution,
-                majorVersion: null,
-                minorVersion: null
-            };
         }
     },
     
@@ -3455,446 +2717,218 @@ const SCC_RULES = {
         }
     },
     
-    // Rule: Detect Emergency Mode events from console logs
-    emergencyMode: {
-        // Target file path patterns - primarily console logs
-        filePattern: /\/(messages|localmessages|journalctl[^\/]*|console.*\.log)(?:[.-]\d+)?(?:\.txt)?$/,
+    // Rule: Detect automation tool usage (Ansible, Puppet, Chef, etc.)
+    automation: {
+        // Target file path patterns - messages, syslog, journalctl
+        filePattern: /\/(messages|localmessages|syslog|journalctl[^\/]*)(?:[.-]\d+)?(?:\.txt)?$/,
         
         // Parse function receives file content as string
-        // Detects emergency mode events by finding the pattern:
-        // - "You are in emergency mode."
-        // Returns array of detected emergency mode events with timestamps
+        // Detects automation tool usage:
+        // - "ansible-command: " (Ansible command executions)
+        // - "ansible-setup: " (Ansible setup/facts gathering)
+        // - "puppet-agent: " (Puppet agent executions)
+        // - "puppet apply" (Puppet apply commands)
+        // - "puppet-run: " (Puppet run executions)
+        // - "chef-client: " (Chef client executions)
+        // - "chef-solo: " (Chef solo executions)
+        // - "chef-apply: " (Chef apply executions)
+        // Future: SaltStack, etc.
+        // Returns array of detected automation events with timestamps and full command lines
         parse: function(content, filename) {
             const lines = content.split('\n');
-            const emergencyEvents = [];
+            const automationEvents = [];
             
-            debugLog('[emergencyMode parser] Analyzing', lines.length, 'lines for emergency mode events');
+            debugLog('[automation parser] Analyzing', lines.length, 'lines for automation tool usage');
             
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
                 
-                // Pattern: "You are in emergency mode."
-                if (line.match(/You are in emergency mode/i)) {
+                let toolType = null;
+                let patternType = null;
+                let command = null;
+                
+                // Pattern 1: Ansible command execution
+                if (line.includes('ansible-command:')) {
+                    toolType = 'ansible';
+                    patternType = 'command';
+                    // Extract everything after "ansible-command: "
+                    const ansibleMatch = line.match(/ansible-command:\s*(.+)/);
+                    if (ansibleMatch) {
+                        command = ansibleMatch[1].trim();
+                    }
+                }
+                
+                // Pattern 2: Ansible setup/facts gathering
+                if (line.includes('ansible-setup:')) {
+                    toolType = 'ansible';
+                    patternType = 'setup';
+                    // Extract everything after "ansible-setup: "
+                    const ansibleMatch = line.match(/ansible-setup:\s*(.+)/);
+                    if (ansibleMatch) {
+                        command = ansibleMatch[1].trim();
+                    }
+                }
+                
+                // Pattern 3: Puppet agent execution
+                if (line.includes('puppet-agent:')) {
+                    toolType = 'puppet';
+                    patternType = 'agent';
+                    // Extract everything after "puppet-agent: "
+                    const puppetMatch = line.match(/puppet-agent:\s*(.+)/);
+                    if (puppetMatch) {
+                        command = puppetMatch[1].trim();
+                    }
+                }
+                
+                // Pattern 4: Puppet apply
+                if (line.includes('puppet apply')) {
+                    toolType = 'puppet';
+                    patternType = 'apply';
+                    // Extract the puppet apply command
+                    const puppetMatch = line.match(/(puppet apply.+)/);
+                    if (puppetMatch) {
+                        command = puppetMatch[1].trim();
+                    }
+                }
+                
+                // Pattern 5: Puppet run
+                if (line.includes('puppet-run:')) {
+                    toolType = 'puppet';
+                    patternType = 'run';
+                    // Extract everything after "puppet-run: "
+                    const puppetMatch = line.match(/puppet-run:\s*(.+)/);
+                    if (puppetMatch) {
+                        command = puppetMatch[1].trim();
+                    }
+                }
+                
+                // Pattern 6: Chef client execution (format: chef-client[PID]: message)
+                // Capture important events and include next 5 lines for context
+                if (line.includes('chef-client[')) {
+                    const chefMatch = line.match(/chef-client\[\d+\]:\s*(.+)/);
+                    if (chefMatch) {
+                        const message = SCC_RULES.stripAnsiCodes(chefMatch[1].trim());
+                        // Capture important events with context
+                        if (message.includes('Starting Chef') || 
+                            message.includes('Chef Infra Client finished') ||
+                            message.includes('Chef Run complete') ||
+                            message.includes('Chef Client finished') ||
+                            message.includes('Synchronizing Cookbooks') ||
+                            message.includes('Installing Cookbook Gems') ||
+                            message.includes('Compiling Cookbooks') ||
+                            message.includes('Converging') ||
+                            message.includes('FATAL:') ||
+                            message.includes('ERROR:')) {
+                            toolType = 'chef';
+                            patternType = 'client';
+                            
+                            // Capture the current line plus next 5 lines for context
+                            const contextLines = [message];
+                            for (let j = 1; j <= 5 && (i + j) < lines.length; j++) {
+                                const nextLine = lines[i + j];
+                                const nextMatch = nextLine.match(/chef-client\[\d+\]:\s*(.+)/);
+                                if (nextMatch) {
+                                    contextLines.push(SCC_RULES.stripAnsiCodes(nextMatch[1].trim()));
+                                } else {
+                                    break; // Stop if next line is not chef-client
+                                }
+                            }
+                            command = contextLines.join(' | ');
+                        }
+                    }
+                }
+                
+                // Pattern 7: Chef solo (format: chef-solo[PID]: message)
+                if (line.includes('chef-solo[')) {
+                    const chefMatch = line.match(/chef-solo\[\d+\]:\s*(.+)/);
+                    if (chefMatch) {
+                        const message = SCC_RULES.stripAnsiCodes(chefMatch[1].trim());
+                        // Capture important events with context
+                        if (message.includes('Starting Chef') || 
+                            message.includes('Chef Solo finished') ||
+                            message.includes('Chef Run complete') ||
+                            message.includes('Synchronizing Cookbooks') ||
+                            message.includes('Compiling Cookbooks') ||
+                            message.includes('Converging') ||
+                            message.includes('FATAL:') ||
+                            message.includes('ERROR:')) {
+                            toolType = 'chef';
+                            patternType = 'solo';
+                            
+                            // Capture the current line plus next 5 lines for context
+                            const contextLines = [message];
+                            for (let j = 1; j <= 5 && (i + j) < lines.length; j++) {
+                                const nextLine = lines[i + j];
+                                const nextMatch = nextLine.match(/chef-solo\[\d+\]:\s*(.+)/);
+                                if (nextMatch) {
+                                    contextLines.push(SCC_RULES.stripAnsiCodes(nextMatch[1].trim()));
+                                } else {
+                                    break;
+                                }
+                            }
+                            command = contextLines.join(' | ');
+                        }
+                    }
+                }
+                
+                // Pattern 8: Chef apply (format: chef-apply[PID]: message)
+                if (line.includes('chef-apply[')) {
+                    const chefMatch = line.match(/chef-apply\[\d+\]:\s*(.+)/);
+                    if (chefMatch) {
+                        const message = SCC_RULES.stripAnsiCodes(chefMatch[1].trim());
+                        // Capture important events with context
+                        if (message.includes('Starting Chef') || 
+                            message.includes('Chef Apply finished') ||
+                            message.includes('Chef Run complete') ||
+                            message.includes('Compiling Cookbooks') ||
+                            message.includes('Converging') ||
+                            message.includes('FATAL:') ||
+                            message.includes('ERROR:')) {
+                            toolType = 'chef';
+                            patternType = 'apply';
+                            
+                            // Capture the current line plus next 5 lines for context
+                            const contextLines = [message];
+                            for (let j = 1; j <= 5 && (i + j) < lines.length; j++) {
+                                const nextLine = lines[i + j];
+                                const nextMatch = nextLine.match(/chef-apply\[\d+\]:\s*(.+)/);
+                                if (nextMatch) {
+                                    contextLines.push(SCC_RULES.stripAnsiCodes(nextMatch[1].trim()));
+                                } else {
+                                    break;
+                                }
+                            }
+                            command = contextLines.join(' | ');
+                        }
+                    }
+                }
+                
+                // Future patterns can be added here:
+                // - SaltStack: "salt-minion"
+                
+                if (toolType) {
                     const timestamp = SCC_RULES.extractTimestamp(line);
                     
-                    emergencyEvents.push({
+                    automationEvents.push({
                         timestamp: timestamp || 'Date not detected',
                         lineNumber: i + 1,
+                        toolType: toolType,
+                        patternType: patternType,
+                        command: command,
                         rawLine: line.trim(),
                         sourceFile: filename
                     });
                     
-                    debugLog('[emergencyMode parser] ✓ Detected emergency mode at line', i + 1, ':', timestamp);
+                    debugLog('[automation parser] ✓ Detected', toolType, 'at line', i + 1, ':', timestamp);
                 }
             }
             
-            debugLog('[emergencyMode parser] Found', emergencyEvents.length, 'emergency mode events');
+            debugLog('[automation parser] Found', automationEvents.length, 'automation events');
             
             return {
-                found: emergencyEvents.length > 0,
-                count: emergencyEvents.length,
-                events: emergencyEvents
-            };
-        }
-    },
-    
-    // Rule: Detect SSH Service issues from message logs
-    sshService: {
-        // Target file path patterns - messages, syslog, journalctl, console logs
-        filePattern: /\/(messages|localmessages|syslog|journalctl[^\/]*|console.*\.log)(?:[.-]\d+)?(?:\.txt)?$/,
-        
-        // Parse function receives file content as string
-        // Detects SSH service failures and permission issues:
-        // - "Failed to start OpenSSH server daemon."
-        // - "/var/empty/sshd must be owned by root and not group or world-writable."
-        // Returns array of detected SSH service issues with timestamps
-        parse: function(content, filename) {
-            const lines = content.split('\n');
-            const sshIssues = [];
-            
-            debugLog('[sshService parser] Analyzing', lines.length, 'lines for SSH service issues');
-            
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                
-                let issueType = null;
-                let message = null;
-                
-                // Pattern 1: "Failed to start OpenSSH server daemon."
-                if (line.match(/Failed to start OpenSSH server daemon/i)) {
-                    issueType = 'ssh_start_failed';
-                    message = 'Failed to start OpenSSH server daemon';
-                }
-                
-                // Pattern 2: "/var/empty/sshd must be owned by root and not group or world-writable."
-                if (line.match(/\/var\/empty\/sshd must be owned by root and not group or world-writable/i)) {
-                    issueType = 'ssh_permission_error';
-                    message = '/var/empty/sshd must be owned by root and not group or world-writable';
-                }
-                
-                if (issueType) {
-                    const timestamp = SCC_RULES.extractTimestamp(line);
-                    
-                    sshIssues.push({
-                        timestamp: timestamp || 'Date not detected',
-                        lineNumber: i + 1,
-                        issueType: issueType,
-                        message: message,
-                        rawLine: line.trim(),
-                        sourceFile: filename
-                    });
-                    
-                    debugLog('[sshService parser] ✓ Detected SSH issue at line', i + 1, ':', timestamp, 'type:', issueType);
-                }
-            }
-            
-            debugLog('[sshService parser] Found', sshIssues.length, 'SSH service issues');
-            
-            return {
-                found: sshIssues.length > 0,
-                count: sshIssues.length,
-                events: sshIssues
-            };
-        }
-    },
-    
-    // Rule: Detect Linux kernel reboots from message logs
-    kernelReboots: {
-        // Target file path patterns (same as liveMigration)
-        // supportconfig: */messages or */localmessages or */ha-log.txt (with optional suffixes)
-        // sosreport: */var/log/messages or */sos_commands/logs/journalctl*
-        filePattern: /\/(messages|localmessages|ha-log|journalctl[^\/]*)(?:[.-]\d+)?(?:\.txt)?$/,
-        
-        // Parse function receives file content as string
-        // Detects kernel reboots by finding patterns:
-        // - "Linux version" (kernel boot message)
-        // - "Command line:" (kernel command line)
-        // - System restart messages
-        // Returns array of detected reboot events with timestamps and kernel versions
-        parse: function(content) {
-            const lines = content.split('\n');
-            const reboots = [];
-            
-            debugLog('[kernelReboots parser] Analyzing', lines.length, 'lines for kernel reboots');
-            
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                
-                // Pattern 1: "Linux version X.Y.Z" - primary boot message
-                // Match both formats:
-                // - "kernel: Linux version 5.14.0"
-                // - "kernel: [    0.000000][    T0] Linux version 5.14.21-150400.24.103-default"
-                // - "[    0.000000] Linux version 5.15.0-1042-azure" (console log format)
-                const kernelMatch = line.match(/(?:kernel:\s*)?(?:\[\s*[\d\.]+\]\s*(?:\[\s*T\d+\]\s*)?)?Linux version\s+([\d\.\-\w]+)/i);
-                if (kernelMatch) {
-                    const timestamp = SCC_RULES.extractTimestamp(line);
-                    const kernelVersion = kernelMatch[1];
-                    
-                    reboots.push({
-                        timestamp: timestamp || 'Unknown',
-                        lineNumber: i + 1,
-                        kernelVersion: kernelVersion,
-                        type: 'kernel_boot',
-                        rawLine: line.trim()
-                    });
-                    
-                    debugLog('[kernelReboots parser] ✓ Detected kernel boot at line', i + 1, ':', timestamp, 'version:', kernelVersion);
-                    continue;
-                }
-                
-                // Pattern 2: systemd reboot messages
-                if (line.match(/systemd.*Shutting down/i) || 
-                    line.match(/systemd.*Starting Reboot/i) ||
-                    line.match(/systemd.*Stopped target.*Shutdown/i)) {
-                    const timestamp = SCC_RULES.extractTimestamp(line);
-                    
-                    // Check if we already have a reboot event very close to this timestamp
-                    const isDuplicate = reboots.some(r => {
-                        if (!timestamp || !r.timestamp) return false;
-                        // Simple duplicate check - same line or very close
-                        return Math.abs(r.lineNumber - (i + 1)) < 5;
-                    });
-                    
-                    if (!isDuplicate) {
-                        reboots.push({
-                            timestamp: timestamp || 'Unknown',
-                            lineNumber: i + 1,
-                            kernelVersion: null,
-                            type: 'systemd_shutdown',
-                            rawLine: line.trim()
-                        });
-                        
-                        debugLog('[kernelReboots parser] ✓ Detected systemd shutdown at line', i + 1, ':', timestamp);
-                    }
-                    continue;
-                }
-                
-                // Pattern 3: "reboot: " messages
-                if (line.match(/kernel:\s*reboot:/i)) {
-                    const timestamp = SCC_RULES.extractTimestamp(line);
-                    
-                    reboots.push({
-                        timestamp: timestamp || 'Unknown',
-                        lineNumber: i + 1,
-                        kernelVersion: null,
-                        type: 'reboot_message',
-                        rawLine: line.trim()
-                    });
-                    
-                    debugLog('[kernelReboots parser] ✓ Detected reboot message at line', i + 1, ':', timestamp);
-                    continue;
-                }
-            }
-            
-            debugLog('[kernelReboots parser] Found', reboots.length, 'reboot events');
-            
-            return {
-                count: reboots.length,
-                events: reboots
-            };
-        }
-    },
-    
-    // Rule: Detect Out of Memory (OOM) killer events from message logs
-    oomKiller: {
-        // Target file path patterns (same as liveMigration and kernelReboots)
-        // supportconfig: */messages or */localmessages (with optional suffixes)
-        // sosreport: */var/log/messages or */sos_commands/logs/journalctl*
-        filePattern: /\/(messages|localmessages|journalctl[^\/]*)(?:[.-]\d+)?(?:\.txt)?$/,
-        
-        // Parse function receives file content as string
-        // Detects OOM killer events by finding patterns:
-        // - "Out of memory: Kill process" or "Out of memory: Killed process"
-        // - "oom-killer:" or "oom_reaper:"
-        // - Memory statistics and killed process information
-        // Returns array of detected OOM events with process details
-        parse: function(content) {
-            const lines = content.split('\n');
-            const oomEvents = [];
-            
-            debugLog('[oomKiller parser] Analyzing', lines.length, 'lines for OOM killer events');
-            
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                
-                // Pattern 1: "Out of memory: Kill process" or "Out of memory: Killed process"
-                const oomKillMatch = line.match(/Out of memory:.*Kill(?:ed)? process\s+(\d+)\s+\(([^)]+)\)/i);
-                if (oomKillMatch) {
-                    const timestamp = SCC_RULES.extractTimestamp(line);
-                    const pid = oomKillMatch[1];
-                    const processName = oomKillMatch[2];
-                    
-                    // Try to find memory score on the same line or nearby lines
-                    let score = null;
-                    const scoreMatch = line.match(/score\s+(\d+)/i);
-                    if (scoreMatch) {
-                        score = scoreMatch[1];
-                    }
-                    
-                    // Try to find total VM info
-                    let totalVM = null;
-                    const vmMatch = line.match(/total-vm:(\d+)kB/i);
-                    if (vmMatch) {
-                        totalVM = vmMatch[1] + 'kB';
-                    }
-                    
-                    oomEvents.push({
-                        timestamp: timestamp || 'Unknown',
-                        lineNumber: i + 1,
-                        pid: pid,
-                        processName: processName,
-                        score: score,
-                        totalVM: totalVM,
-                        type: 'oom_kill',
-                        rawLine: line.trim()
-                    });
-                    
-                    debugLog('[oomKiller parser] ✓ Detected OOM kill at line', i + 1, ':', timestamp, 'process:', processName, 'pid:', pid);
-                    continue;
-                }
-                
-                // Pattern 2: "oom-killer:" invocation (usually precedes the kill message)
-                if (line.match(/invoked oom-killer:/i)) {
-                    const timestamp = SCC_RULES.extractTimestamp(line);
-                    
-                    // Extract the process that invoked OOM killer
-                    let invokedBy = null;
-                    const invokeMatch = line.match(/\]\s+([^\s]+)\s+invoked oom-killer:/i);
-                    if (invokeMatch) {
-                        invokedBy = invokeMatch[1];
-                    }
-                    
-                    // Extract memory allocation info if present
-                    let order = null;
-                    const orderMatch = line.match(/order=(\d+)/i);
-                    if (orderMatch) {
-                        order = orderMatch[1];
-                    }
-                    
-                    // Check if we already have an event very close to this
-                    const isDuplicate = oomEvents.some(e => {
-                        return Math.abs(e.lineNumber - (i + 1)) < 3;
-                    });
-                    
-                    if (!isDuplicate) {
-                        oomEvents.push({
-                            timestamp: timestamp || 'Unknown',
-                            lineNumber: i + 1,
-                            pid: null,
-                            processName: null,
-                            invokedBy: invokedBy,
-                            order: order,
-                            type: 'oom_invoked',
-                            rawLine: line.trim()
-                        });
-                        
-                        debugLog('[oomKiller parser] ✓ Detected OOM invocation at line', i + 1, ':', timestamp, 'by:', invokedBy);
-                    }
-                    continue;
-                }
-                
-                // Pattern 3: "oom_reaper:" messages (cleanup after OOM kill)
-                if (line.match(/oom_reaper:/i)) {
-                    const timestamp = SCC_RULES.extractTimestamp(line);
-                    
-                    // Extract PID if present
-                    let pid = null;
-                    const pidMatch = line.match(/reaped process\s+(\d+)/i);
-                    if (pidMatch) {
-                        pid = pidMatch[1];
-                    }
-                    
-                    // Check if we already have an event very close to this
-                    const isDuplicate = oomEvents.some(e => {
-                        return Math.abs(e.lineNumber - (i + 1)) < 3;
-                    });
-                    
-                    if (!isDuplicate) {
-                        oomEvents.push({
-                            timestamp: timestamp || 'Unknown',
-                            lineNumber: i + 1,
-                            pid: pid,
-                            processName: null,
-                            type: 'oom_reaper',
-                            rawLine: line.trim()
-                        });
-                        
-                        debugLog('[oomKiller parser] ✓ Detected OOM reaper at line', i + 1, ':', timestamp);
-                    }
-                    continue;
-                }
-                
-                // Pattern 4: "Cannot allocate memory" errors
-                if (line.match(/Cannot allocate memory/i)) {
-                    const timestamp = SCC_RULES.extractTimestamp(line);
-                    
-                    // Extract process name if present
-                    let processName = null;
-                    const processMatch = line.match(/\]\s+([^\s:]+):/);
-                    if (processMatch) {
-                        processName = processMatch[1];
-                    }
-                    
-                    // Check if we already have an event very close to this
-                    const isDuplicate = oomEvents.some(e => {
-                        return Math.abs(e.lineNumber - (i + 1)) < 3;
-                    });
-                    
-                    if (!isDuplicate) {
-                        oomEvents.push({
-                            timestamp: timestamp || 'Unknown',
-                            lineNumber: i + 1,
-                            pid: null,
-                            processName: processName,
-                            type: 'alloc_failure',
-                            rawLine: line.trim()
-                        });
-                        
-                        debugLog('[oomKiller parser] ✓ Detected allocation failure at line', i + 1, ':', timestamp, 'process:', processName);
-                    }
-                    continue;
-                }
-            }
-            
-            debugLog('[oomKiller parser] Found', oomEvents.length, 'OOM killer events');
-            
-            return {
-                count: oomEvents.length,
-                events: oomEvents
-            };
-        }
-    },
-    
-    // Rule: Detect XFS filesystem errors requiring repair
-    xfsErrors: {
-        // Target file path patterns (same as oomKiller)
-        // supportconfig: */messages or */localmessages (with optional suffixes)
-        // sosreport: */var/log/messages or */sos_commands/logs/journalctl*
-        filePattern: /\/(messages|localmessages|journalctl[^\/]*)(?:[.-]\d+)?(?:\.txt)?$/,
-        
-        // Parse function receives file content as string
-        // Detects XFS filesystem errors that require unmounting and repair
-        // Example: [1814128.610637] XFS (sdd1): Please unmount the filesystem and rectify the problem(s)
-        parse: function(content) {
-            debugLog('[xfsErrors parser] Analyzing for XFS filesystem errors');
-            
-            // Pattern to match XFS error messages
-            const xfsPattern = /XFS\s+\(([^)]+)\):\s*(.+)/i;
-            
-            // Use grepLines to find all XFS messages
-            const result = SCC_RULES.grepLines(content, xfsPattern, { 
-                firstMatchOnly: false, 
-                returnAllMatches: true 
-            });
-            
-            if (!result.found) {
-                debugLog('[xfsErrors parser] No XFS messages found');
-                return {
-                    count: 0,
-                    events: []
-                };
-            }
-            
-            const xfsErrors = [];
-            
-            // Filter for critical errors only
-            for (const match of result.matches) {
-                const fullMatch = match.line.match(xfsPattern);
-                if (!fullMatch) continue;
-                
-                const device = fullMatch[1];
-                const message = fullMatch[2].trim();
-                
-                // Focus on critical errors that require repair
-                const isCritical = /please unmount.*rectify/i.test(message) ||
-                                 /metadata.*corruption/i.test(message) ||
-                                 /corruption.*detected/i.test(message) ||
-                                 /corruption warning/i.test(message) ||
-                                 /internal error/i.test(message) ||
-                                 /shutting down filesystem/i.test(message) ||
-                                 /filesystem has been shut down/i.test(message) ||
-                                 /duplicate UUID.*can't mount/i.test(message);
-                
-                if (isCritical) {
-                    const timestamp = SCC_RULES.extractTimestamp(match.line);
-                    
-                    xfsErrors.push({
-                        timestamp: timestamp || 'Unknown',
-                        lineNumber: match.lineNumber,
-                        device: device,
-                        message: message,
-                        rawLine: match.line
-                    });
-                    
-                    debugLog('[xfsErrors parser] ✓ Detected XFS error at line', match.lineNumber, ':', timestamp, 'device:', device);
-                }
-            }
-            
-            debugLog('[xfsErrors parser] Found', xfsErrors.length, 'critical XFS filesystem errors');
-            
-            return {
-                count: xfsErrors.length,
-                events: xfsErrors
+                found: automationEvents.length > 0,
+                count: automationEvents.length,
+                events: automationEvents
             };
         }
     },
@@ -4090,137 +3124,6 @@ const SCC_RULES = {
         }
     },
     
-    // Rule: Detect Falcon Sensor (CrowdStrike) and check SAP exceptions
-    falconSensor: {
-        // Target file patterns - RPM list and process list
-        filePattern: /\/(rpm\.txt|installed-rpms|package-data|ps\.txt|ps_.*\.txt)$/,
-        
-        parse: function(content) {
-            return SCC_RULES.detectSecuritySoftware(
-                content,
-                'falconSensor parser',
-                'falcon-sensor',
-                ['falcon-sensor', '/opt/CrowdStrike'],
-                'Falcon Sensor',
-                'Falcon Sensor detected. SAP exclusions should be verified manually in /opt/CrowdStrike configuration.'
-            );
-        }
-    },
-    
-    // Rule: Check Falcon Sensor SAP exclusions in config files
-    falconSensorConfig: {
-        filePattern: /\/(falconctl|CrowdStrike.*config|falcon.*conf)$/i,
-        
-        parse: function(content) {
-            return SCC_RULES.checkSAPExclusions(
-                content,
-                'falconSensorConfig parser',
-                ['exclude', 'exception']
-            );
-        }
-    },
-    
-    // Rule: Detect Microsoft Defender and check SAP exceptions
-    msDefender: {
-        filePattern: /\/(rpm\.txt|installed-rpms|package-data|ps\.txt|ps_.*\.txt)$/,
-        
-        parse: function(content) {
-            return SCC_RULES.detectSecuritySoftware(
-                content,
-                'msDefender parser',
-                'mdatp',
-                ['mdatp', 'wdavdaemon', '/opt/microsoft/mdatp'],
-                'MS Defender',
-                'Microsoft Defender detected. SAP exclusions should be verified with: mdatp exclusion list'
-            );
-        }
-    },
-    
-    // Rule: Check MS Defender SAP exclusions
-    msDefenderConfig: {
-        filePattern: /\/(mdatp.*|defender.*config)$/i,
-        
-        parse: function(content) {
-            return SCC_RULES.checkSAPExclusions(
-                content,
-                'msDefenderConfig parser',
-                ['exclusion', 'exclude']
-            );
-        }
-    },
-    
-    // Rule: Detect Illumio
-    illumio: {
-        filePattern: /sos_commands\/systemd\/systemctl_list-units_--all$/,
-        
-        parse: function(content) {
-            debugLog('[illumio parser] Analyzing for Illumio');
-            
-            // Case-insensitive search for Illumio
-            const result = SCC_RULES.grepLines(content, /illumio/i, { firstMatchOnly: true });
-            
-            if (!result.found) {
-                debugLog('[illumio parser] Illumio not detected');
-                return { found: false };
-            }
-            
-            debugLog('[illumio parser] Found Illumio:', result.line);
-            
-            return {
-                found: true,
-                message: 'Illumio detected. SAP exclusions should be verified in Illumio policy configuration.'
-            };
-        }
-    },
-    
-    // Rule: Detect Trend Micro Deep Security
-    trendMicro: {
-        filePattern: /sos_commands\/systemd\/systemctl_list-units_--all$/,
-        
-        parse: function(content) {
-            debugLog('[trendMicro parser] Analyzing for Trend Micro');
-            
-            // Search for lines containing both ds_agent.service and Trend Micro
-            const result = SCC_RULES.grepLines(content, /ds_agent\.service.*Trend Micro|Trend Micro.*ds_agent\.service/i, { firstMatchOnly: true });
-            
-            if (!result.found) {
-                debugLog('[trendMicro parser] Trend Micro not detected');
-                return { found: false };
-            }
-            
-            debugLog('[trendMicro parser] Found Trend Micro Deep Security:', result.line);
-            
-            return {
-                found: true,
-                message: 'Trend Micro Deep Security detected. SAP exclusions should be verified in Deep Security Manager.'
-            };
-        }
-    },
-    
-    // Rule: Detect DLM (Distributed Lock Manager) service
-    dlmService: {
-        filePattern: /sos_commands\/systemd\/systemctl_list-unit-files$/,
-        
-        parse: function(content, filename) {
-            debugLog('[dlmService parser] Analyzing for DLM service in:', filename);
-            
-            const result = SCC_RULES.detectSystemdService(
-                content,
-                filename,
-                'dlm',
-                'error',
-                'DLM (Distributed Lock Manager) service is enabled in systemd. This can cause issues with Pacemaker clusters, and should be managed as a cluster resource as defined in the documentation below.'
-            );
-            
-            // Add documentation URL for DLM service
-            if (result.found) {
-                result.documentationUrl = 'https://access.redhat.com/solutions/878023';
-            }
-            
-            return result;
-        }
-    },
-    
     // Rule: Detect Azure Site Recovery (ASR) service
     azureSiteRecovery: {
         filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
@@ -4238,269 +3141,37 @@ const SCC_RULES = {
         }
     },
     
-    // Rule: Detect Guardicore agent (security software)
-    guardicoreAgent: {
+    // Rule: Detect Puppet agent (configuration management)
+    puppetAgent: {
         filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
         
         parse: function(content, filename) {
-            debugLog('[guardicoreAgent parser] Analyzing for Guardicore agent in:', filename);
+            debugLog('[puppetAgent parser] Analyzing for Puppet agent in:', filename);
             
             return SCC_RULES.detectSystemdService(
                 content,
                 filename,
-                'gc-agent',
-                'warning',
-                'Guardicore agent is enabled on this system. This security software provides micro-segmentation and may require exclusions for SAP workloads.'
+                'puppet',
+                'info',
+                'Puppet agent is enabled on this system. This configuration management tool automates system configuration and management.'
             );
         }
     },
     
-    // Rule: Extract kernel tuning parameters from sysctl
-    kernelTuning: {
-        filePattern: /sos_commands\/kernel\/sysctl_-a$|\/env\.txt$/,
+    // Rule: Detect Chef client (configuration management)
+    chefClient: {
+        filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
         
         parse: function(content, filename) {
-            debugLog('[kernelTuning parser] Analyzing kernel parameters in:', filename);
+            debugLog('[chefClient parser] Analyzing for Chef client in:', filename);
             
-            let sysctlContent = content;
-            
-            // If this is SCC's env.txt, extract just the sysctl section
-            if (filename.includes('env.txt')) {
-                debugLog('[kernelTuning parser] Extracting sysctl from SCC env.txt');
-                
-                // Extract content between "# /sbin/sysctl -a" and next "#==[ Command ]" marker
-                const lines = content.split('\n');
-                const extractedLines = [];
-                let inSection = false;
-                
-                for (let i = 0; i < lines.length; i++) {
-                    const line = lines[i];
-                    
-                    // Start collecting after finding the marker
-                    if (line.includes('# /sbin/sysctl -a')) {
-                        inSection = true;
-                        continue; // Skip the marker line itself
-                    }
-                    
-                    // Stop at next section marker
-                    if (inSection && line.trim().startsWith('#==[ Command ]')) {
-                        break;
-                    }
-                    
-                    // Stop at empty line followed by section marker
-                    if (inSection && line.trim() === '' && i + 1 < lines.length && lines[i + 1].trim().startsWith('#==')) {
-                        break;
-                    }
-                    
-                    // Collect lines while in section
-                    if (inSection) {
-                        extractedLines.push(line);
-                    }
-                }
-                
-                if (extractedLines.length === 0) {
-                    debugLog('[kernelTuning parser] Sysctl section not found in env.txt');
-                    return { found: false };
-                }
-                
-                sysctlContent = extractedLines.join('\n');
-                debugLog('[kernelTuning parser] Extracted', extractedLines.length, 'lines from sysctl section');
-            }
-            
-            // Parse sysctl output using utility function
-            const parsed = SCC_RULES.parseKeyValueFile(sysctlContent, {
-                pattern: /^([^\s=]+)\s*=\s*(.+)$/,  // sysctl uses "key = value" format
-                skipComments: true,
-                skipEmpty: true
-            });
-            
-            const parameters = parsed.parameters;
-            const warnings = [];
-            const azureNetworkWarnings = [];
-            
-            // Expected values for SAP HANA / high-performance workloads
-            const expectedValues = {
-                'vm.dirty_bytes': '629145600',
-                'vm.dirty_background_bytes': '314572800',
-                'vm.swappiness': '10'
-            };
-            
-            const documentation = {
-                'vm.dirty_bytes': 'https://learn.microsoft.com/en-us/azure/sap/workloads/sap-hana-high-availability',
-                'vm.dirty_background_bytes': 'https://learn.microsoft.com/en-us/azure/sap/workloads/sap-hana-high-availability',
-                'vm.swappiness': 'https://learn.microsoft.com/en-us/azure/sap/workloads/sap-hana-high-availability'
-            };
-            
-            // Check for expected values
-            for (const [param, expectedValue] of Object.entries(expectedValues)) {
-                if (parameters[param]) {
-                    const actualValue = parameters[param];
-                    if (actualValue !== expectedValue) {
-                        warnings.push({
-                            parameter: param,
-                            expected: expectedValue,
-                            actual: actualValue,
-                            documentationUrl: documentation[param]
-                        });
-                        debugLog(`[kernelTuning parser] Warning: ${param} = ${actualValue}, expected ${expectedValue}`);
-                    } else {
-                        debugLog(`[kernelTuning parser] OK: ${param} = ${actualValue}`);
-                    }
-                }
-            }
-            
-            // Azure Network optimization parameters
-            // Documentation: https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-optimize-network-bandwidth#linux-virtual-machines
-            const azureNetworkParams = {
-                'net.ipv4.tcp_mem': '4096\t87380\t67108864',
-                'net.ipv4.udp_mem': '4096\t87380\t33554432',
-                'net.ipv4.tcp_rmem': '4096\t87380\t67108864',
-                'net.ipv4.tcp_wmem': '4096\t65536\t67108864',
-                'net.core.rmem_default': '33554432',
-                'net.core.wmem_default': '33554432',
-                'net.ipv4.udp_wmem_min': '16384',
-                'net.ipv4.udp_rmem_min': '16384',
-                'net.core.wmem_max': '134217728',
-                'net.core.rmem_max': '134217728',
-                'net.core.busy_poll': '50',
-                'net.core.busy_read': '50',
-                'net.ipv4.tcp_congestion_control': 'bbr'
-            };
-            
-            const azureNetworkDocUrl = 'https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-optimize-network-bandwidth#linux-virtual-machines';
-            
-            // Check Azure Network optimization parameters
-            for (const [param, expectedValue] of Object.entries(azureNetworkParams)) {
-                if (parameters[param]) {
-                    const actualValue = parameters[param];
-                    // Normalize whitespace: replace tabs/multiple spaces with single tab for comparison
-                    const normalizedActual = actualValue.replace(/\s+/g, '\t');
-                    const normalizedExpected = expectedValue.replace(/\s+/g, '\t');
-                    
-                    if (normalizedActual !== normalizedExpected) {
-                        azureNetworkWarnings.push({
-                            parameter: param,
-                            expected: expectedValue,
-                            actual: actualValue,
-                            documentationUrl: azureNetworkDocUrl
-                        });
-                        debugLog(`[kernelTuning parser] Azure Network Warning: ${param} = ${actualValue}, expected ${expectedValue}`);
-                    } else {
-                        debugLog(`[kernelTuning parser] Azure Network OK: ${param} = ${actualValue}`);
-                    }
-                }
-            }
-            
-            // Optional Network Tuning parameters (informational only)
-            const optionalNetworkParams = {
-                'net.ipv4.tcp_timestamps': '1',
-                'net.ipv4.tcp_tw_reuse': '1',
-                'net.ipv4.ip_local_port_range': '1024\t65535',
-                'net.core.netdev_budget': '1000',
-                'net.core.optmem_max': '65535',
-                'net.ipv4.tcp_frto': '0',
-                'net.core.somaxconn': '32768',
-                'net.core.netdev_max_backlog': '32768',
-                'net.core.dev_weight': '64',
-                'net.core.default_qdisc': 'fq'
-            };
-            
-            const optionalNetworkInfo = [];
-            
-            // Check optional parameters (informational, not warnings)
-            for (const [param, expectedValue] of Object.entries(optionalNetworkParams)) {
-                if (parameters[param]) {
-                    const actualValue = parameters[param];
-                    // Normalize whitespace: replace tabs/multiple spaces with single tab for comparison
-                    const normalizedActual = actualValue.replace(/\s+/g, '\t');
-                    const normalizedExpected = expectedValue.replace(/\s+/g, '\t');
-                    
-                    optionalNetworkInfo.push({
-                        parameter: param,
-                        expected: expectedValue,
-                        actual: actualValue,
-                        matches: normalizedActual === normalizedExpected,
-                        documentationUrl: azureNetworkDocUrl
-                    });
-                    
-                    if (normalizedActual === normalizedExpected) {
-                        debugLog(`[kernelTuning parser] Optional Network OK: ${param} = ${actualValue}`);
-                    } else {
-                        debugLog(`[kernelTuning parser] Optional Network Info: ${param} = ${actualValue}, recommended ${expectedValue}`);
-                    }
-                }
-            }
-            
-            return {
-                found: true,
-                parameters: parameters,
-                warnings: warnings,
-                hasWarnings: warnings.length > 0,
-                azureNetworkWarnings: azureNetworkWarnings,
-                hasAzureNetworkWarnings: azureNetworkWarnings.length > 0,
-                azureNetworkTuned: azureNetworkWarnings.length === 0 && Object.keys(azureNetworkParams).every(p => parameters[p]),
-                optionalNetworkInfo: optionalNetworkInfo,
-                hasOptionalNetworkInfo: optionalNetworkInfo.length > 0
-            };
-        }
-    },
-    
-    // Rule: Extract fstab file
-    fstab: {
-        filePattern: /\/etc\/fstab$|\/fs-diskio\.txt$/,
-        
-        parse: function(content, filename) {
-            debugLog('[fstab parser] Analyzing fstab in:', filename);
-            
-            // If this is fs-diskio.txt from SCC, extract just the fstab section
-            if (filename.includes('fs-diskio.txt')) {
-                debugLog('[fstab parser] Extracting fstab from SCC fs-diskio.txt');
-                return this.extractFstabFromSCC(content, filename);
-            }
-            
-            return SCC_RULES.extractRawFile(content, filename);
-        },
-        
-        // Helper to extract fstab section from SCC's fs-diskio.txt
-        extractFstabFromSCC: function(content, filename) {
-            const lines = content.split('\n');
-            let fstabContent = [];
-            let inFstabSection = false;
-            
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                
-                // Start of fstab section
-                if (line.includes('# /etc/fstab')) {
-                    inFstabSection = true;
-                    continue;
-                }
-                
-                // End of fstab section (empty line or next section marker)
-                if (inFstabSection && (line.trim() === '' || line.startsWith('#=='))) {
-                    break;
-                }
-                
-                // Collect fstab lines
-                if (inFstabSection) {
-                    fstabContent.push(line);
-                }
-            }
-            
-            if (fstabContent.length === 0) {
-                debugLog('[fstab parser] No fstab section found in fs-diskio.txt');
-                return { found: false };
-            }
-            
-            const extractedFstab = fstabContent.join('\n');
-            debugLog('[fstab parser] Extracted', fstabContent.length, 'lines from fstab section');
-            
-            return {
-                found: true,
-                content: extractedFstab,
-                filename: filename,
-                source: 'SCC fs-diskio.txt'
-            };
+            return SCC_RULES.detectSystemdService(
+                content,
+                filename,
+                'chef-client',
+                'info',
+                'Chef client is enabled on this system. This configuration management tool automates infrastructure deployment and management.'
+            );
         }
     },
     
@@ -4549,6 +3220,89 @@ const SCC_RULES = {
 
 // ============================================================================
 // END SCC RULES
+// ============================================================================
+
+// Manual parser assignments - Load external parsers after SCC_RULES is fully defined
+// This avoids "SCC_RULES is not defined" errors during module loading
+
+// From parsers/packages.js
+if (typeof distroPackagesParser !== 'undefined') {
+    SCC_RULES.distroPackages = distroPackagesParser;
+}
+
+// From parsers/distribution.js
+if (typeof basicEnvironmentParser !== 'undefined') {
+    SCC_RULES.basicEnvironment = basicEnvironmentParser;
+}
+if (typeof osReleaseParser !== 'undefined') {
+    SCC_RULES.osRelease = osReleaseParser;
+}
+
+// From parsers/services.js
+if (typeof sshServiceParser !== 'undefined') {
+    SCC_RULES.sshService = sshServiceParser;
+}
+if (typeof dlmServiceParser !== 'undefined') {
+    SCC_RULES.dlmService = dlmServiceParser;
+}
+if (typeof azureSiteRecoveryParser !== 'undefined') {
+    SCC_RULES.azureSiteRecovery = azureSiteRecoveryParser;
+}
+if (typeof guardicoreAgentParser !== 'undefined') {
+    SCC_RULES.guardicoreAgent = guardicoreAgentParser;
+}
+if (typeof illumioParser !== 'undefined') {
+    SCC_RULES.illumio = illumioParser;
+}
+if (typeof trendMicroParser !== 'undefined') {
+    SCC_RULES.trendMicro = trendMicroParser;
+}
+if (typeof falconSensorParser !== 'undefined') {
+    SCC_RULES.falconSensor = falconSensorParser;
+}
+if (typeof falconSensorConfigParser !== 'undefined') {
+    SCC_RULES.falconSensorConfig = falconSensorConfigParser;
+}
+if (typeof msDefenderParser !== 'undefined') {
+    SCC_RULES.msDefender = msDefenderParser;
+}
+if (typeof msDefenderConfigParser !== 'undefined') {
+    SCC_RULES.msDefenderConfig = msDefenderConfigParser;
+}
+if (typeof involfltVersionParser !== 'undefined') {
+    SCC_RULES.involfltVersion = involfltVersionParser;
+}
+if (typeof involfltKernelVersionParser !== 'undefined') {
+    SCC_RULES.involfltKernelVersion = involfltKernelVersionParser;
+}
+
+// From parsers/system.js  
+if (typeof emergencyModeParser !== 'undefined') {
+    SCC_RULES.emergencyMode = emergencyModeParser;
+}
+if (typeof kernelRebootsParser !== 'undefined') {
+    SCC_RULES.kernelReboots = kernelRebootsParser;
+}
+if (typeof oomKillerParser !== 'undefined') {
+    SCC_RULES.oomKiller = oomKillerParser;
+}
+if (typeof xfsErrorsParser !== 'undefined') {
+    SCC_RULES.xfsErrors = xfsErrorsParser;
+}
+if (typeof kernelTuningParser !== 'undefined') {
+    SCC_RULES.kernelTuning = kernelTuningParser;
+}
+if (typeof fstabParser !== 'undefined') {
+    SCC_RULES.fstab = fstabParser;
+}
+
+// From parsers/azure.js
+if (typeof azureVMPropertiesParser !== 'undefined') {
+    SCC_RULES.azureVMProperties = azureVMPropertiesParser;
+}
+if (typeof suseCloudRegisterParser !== 'undefined') {
+    SCC_RULES.suseCloudRegister = suseCloudRegisterParser;
+}
 // ============================================================================
 
 // Load the streaming WASM module
@@ -4899,9 +3653,9 @@ class IncrementalTARParser {
                 if (this.buffer.length >= dataOffset + extractSize) {
                     const content = this.extractFileContent(dataOffset, extractSize);
                     if (content) {
-                        // For rules that process multiple files (like liveMigration, kernelReboots, oomKiller, xfsErrors, emergencyMode, and sshService)
+                        // For rules that process multiple files (like liveMigration, kernelReboots, oomKiller, xfsErrors, emergencyMode, sshService, and automation)
                         // we need to accumulate results instead of replacing
-                        const isMultiFileRule = ruleName === 'liveMigration' || ruleName === 'kernelReboots' || ruleName === 'oomKiller' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService';
+                        const isMultiFileRule = ruleName === 'liveMigration' || ruleName === 'kernelReboots' || ruleName === 'oomKiller' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation';
                         
                         // NOTE: We don't store file content in extractedFiles anymore to save memory
                         // Content is parsed immediately and discarded
@@ -4919,8 +3673,8 @@ class IncrementalTARParser {
                                     };
                                 }
                                 
-                                // For kernelReboots, xfsErrors, emergencyMode, and sshService, deduplicate events based on timestamp and relevant fields
-                                if (ruleName === 'kernelReboots' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService') {
+                                // For kernelReboots, xfsErrors, emergencyMode, sshService, and automation, deduplicate events based on timestamp and relevant fields
+                                if (ruleName === 'kernelReboots' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation') {
                                     // Define comparison fields for each rule type
                                     const comparisonFields = ruleName === 'kernelReboots' 
                                         ? ['timestamp', 'type', 'kernelVersion']
@@ -4928,7 +3682,9 @@ class IncrementalTARParser {
                                         ? ['timestamp', 'device', 'message']
                                         : ruleName === 'emergencyMode'
                                         ? ['timestamp', 'lineNumber']
-                                        : ['timestamp', 'issueType', 'message']; // sshService
+                                        : ruleName === 'sshService'
+                                        ? ['timestamp', 'issueType', 'message']
+                                        : ['timestamp', 'toolType', 'command']; // automation
                                     
                                     // Add sourceFile to new events
                                     const newEventsWithSource = result.events.map(event => ({
@@ -5211,6 +3967,8 @@ class IncrementalTARParser {
         const trendMicroData = this.analysisResults.trendMicro || { found: false };
         const azureSiteRecoveryData = this.analysisResults.azureSiteRecovery || { found: false };
         const guardicoreAgentData = this.analysisResults.guardicoreAgent || { found: false };
+        const puppetAgentData = this.analysisResults.puppetAgent || { found: false };
+        const chefClientData = this.analysisResults.chefClient || { found: false };
         
         // Combine antivirus and Azure services results
         const antivirusResults = {
@@ -5247,6 +4005,24 @@ class IncrementalTARParser {
                 detectionLine: guardicoreAgentData.detectionLine,
                 detectionContent: guardicoreAgentData.detectionContent
             },
+            puppetAgent: {
+                detected: puppetAgentData.found,
+                enabled: puppetAgentData.enabled || false,
+                severity: puppetAgentData.severity,
+                message: puppetAgentData.message,
+                detectionFile: puppetAgentData.detectionFile,
+                detectionLine: puppetAgentData.detectionLine,
+                detectionContent: puppetAgentData.detectionContent
+            },
+            chefClient: {
+                detected: chefClientData.found,
+                enabled: chefClientData.enabled || false,
+                severity: chefClientData.severity,
+                message: chefClientData.message,
+                detectionFile: chefClientData.detectionFile,
+                detectionLine: chefClientData.detectionLine,
+                detectionContent: chefClientData.detectionContent
+            },
             azureSiteRecovery: {
                 detected: azureSiteRecoveryData.found,
                 enabled: azureSiteRecoveryData.enabled || false,
@@ -5257,7 +4033,7 @@ class IncrementalTARParser {
                 detectionContent: azureSiteRecoveryData.detectionContent
             },
             // Overall status
-            anyDetected: falconSensorData.found || msDefenderData.found || illumioData.found || trendMicroData.found || azureSiteRecoveryData.found || guardicoreAgentData.found,
+            anyDetected: falconSensorData.found || msDefenderData.found || illumioData.found || trendMicroData.found || azureSiteRecoveryData.found || guardicoreAgentData.found || puppetAgentData.found || chefClientData.found,
             allHaveExceptions: (falconSensorData.found ? (falconConfigData.hasExclusions || false) : true) && 
                               (msDefenderData.found ? (msDefenderConfigData.hasExclusions || false) : true)
         };
@@ -5390,6 +4166,9 @@ class IncrementalTARParser {
             nvmeList: this.analysisResults.nvmeList || null,
             involfltVersion: this.analysisResults.involfltVersion || null,
             involfltKernelVersion: this.analysisResults.involfltKernelVersion || null,
+            emergencyMode: this.analysisResults.emergencyMode || null,
+            sshService: this.analysisResults.sshService || null,
+            automation: this.analysisResults.automation || null,
             usedPaxFormat: this.usedPaxFormat || false,  // Flag if PAX format was detected
             // Cross-validation results
             nodesInHosts: nodesInHosts,
@@ -5444,7 +4223,8 @@ self.onmessage = async function(e) {
                 liveMigration: { found: false, events: [] },
                 xfsErrors: { found: false, events: [] },
                 emergencyMode: { found: false, events: [] },
-                sshService: { found: false, events: [] }
+                sshService: { found: false, events: [] },
+                automation: { found: false, events: [] }
             };
             console.log('[Worker] Analysis structure created');
             
@@ -5456,7 +4236,8 @@ self.onmessage = async function(e) {
                 liveMigration: SCC_RULES.liveMigration,
                 xfsErrors: SCC_RULES.xfsErrors,
                 emergencyMode: SCC_RULES.emergencyMode,
-                sshService: SCC_RULES.sshService
+                sshService: SCC_RULES.sshService,
+                automation: SCC_RULES.automation
             };
             console.log('[Worker] Event parsers ready, starting analysis...');
             

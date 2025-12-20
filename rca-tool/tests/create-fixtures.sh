@@ -1092,6 +1092,23 @@ EOF
 
 create_fixture "test-asr"
 
+# Test for automation detection (Ansible)
+echo ""
+echo "=== Creating test-automation.tar.xz ==="
+mkdir -p test-data
+cat > test-data/messages.txt << 'EOF'
+Dec 18 10:15:23 testhost kernel: Linux version 5.14.0-427.13.1.el9_4.x86_64 (mockbuild@x86-64-01.build.eng.rdu2.redhat.com)
+Dec 18 10:20:45 testhost ansible-command: Invoked with creates=None executable=None chdir=/tmp warn=True stdin_add_newline=True strip_empty_ends=True argv=None removes=None
+Dec 18 10:20:46 testhost ansible-command: /usr/bin/python3 /tmp/ansible-playbook-test.py
+Dec 18 10:25:30 testhost systemd[1]: Started Session 123 of user root.
+Dec 18 10:30:15 testhost ansible-command: Running command: yum install -y httpd
+Dec 18 10:35:22 testhost ansible-command: Invoked with name=httpd state=started enabled=yes
+Dec 18 10:40:10 testhost ansible-command: Invoked with path=/etc/httpd/conf/httpd.conf regexp=^Listen line=Listen 8080
+Dec 18 11:00:00 testhost systemd[1]: Stopping firewalld - dynamic firewall daemon...
+EOF
+
+create_fixture "test-automation"
+
 echo ""
 echo "========================================="
 echo "✓ All test fixtures created successfully!"

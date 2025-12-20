@@ -31,10 +31,11 @@ import path from 'path';
 import vm from 'vm';
 
 test('sysinfo parser extracts Distribution line from worker', async () => {
-  const workerPath = path.join(__dirname, '..', 'liblzma-streaming-worker.js');
-  const code = fs.readFileSync(workerPath, 'utf8');
+  // osRelease parser is now in external module, so load from there
+  const parserPath = path.join(__dirname, '..', 'src', 'parsers', 'distribution.js');
+  const code = fs.readFileSync(parserPath, 'utf8');
 
-  // Extract the parseSysinfo helper function from osRelease rule
+  // Extract the parseSysinfo helper function from osReleaseParser
   const parseSysinfoMarker = 'parseSysinfo: function(content, filename)';
   const parseSysinfoIdx = code.indexOf(parseSysinfoMarker);
   if (parseSysinfoIdx === -1) throw new Error('parseSysinfo helper not found');
