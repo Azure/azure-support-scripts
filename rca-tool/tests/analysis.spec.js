@@ -41,9 +41,12 @@ function isSapDetectedFromResult(resultHtml) {
 
 test.describe('SAP HANA Cluster Analyzer', () => {
   
-  test.beforeEach(async ({ page }) => {
-    // Navigate to the built version in dist/
-    await page.goto('/dist/');
+  test.beforeEach(async ({ page }, testInfo) => {
+    // Navigate to the correct path based on project
+    // Local: /dist/
+    // Deployed: /rca-tool/ (GitHub Pages path)
+    const path = testInfo.project.name === 'deployed' ? '/rca-tool/' : '/dist/';
+    await page.goto(path);
     await expect(page.locator('h1')).toContainText('RCA Tool');
   });
 
