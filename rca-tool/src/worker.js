@@ -1,8 +1,7 @@
 // Streaming XZ decompression worker using liblzma
 // Processes compressed data in chunks to keep memory usage low
 
-const CACHE_BUST = '?v=' + Date.now();
-console.log('[Worker] Loading version: 2025-12-17-asr-kernver');
+console.log('[Worker] Loading version: 2025-12-23-nested-gzip');
 
 // Global error handler to catch uncaught exceptions
 self.onerror = function(message, source, lineno, colno, error) {
@@ -34,14 +33,14 @@ if (typeof importScripts === 'function') {
         console.warn('[Worker] Nested .gz file decompression will not be available');
     }
     
-    importScripts('utils.js' + CACHE_BUST);
+    importScripts('utils.js');
     // Import external parser modules
-    importScripts('parsers/packages.js' + CACHE_BUST);
-    importScripts('parsers/unix.js' + CACHE_BUST);
-    importScripts('parsers/services.js' + CACHE_BUST);
-    importScripts('parsers/events.js' + CACHE_BUST);
-    importScripts('parsers/azure.js' + CACHE_BUST);
-    importScripts('parsers/cluster.js' + CACHE_BUST);
+    importScripts('parsers/packages.js');
+    importScripts('parsers/unix.js');
+    importScripts('parsers/services.js');
+    importScripts('parsers/events.js');
+    importScripts('parsers/azure.js');
+    importScripts('parsers/cluster.js');
     console.log('[Worker] Running in Web Worker context');
     console.log('[Worker] Browser:', typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown');
 }
@@ -793,7 +792,7 @@ if (typeof createClusterParsers !== 'undefined') {
 
 // Load the streaming WASM module
 importScripts(
-    './liblzma-wasm/dist-streaming/liblzma-xz-streaming.js' + CACHE_BUST
+    './liblzma-wasm/dist-streaming/liblzma-xz-streaming.js'
 );
 
 let moduleReady = false;
@@ -804,7 +803,7 @@ LZMA_XZ_Streaming_Module({
     locateFile: (path) => {
         if (path.endsWith('.wasm')) {
             // Return the correct path relative to worker location
-            const wasmPath = './liblzma-wasm/dist-streaming/liblzma-xz-streaming.wasm' + CACHE_BUST;
+            const wasmPath = './liblzma-wasm/dist-streaming/liblzma-xz-streaming.wasm';
             debugLog('[XZ Streaming Worker] Loading WASM from:', wasmPath);
             return wasmPath;
         }
