@@ -1,6 +1,13 @@
 // Automation tools detection (Ansible, Puppet, Chef, etc.)
 
-export function createAutomationParser(SCC_RULES, debugLog) {
+// Debug logging - checks global DEBUG_CONFIG from worker.js
+function debugLog(...args) {
+    if (typeof DEBUG_CONFIG !== 'undefined' && DEBUG_CONFIG.automation) {
+        console.log('[automation.js]', ...args);
+    }
+}
+
+const createAutomationParser = function(SCC_RULES) {
     return {
         // Target file path patterns - messages, syslog, journalctl
         filePattern: /\/(messages|localmessages|syslog|journalctl[^\/]*)(?:[.-]\d+)?(?:\.txt)?$/,

@@ -15,6 +15,13 @@
  * They will be manually assigned to SCC_RULES after SCC_RULES is defined.
  */
 
+// Debug logging - checks global DEBUG_CONFIG from worker.js
+function debugLog(...args) {
+    if (typeof DEBUG_CONFIG !== 'undefined' && DEBUG_CONFIG.services) {
+        console.log('[services.js]', ...args);
+    }
+}
+
 // Export service-related parsers
 const sshServiceParser = {
     // Target file path patterns - messages, syslog, journalctl, console logs

@@ -1109,6 +1109,61 @@ EOF
 
 create_fixture "test-automation"
 
+################################################################################
+# Test: Nested gzip decompression with multiple rotated cluster logs
+################################################################################
+echo ""
+echo "=== Creating test-nested-gzip.tar.xz ==="
+mkdir -p test-data/var/log/pacemaker
+mkdir -p test-data/var/log/cluster
+
+# Create pacemaker log files with cluster events and compress them
+cat > test-data/var/log/pacemaker/pacemaker.log-20250101 << 'EOF'
+Jan 01 10:15:30 node01 pacemaker-controld[12345] (do_state_transition) notice: State transition S_IDLE -> S_POLICY_ENGINE
+Jan 01 10:15:31 node01 pacemaker-controld[12345] (do_lrm_rsc_op) notice: Operation testip_stop_0: ok (node=node01)
+Jan 01 10:15:32 node01 pacemaker-controld[12345] (do_lrm_rsc_op) notice: Operation testip_start_0: ok (node=node02)
+EOF
+gzip test-data/var/log/pacemaker/pacemaker.log-20250101
+
+cat > test-data/var/log/pacemaker/pacemaker.log-20250102 << 'EOF'
+Jan 02 14:22:10 node02 pacemaker-controld[12346] (do_state_transition) notice: State transition S_IDLE -> S_POLICY_ENGINE
+Jan 02 14:22:11 node02 pacemaker-controld[12346] (do_lrm_rsc_op) notice: Operation sapdb_stop_0: ok (node=node02)
+Jan 02 14:22:12 node02 pacemaker-controld[12346] (do_lrm_rsc_op) notice: Operation sapdb_start_0: ok (node=node01)
+EOF
+gzip test-data/var/log/pacemaker/pacemaker.log-20250102
+
+cat > test-data/var/log/pacemaker/pacemaker.log-20250103 << 'EOF'
+Jan 03 08:45:20 node01 pacemaker-controld[12347] (do_state_transition) notice: State transition S_IDLE -> S_POLICY_ENGINE
+Jan 03 08:45:21 node01 pacemaker-controld[12347] (do_lrm_rsc_op) notice: Operation filesystem_stop_0: ok (node=node01)
+Jan 03 08:45:22 node01 pacemaker-controld[12347] (do_lrm_rsc_op) notice: Operation filesystem_start_0: ok (node=node02)
+EOF
+gzip test-data/var/log/pacemaker/pacemaker.log-20250103
+
+# Create corosync log files with cluster events and compress them
+cat > test-data/var/log/cluster/corosync.log-20250101 << 'EOF'
+Jan 01 10:15:28 [QUORUM] Members[2]: 1 2
+Jan 01 10:15:29 [TOTEM ] A processor joined or left the membership and a new membership was formed.
+Jan 01 10:15:30 [CPG   ] Process 12345 joined group pacemaker
+EOF
+gzip test-data/var/log/cluster/corosync.log-20250101
+
+cat > test-data/var/log/cluster/corosync.log-20250102 << 'EOF'
+Jan 02 14:22:08 [QUORUM] Members[2]: 1 2
+Jan 02 14:22:09 [TOTEM ] A processor joined or left the membership and a new membership was formed.
+Jan 02 14:22:10 [CPG   ] Process 12346 joined group pacemaker
+EOF
+gzip test-data/var/log/cluster/corosync.log-20250102
+
+# Create archive content statistics file
+cat > test-data/archive-info.txt << 'EOF'
+This archive contains 5 compressed log files (.gz):
+- 3 pacemaker.log files
+- 2 corosync.log files
+All files should be decompressed and analyzed for cluster events.
+EOF
+
+create_fixture "test-nested-gzip"
+
 echo ""
 echo "========================================="
 echo "✓ All test fixtures created successfully!"

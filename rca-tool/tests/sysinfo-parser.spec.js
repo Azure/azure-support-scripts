@@ -32,7 +32,7 @@ import vm from 'vm';
 
 test('sysinfo parser extracts Distribution line from worker', async () => {
   // osRelease parser is now in external module, so load from there
-  const parserPath = path.join(__dirname, '..', 'src', 'parsers', 'distribution.js');
+  const parserPath = path.join(__dirname, '..', 'src', 'parsers', 'unix.js');
   const code = fs.readFileSync(parserPath, 'utf8');
 
   // Extract the parseSysinfo helper function from osReleaseParser

@@ -1,6 +1,13 @@
 // Azure-specific parsers for VM metadata and billing detection
 // These parsers extract Azure VM properties and SUSE registration information
 
+// Debug logging - checks global DEBUG_CONFIG from worker.js
+function debugLog(...args) {
+    if (typeof DEBUG_CONFIG !== 'undefined' && DEBUG_CONFIG.azure) {
+        console.log('[azure.js]', ...args);
+    }
+}
+
 const azureVMPropertiesParser = {
     filePattern: /(?:instance_metadata\.json|public_cloud\/metadata\.txt)$/,
     

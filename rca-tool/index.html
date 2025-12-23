@@ -685,7 +685,12 @@
                                     // Throttle UI updates to every 100ms
                                     if (now - lastUpdate > 100) {
                                         progressFill.style.width = `${msg.progress}%`;
-                                        progressText.textContent = `Streaming: ${msg.progress}% (${(msg.decompressed / 1024 / 1024).toFixed(1)} MB decompressed, ${msg.analysis.fileCount} files found)`;
+                                        // Show custom message if provided (e.g., nested decompression)
+                                        if (msg.message) {
+                                            progressText.textContent = msg.message;
+                                        } else {
+                                            progressText.textContent = `Streaming: ${msg.progress}% (${(msg.decompressed / 1024 / 1024).toFixed(1)} MB decompressed, ${msg.analysis.fileCount} files found)`;
+                                        }
                                         lastUpdate = now;
                                     }
                                     return;
@@ -820,7 +825,7 @@
                 console.log('[DEBUG] Resources detail:', analysis.pacemakerResources.resources);
             }
             
-            const { fileCount, directories, fileTypes, files, totalParsed, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, kernelReboots, oomKiller, xfsErrors, corosyncConfig, distroPackages, antivirus, automation, kernelTuning, fstab, nvmeList, involfltVersion, involfltKernelVersion } = analysis;
+            const { fileCount, directories, fileTypes, files, totalParsed, nestedGzipTotalCount, nestedGzipTotalCompressedBytes, nestedGzipCount, nestedGzipCompressedBytes, nestedGzipDecompressedBytes, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, clusterEvents, kernelReboots, oomKiller, xfsErrors, corosyncConfig, distroPackages, antivirus, automation, kernelTuning, fstab, nvmeList, involfltVersion, involfltKernelVersion } = analysis;
 
             // Compute a reusable SAP detection flag early so UI sections can be gated
             const dirListGlobal = (directories || []).map(d => (d || '').toLowerCase());
@@ -2119,6 +2124,99 @@
             }
             html += `</div></details>`;
 
+            // Cluster Events (Resource Failures and Fencing) - Always show
+            const hasClusterEvents = clusterEvents && (clusterEvents.resourceMigrations?.length > 0 || clusterEvents.fencingEvents?.length > 0);
+            const resourceEventsCount = clusterEvents?.resourceMigrations?.length || 0;
+            const fencingEventsCount = clusterEvents?.fencingEvents?.length || 0;
+            const totalClusterEvents = resourceEventsCount + fencingEventsCount;
+            const clusterBlockClass = hasClusterEvents ? 'warning-block' : 'info-block';
+            html += `<details class="${clusterBlockClass}">`;
+            html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
+            html += hasClusterEvents ? `Cluster Events Detected` : `Cluster Events`;
+            html += ` <span style="font-size: 12px; font-weight: normal;">(${totalClusterEvents} event${totalClusterEvents !== 1 ? 's' : ''} found)</span>`;
+            html += `</summary>`;
+            html += `<div style="margin-top: 15px;">`;
+            
+            if (hasClusterEvents) {
+                // Resource Events (migrations, failures, timeouts)
+                if (resourceEventsCount > 0) {
+                    html += `<p><strong>Resource Events (${resourceEventsCount}):</strong></p>`;
+                    html += '<ul style="margin: 10px 0; max-height: 400px; overflow-y: auto;">';
+                    
+                    const sortedResourceEvents = [...clusterEvents.resourceMigrations].sort((a, b) => {
+                        return (b.timestamp || '').localeCompare(a.timestamp || '');
+                    });
+                    
+                    sortedResourceEvents.forEach(event => {
+                        const actionLabel = {
+                            'migration': 'Migration',
+                            'start': 'Start',
+                            'stop': 'Stop',
+                            'failure': 'Failure',
+                            'timeout': 'Timeout',
+                            'transition_failure': 'Transition Error'
+                        }[event.action] || event.action;
+                        
+                        const actionClass = ['failure', 'timeout', 'transition_failure'].includes(event.action) ? 'text-danger' : 'text-warning-dark';
+                        
+                        html += `<li style="margin-bottom: 10px;">`;
+                        html += `<strong class="${actionClass}">${event.timestamp || 'No timestamp'}</strong>`;
+                        html += ` <span class="badge badge-${['failure', 'timeout', 'transition_failure'].includes(event.action) ? 'danger' : 'warning'}">${actionLabel}</span>`;
+                        html += `<br><strong>Resource:</strong> ${event.resource}`;
+                        if (event.fromNode || event.toNode) {
+                            html += `<br><strong>Node:</strong> `;
+                            if (event.fromNode && event.toNode) {
+                                html += `${event.fromNode} → ${event.toNode}`;
+                            } else if (event.fromNode) {
+                                html += event.fromNode;
+                            } else {
+                                html += event.toNode;
+                            }
+                        }
+                        if (event.error) {
+                            html += `<br><strong class="text-danger">Error:</strong> ${event.error}`;
+                        }
+                        html += `<br><span style="font-size: 11px;" class="text-muted">Source: ${event.sourceFile}:${event.sourceLine || '?'}</span>`;
+                        html += `</li>`;
+                    });
+                    
+                    html += '</ul>';
+                }
+                
+                // Fencing Events
+                if (fencingEventsCount > 0) {
+                    html += `<p style="margin-top: 15px;"><strong>Fencing/STONITH Events (${fencingEventsCount}):</strong></p>`;
+                    html += '<ul style="margin: 10px 0; max-height: 400px; overflow-y: auto;">';
+                    
+                    const sortedFencingEvents = [...clusterEvents.fencingEvents].sort((a, b) => {
+                        return (b.timestamp || '').localeCompare(a.timestamp || '');
+                    });
+                    
+                    sortedFencingEvents.forEach(event => {
+                        const statusClass = event.status === 'success' ? 'text-success' : 
+                                          event.status === 'failed' ? 'text-danger' : 'text-warning-dark';
+                        const statusBadge = event.status === 'success' ? 'success' : 
+                                          event.status === 'failed' ? 'danger' : 'warning';
+                        
+                        html += `<li style="margin-bottom: 10px;">`;
+                        html += `<strong class="${statusClass}">${event.timestamp || 'No timestamp'}</strong>`;
+                        html += ` <span class="badge badge-${statusBadge}">${event.status}</span>`;
+                        html += `<br><strong>Target Node:</strong> ${event.targetNode}`;
+                        html += `<br><strong>Action:</strong> ${event.action}`;
+                        if (event.agent) {
+                            html += `<br><strong>Agent:</strong> ${event.agent}`;
+                        }
+                        html += `<br><span style="font-size: 11px;" class="text-muted">Source: ${event.sourceFile}:${event.sourceLine || '?'}</span>`;
+                        html += `</li>`;
+                    });
+                    
+                    html += '</ul>';
+                }
+            } else {
+                html += `<p class="text-muted"><em>No cluster events (resource failures, migrations, or fencing) were detected in the analyzed log files.</em></p>`;
+            }
+            html += `</div></details>`;
+
             // Kernel Reboots - Always show
             const hasKernelReboots = kernelReboots && kernelReboots.count > 0;
             const kernelRebootsCount = kernelReboots ? kernelReboots.count : 0;
@@ -2951,6 +3049,20 @@
             // Show compressed/decompressed sizes if available
             if (compressedSize && decompressedSize) {
                 html += `<p><strong>Archive Size:</strong> ${(compressedSize / 1024 / 1024).toFixed(1)} MB (compressed) → ${(decompressedSize / 1024 / 1024).toFixed(1)} MB (decompressed)</p>`;
+            }
+            
+            // Show nested compression statistics if any .gz files were found
+            if (nestedGzipTotalCount && nestedGzipTotalCount > 0) {
+                html += `<p><strong>Nested Compression:</strong> ${nestedGzipTotalCount} .gz file${nestedGzipTotalCount > 1 ? 's' : ''} found`;
+                
+                // Show decompression statistics if any files were decompressed
+                if (nestedGzipCount && nestedGzipCount > 0) {
+                    const compressionRatio = ((1 - (nestedGzipCompressedBytes / nestedGzipDecompressedBytes)) * 100).toFixed(1);
+                    html += ` (${nestedGzipCount} decompressed:`;
+                    html += ` ${(nestedGzipCompressedBytes / 1024 / 1024).toFixed(1)} MB → ${(nestedGzipDecompressedBytes / 1024 / 1024).toFixed(1)} MB`;
+                    html += ` <span class="text-muted">${compressionRatio}% compression</span>)`;
+                }
+                html += `</p>`;
             }
             
             // Show warning if PAX format was detected (non-GNU tar)

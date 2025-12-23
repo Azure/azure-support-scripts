@@ -1,6 +1,13 @@
 // Package detection parser (RPM/DEB/DNF/YUM)
 // This file is loaded by liblzma-streaming-worker.js via importScripts()
 
+// Debug logging - checks global DEBUG_CONFIG from worker.js
+function debugLog(...args) {
+    if (typeof DEBUG_CONFIG !== 'undefined' && DEBUG_CONFIG.packages) {
+        console.log('[packages.js]', ...args);
+    }
+}
+
 // Define the distroPackages parser for SCC_RULES
 const distroPackagesParser = {
     // Target file patterns

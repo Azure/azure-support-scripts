@@ -1016,4 +1016,31 @@ test.describe('SAP HANA Cluster Analyzer', () => {
     // Should show package count
     expect(resultHTML).toMatch(/\d+\s+packages/i);
   });
+
+  test('decompresses nested .gz files and processes all cluster log rotations', async ({ page }) => {
+    const resultHTML = await uploadAndWaitForAnalysis(page, 'scc_test-nested-gzip.tar.xz');
+    
+    // Should display nested compression statistics
+    expect(resultHTML).toContain('Nested Compression');
+    expect(resultHTML).toMatch(/5 \.gz files? found/);
+    expect(resultHTML).toMatch(/5 decompressed/);
+    
+    // Should show cluster events from all decompressed log files
+    expect(resultHTML).toContain('Cluster Events Detected');
+    expect(resultHTML).toMatch(/6 events found/);
+    
+    // Should detect resource events from multiple log files
+    expect(resultHTML).toContain('testip');
+    expect(resultHTML).toContain('sapdb');
+    expect(resultHTML).toContain('filesystem');
+    
+    // Verify all three resources show both stop and start events
+    expect(resultHTML).toContain('node01');
+    expect(resultHTML).toContain('node02');
+    
+    // Verify events are from the .gz files
+    expect(resultHTML).toContain('pacemaker.log-20250101.gz');
+    expect(resultHTML).toContain('pacemaker.log-20250102.gz');
+    expect(resultHTML).toContain('pacemaker.log-20250103.gz');
+  });
 });
