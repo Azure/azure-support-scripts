@@ -1496,19 +1496,6 @@ $timeZone = [System.TimeZoneInfo]::Local | Select-Object -ExpandProperty Display
 $isHyperVGuest = Confirm-HyperVGuest
 Out-Log "Hyper-V Guest: $isHyperVGuest"
 
-$parentProcessId = Get-CimInstance -Class Win32_Process -Filter "ProcessId = '$PID'" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ParentProcessId
-$grandparentProcessPid = Get-CimInstance -Class Win32_Process -Filter "ProcessId = '$parentProcessId'" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ParentProcessId
-$grandparentProcessName = Get-Process -Id $grandparentProcessPid -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
-if ($grandparentProcessName -eq 'sacsess')
-{
-    $isSacSess = $true
-}
-else
-{
-    $isSacSess = $false
-}
-Out-Log "SAC session: $isSacSess"
-
 $uuidFromWMI = Get-CimInstance -Query 'SELECT UUID FROM Win32_ComputerSystemProduct' | Select-Object -ExpandProperty UUID
 $lastConfig = Get-ItemProperty -Path 'HKLM:\SYSTEM\HardwareConfig' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty LastConfig
 if ($lastConfig)
