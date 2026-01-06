@@ -3374,13 +3374,13 @@ $htmFilePath = "$logFolderPath\$htmFileName"
 $htm = $htm.Replace('&lt;', '<').Replace('&gt;', '>').Replace('&quot;', '"')
 
 $htm | Out-File -FilePath $htmFilePath
-Out-Log "Report: $htmFilePath" -color green
+Out-Log "Report: $htmFilePath" -color Cyan
 if ($showReport -and $installationType -ne 'Server Core')
 {
     Invoke-Item -Path $htmFilePath
 }
 
-Out-Log "Log: $logFilePath" -color green
+Out-Log "Log: $logFilePath" -color Cyan
 $scriptDuration = '{0:hh}:{0:mm}:{0:ss}.{0:ff}' -f (New-TimeSpan -Start $scriptStartTime -End (Get-Date))
 Out-Log "$scriptName duration:" -startLine
 Out-Log $scriptDuration -endLine -color Cyan
