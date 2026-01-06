@@ -24,7 +24,7 @@ param (
     [switch]$showFilters = $false,
     [switch]$useDotnetForNicDetails = $true,
     [switch]$showLog,
-    [switch]$showReport,
+    [switch]$showReport = $true,
     [switch]$acceptEula,
     [switch]$listChecks,
     [switch]$listFindings,
@@ -3376,10 +3376,6 @@ $htm = $htm.Replace('&lt;', '<').Replace('&gt;', '>').Replace('&quot;', '"')
 $htm | Out-File -FilePath $htmFilePath
 Out-Log "Report:" -startLine
 Out-Log $htmFilePath -endLine -color Cyan
-if ($showReport -and $installationType -ne 'Server Core')
-{
-    Invoke-Item -Path $htmFilePath
-}
 
 Out-Log "Log:" -startLine
 Out-Log $logFilePath -endLine -color Cyan
