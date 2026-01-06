@@ -3381,7 +3381,7 @@ if ($showReport -and $installationType -ne 'Server Core')
     Invoke-Item -Path $htmFilePath
 }
 
-Out-Log "Log:"
+Out-Log "Log:" -startLine
 Out-Log $logFilePath -endLine -color Cyan
 $scriptDuration = '{0:hh}:{0:mm}:{0:ss}.{0:ff}' -f (New-TimeSpan -Start $scriptStartTime -End (Get-Date))
 Out-Log "$scriptName duration:" -startLine
