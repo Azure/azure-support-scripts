@@ -210,37 +210,6 @@ function Get-WCFConfig
     }
 }
 
-#Confirms this is a VM running in HyperV
-function Confirm-HyperVGuest
-{
-    # SystemManufacturer/SystemProductName valus are in different locations depending if Gen1 vs Gen2
-    $systemManufacturer = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\SystemInformation' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty SystemManufacturer -ErrorAction SilentlyContinue
-    $systemProductName = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\SystemInformation' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty SystemProductName -ErrorAction SilentlyContinue
-    if ([string]::IsNullOrEmpty($systemManufacturer) -and [string]::IsNullOrEmpty($systemProductName))
-    {
-        $systemManufacturer = Get-ItemProperty 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty SystemManufacturer
-        $systemProductName = Get-ItemProperty 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty SystemProductName
-        if ([string]::IsNullOrEmpty($systemManufacturer) -and [string]::IsNullOrEmpty($systemProductName))
-        {
-            $systemManufacturer = Get-ItemProperty 'HKLM:\SYSTEM\HardwareConfig\Current' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty SystemManufacturer
-            $systemProductName = Get-ItemProperty 'HKLM:\SYSTEM\HardwareConfig\Current' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty SystemProductName
-        }
-    }
-    Out-Log "SystemManufacturer: $systemManufacturer" -verboseOnly
-    Out-Log "SystemProductName: $systemProductName" -verboseOnly
-
-    if ($systemManufacturer -eq 'Microsoft Corporation' -and $systemProductName -eq 'Virtual Machine')
-    {
-        # Deterministic for being a Hyper-V guest, but not for if it's in Azure or local
-        $isHyperVGuest = $true
-    }
-    else
-    {
-        $isHyperVGuest = $false
-    }
-    return $isHyperVGuest
-}
-
 #Gets crashing applications with eventId 1000 in the last day
 function Get-ApplicationErrors
 {
@@ -1493,8 +1462,6 @@ else
 
 Out-Log $osVersion -color Cyan
 $timeZone = [System.TimeZoneInfo]::Local | Select-Object -ExpandProperty DisplayName
-$isHyperVGuest = Confirm-HyperVGuest
-Out-Log "Hyper-V Guest: $isHyperVGuest"
 
 $uuidFromWMI = Get-CimInstance -Query 'SELECT UUID FROM Win32_ComputerSystemProduct' | Select-Object -ExpandProperty UUID
 $lastConfig = Get-ItemProperty -Path 'HKLM:\SYSTEM\HardwareConfig' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty LastConfig
@@ -2491,7 +2458,7 @@ if ($useDotnetForNicDetails)
             IPv6DefaultGateway                 = $ipProperties.GatewayAddresses.Address.IPAddressToString
             Id                                 = $networkInterface.Id
             # DHCPServerAddresses = $dhcpServerAddresses
-            IsAutomaticPrivateAddressingActive = $ipV4Properties.IsAutomaticPrivateAddressingActive
+            #IsAutomaticPrivateAddressingActive = $ipV4Properties.IsAutomaticPrivateAddressingActive
             Mtu                                = $ipV4Properties.Mtu
         }
         $nics.Add($nic)
