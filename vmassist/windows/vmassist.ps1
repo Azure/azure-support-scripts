@@ -2557,7 +2557,7 @@ if ($primaryNic.DHCP -EQ 'Disabled' -and $primaryNic.IPAddress.count -eq 1)
     Out-Log 'DHCP-assigned IP address on NIC with single IP:' -startLine
     Out-Log $dhcpAssignedIpAddresses -endLine -color Yellow
 
-    New-Check -name 'DHCP-assigned IP addresses' -result 'Info' -details Alias: "DHCP-disabled NICs: $($dhcpDisabledNic.Alias) Index: $($dhcpDisabledNic.Index) IpAddress: $($dhcpDisabledNic.IpAddress)"
+    New-Check -name 'DHCP-assigned IP addresses' -result 'Info' -details Alias: "DHCP-disabled NICs: $($primaryNic.Alias) Index: $($primaryNic.Index) IpAddress: $($primaryNic.IpAddress)"
     New-Finding -type Information -name 'DHCP-disabled NICs' -description $dhcpDisabledNicsString -mitigation 'If your NIC only has 1 IP address then we highly recommend that the NIC does not use static IP address assignment. Instead <a href="https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/windows-azure-guest-agent#solution-3-enable-dhcp-and-make-sure-that-the-server-isnt-blocked-by-firewalls-proxies-or-other-sources">use DHCP</a> to dynamically get the IP address that you have set on the VMs NIC in Azure.'
 }
 elseif ($primaryNic.DHCP -EQ 'Enabled' -and $primaryNic.IPAddress.count -eq 1)
