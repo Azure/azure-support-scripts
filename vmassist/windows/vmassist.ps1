@@ -1356,7 +1356,6 @@ if(!$acceptEula)
 
 if ($listChecks)
 {
-    $scriptFullName = 'C:\src\vmassist\vmassist.ps1'
     $script = Get-Content -Path $scriptFullName
     $lines = $script | Select-String -SimpleMatch -Pattern 'New-Check -name' | Select-Object -expand Line | ForEach-Object {$_.Trim()}
     $lines = $lines | ForEach-Object {(($_ -split '-name')[1] -split '-result')[0].Trim()} | Where-Object {$_ -and $_ -notmatch 'Trim'} | Sort-Object -Unique
@@ -1366,7 +1365,6 @@ if ($listChecks)
 
 if ($listFindings)
 {
-    $scriptFullName = 'C:\src\vmassist\vmassist.ps1'
     $script = Get-Content -Path $scriptFullName
     $lines = $script | Select-String -SimpleMatch -Pattern 'New-Finding -type' | Select-Object -expand Line | ForEach-Object {$_.Trim()}
     $lines = $lines | ForEach-Object {(($_ -split '-name')[1] -split '-description')[0].Trim()} | Where-Object {$_ -and $_ -notmatch 'Trim'} | Sort-Object -Unique
@@ -2558,12 +2556,8 @@ if ($primaryNic.DHCP -EQ 'Disabled' -and $primaryNic.IPAddress.count -eq 1)
     $dhcpAssignedIpAddresses = $false
     Out-Log 'DHCP-assigned IP address on NIC with single IP:' -startLine
     Out-Log $dhcpAssignedIpAddresses -endLine -color Yellow
-    $dhcpDisabledNicsString = 'DHCP-disabled NICs: '
-    foreach ($dhcpDisabledNic in $dhcpDisabledNics)
-    {
-        $dhcpDisabledNicsString += "Description: $($dhcpDisabledNic.Description) Alias: $($dhcpDisabledNic.Alias) Index: $($dhcpDisabledNic.Index) IpAddress: $($dhcpDisabledNic.IpAddress)"
-    }
-    New-Check -name 'DHCP-assigned IP addresses' -result 'Info' -details $dhcpDisabledNicsString
+
+    New-Check -name 'DHCP-assigned IP addresses' -result 'Info' -details Alias: "DHCP-disabled NICs: $($dhcpDisabledNic.Alias) Index: $($dhcpDisabledNic.Index) IpAddress: $($dhcpDisabledNic.IpAddress)"
     New-Finding -type Information -name 'DHCP-disabled NICs' -description $dhcpDisabledNicsString -mitigation 'If your NIC only has 1 IP address then we highly recommend that the NIC does not use static IP address assignment. Instead <a href="https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/windows-azure-guest-agent#solution-3-enable-dhcp-and-make-sure-that-the-server-isnt-blocked-by-firewalls-proxies-or-other-sources">use DHCP</a> to dynamically get the IP address that you have set on the VMs NIC in Azure.'
 }
 elseif ($primaryNic.DHCP -EQ 'Enabled' -and $primaryNic.IPAddress.count -eq 1)
