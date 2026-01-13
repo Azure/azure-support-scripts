@@ -2572,7 +2572,7 @@ elseif ($primaryNic.DHCP -EQ 'Enabled' -and $primaryNic.IPAddress.count -eq 1)
 }
 
 # Check for multi IP
-if ($primaryNic.IPAddress.count -gt 1 -and ($wireserverPort80Reachable.Error -and $wireserverPort32526Reachable.Error))
+if ($primaryNic.IPAddress.count -gt 1 -and (!$wireserverPort80Reachable.Succeeded -and !$wireserverPort32526Reachable.Succeeded))
 {
     Out-Log 'Wireserver connectivity on NIC with multiple IPs :' -startLine
     Out-Log 'Please verify that the multi IP configuration was set up correctly. View HTML report for more details.' -color Yellow
