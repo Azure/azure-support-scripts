@@ -2,11 +2,11 @@
 .SYNOPSIS
     Assists in diagnosing Azure VM Guest Agent issues
 .DESCRIPTION
-    Assists in diagnosing Azure VM Guest Agentissues
+    Assists in diagnosing Azure VM Guest Agent issues
 .NOTES
     Supported on Windows Server 2012 R2 and later versions of Windows.
     Supported in Windows PowerShell 4.0+ and PowerShell 6.0+.
-    Not supported on Linux.
+    The Linux version can be found here https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/linux/linux-azure-guest-agent-tools-vmassist
 .LINK
     https://github.com/Azure/azure-support-scripts/blob/master/vmassist/windows/README.md
 .EXAMPLE
@@ -24,7 +24,7 @@ param (
     [switch]$showFilters = $false,
     [switch]$useDotnetForNicDetails = $true,
     [switch]$showLog,
-    [switch]$showReport,
+    [switch]$showReport = $true,
     [switch]$acceptEula,
     [switch]$listChecks,
     [switch]$listFindings,
@@ -208,37 +208,6 @@ function Get-WCFConfig
         Out-Log $wcfDebuggingEnabled -color Green -endLine
         New-Check -name 'WCF debugging config' -result 'OK' -details 'WCF debugging not enabled'
     }
-}
-
-#Confirms this is a VM running in HyperV
-function Confirm-HyperVGuest
-{
-    # SystemManufacturer/SystemProductName valus are in different locations depending if Gen1 vs Gen2
-    $systemManufacturer = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\SystemInformation' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty SystemManufacturer -ErrorAction SilentlyContinue
-    $systemProductName = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\SystemInformation' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty SystemProductName -ErrorAction SilentlyContinue
-    if ([string]::IsNullOrEmpty($systemManufacturer) -and [string]::IsNullOrEmpty($systemProductName))
-    {
-        $systemManufacturer = Get-ItemProperty 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty SystemManufacturer
-        $systemProductName = Get-ItemProperty 'HKLM:\HARDWARE\DESCRIPTION\System\BIOS' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty SystemProductName
-        if ([string]::IsNullOrEmpty($systemManufacturer) -and [string]::IsNullOrEmpty($systemProductName))
-        {
-            $systemManufacturer = Get-ItemProperty 'HKLM:\SYSTEM\HardwareConfig\Current' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty SystemManufacturer
-            $systemProductName = Get-ItemProperty 'HKLM:\SYSTEM\HardwareConfig\Current' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty SystemProductName
-        }
-    }
-    Out-Log "SystemManufacturer: $systemManufacturer" -verboseOnly
-    Out-Log "SystemProductName: $systemProductName" -verboseOnly
-
-    if ($systemManufacturer -eq 'Microsoft Corporation' -and $systemProductName -eq 'Virtual Machine')
-    {
-        # Deterministic for being a Hyper-V guest, but not for if it's in Azure or local
-        $isHyperVGuest = $true
-    }
-    else
-    {
-        $isHyperVGuest = $false
-    }
-    return $isHyperVGuest
 }
 
 #Gets crashing applications with eventId 1000 in the last day
@@ -1387,7 +1356,6 @@ if(!$acceptEula)
 
 if ($listChecks)
 {
-    $scriptFullName = 'C:\src\vmassist\vmassist.ps1'
     $script = Get-Content -Path $scriptFullName
     $lines = $script | Select-String -SimpleMatch -Pattern 'New-Check -name' | Select-Object -expand Line | ForEach-Object {$_.Trim()}
     $lines = $lines | ForEach-Object {(($_ -split '-name')[1] -split '-result')[0].Trim()} | Where-Object {$_ -and $_ -notmatch 'Trim'} | Sort-Object -Unique
@@ -1397,7 +1365,6 @@ if ($listChecks)
 
 if ($listFindings)
 {
-    $scriptFullName = 'C:\src\vmassist\vmassist.ps1'
     $script = Get-Content -Path $scriptFullName
     $lines = $script | Select-String -SimpleMatch -Pattern 'New-Finding -type' | Select-Object -expand Line | ForEach-Object {$_.Trim()}
     $lines = $lines | ForEach-Object {(($_ -split '-name')[1] -split '-description')[0].Trim()} | Where-Object {$_ -and $_ -notmatch 'Trim'} | Sort-Object -Unique
@@ -1493,21 +1460,6 @@ else
 
 Out-Log $osVersion -color Cyan
 $timeZone = [System.TimeZoneInfo]::Local | Select-Object -ExpandProperty DisplayName
-$isHyperVGuest = Confirm-HyperVGuest
-Out-Log "Hyper-V Guest: $isHyperVGuest"
-
-$parentProcessId = Get-CimInstance -Class Win32_Process -Filter "ProcessId = '$PID'" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ParentProcessId
-$grandparentProcessPid = Get-CimInstance -Class Win32_Process -Filter "ProcessId = '$parentProcessId'" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ParentProcessId
-$grandparentProcessName = Get-Process -Id $grandparentProcessPid -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
-if ($grandparentProcessName -eq 'sacsess')
-{
-    $isSacSess = $true
-}
-else
-{
-    $isSacSess = $false
-}
-Out-Log "SAC session: $isSacSess"
 
 $uuidFromWMI = Get-CimInstance -Query 'SELECT UUID FROM Win32_ComputerSystemProduct' | Select-Object -ExpandProperty UUID
 $lastConfig = Get-ItemProperty -Path 'HKLM:\SYSTEM\HardwareConfig' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty LastConfig
@@ -2424,8 +2376,9 @@ $vm.Add([PSCustomObject]@{Property = 'joinType'; Value = $joinType; Type = 'OS'}
 $vm.Add([PSCustomObject]@{Property = 'role'; Value = $role; Type = 'OS'})
 $vm.Add([PSCustomObject]@{Property = 'timeZone'; Value = $timeZone; Type = 'OS'})
 
-#Gathers inforamtion on network interfaces and checks if DHCP is enabled on the NIC if it only has 1 IP
-Out-Log 'DHCP-assigned IP addresses:' -startLine
+#Gathers inforamtion on network interfaces
+#Checks if DHCP is enabled on the NIC if it only has 1 IP
+#If there are multiple IPs on the primary NIC and wireserver connectivity is down then provide warning regarding this https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/no-internet-access-multi-ip
 
 $nics = New-Object System.Collections.Generic.List[Object]
 
@@ -2503,7 +2456,7 @@ if ($useDotnetForNicDetails)
             IPv6DefaultGateway                 = $ipProperties.GatewayAddresses.Address.IPAddressToString
             Id                                 = $networkInterface.Id
             # DHCPServerAddresses = $dhcpServerAddresses
-            IsAutomaticPrivateAddressingActive = $ipV4Properties.IsAutomaticPrivateAddressingActive
+            #IsAutomaticPrivateAddressingActive = $ipV4Properties.IsAutomaticPrivateAddressingActive
             Mtu                                = $ipV4Properties.Mtu
         }
         $nics.Add($nic)
@@ -2591,26 +2544,50 @@ else
     Out-Log 'Unable to query network route details because winmgmt service is not running'
 }
 
-$dhcpDisabledNics = $nics | Where-Object {$_.DHCP -EQ 'Disabled' -and $_.IPAddress.count -eq 1}
 
-if ($dhcpDisabledNics)
+#$dhcpDisabledNics = $nics | Where-Object {$_.DHCP -EQ 'Disabled' -and $_.IPAddress.count -eq 1}
+
+$primaryNetIpInterface = Get-NetIPInterface -AddressFamily IPv4 | Sort-Object InterfaceMetric | Select-Object -First 1
+$primaryNic = $nics | Where-Object { $_.Index -eq $primaryNetIpInterface.InterfaceIndex}
+
+#Check for DHCP disabled on NIC with single IP
+if ($primaryNic.DHCP -EQ 'Disabled' -and $primaryNic.IPAddress.count -eq 1)
 {
     $dhcpAssignedIpAddresses = $false
+    Out-Log 'DHCP-assigned IP address on NIC with single IP:' -startLine
     Out-Log $dhcpAssignedIpAddresses -endLine -color Yellow
-    $dhcpDisabledNicsString = 'DHCP-disabled NICs: '
-    foreach ($dhcpDisabledNic in $dhcpDisabledNics)
-    {
-        $dhcpDisabledNicsString += "Description: $($dhcpDisabledNic.Description) Alias: $($dhcpDisabledNic.Alias) Index: $($dhcpDisabledNic.Index) IpAddress: $($dhcpDisabledNic.IpAddress)"
-    }
+
+    $dhcpDisabledNicsString = "DHCP-disabled NICs: Alias: $($primaryNic.Alias) Index: $($primaryNic.Index) IpAddress: $($primaryNic.IpAddress)"
+
     New-Check -name 'DHCP-assigned IP addresses' -result 'Info' -details $dhcpDisabledNicsString
-    New-Finding -type Information -name 'DHCP-disabled NICs' -description $dhcpDisabledNicsString -mitigation 'If your NIC only has 1 IP address then we highly recommend that the NIC does not use static IP address assignment. Instead <a href="https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/windows-azure-guest-agent#solution-3-enable-dhcp-and-make-sure-that-the-server-isnt-blocked-by-firewalls-proxies-or-other-sources">use DHCP</a> to dynamically get the IP address that you have set on the VMs NIC in Azure.'
+    New-Finding -type Information -name 'DHCP-disabled NICs' -description $dhcpDisabledNicsString -mitigation 'If your NIC only has 1 IP address then we highly recommend that the NIC does not use static IP address assignment. Instead <a href="https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/windows-azure-guest-agent#solution-enable-dhcp-and-make-sure-that-the-server-isnt-blocked-by-firewalls-proxies-or-other-sources">use DHCP</a> to dynamically get the IP address that you have set on the VMs NIC in Azure.'
 }
-else
+elseif ($primaryNic.DHCP -EQ 'Enabled' -and $primaryNic.IPAddress.count -eq 1)
 {
     $dhcpAssignedIpAddresses = $true
+    Out-Log 'DHCP-assigned IP address on NIC with single IP:' -startLine
     Out-Log $dhcpAssignedIpAddresses -endLine -color Green
     $details = 'All NICs with a single IP are assigned via DHCP'
     New-Check -name 'DHCP-assigned IP addresses' -result 'OK' -details $details
+}
+
+# Check for multi IP
+if ($primaryNic.IPAddress.count -gt 1 -and (!$wireserverPort80Reachable.Succeeded -and !$wireserverPort32526Reachable.Succeeded))
+{
+    Out-Log 'Wireserver connectivity on NIC with multiple IPs :' -startLine
+    Out-Log $false -color Yellow -endLine
+
+    $multiIpNicsString = "We detected that you have multiple IPs on your primary NIC and you can't reach the Wireserver."
+
+    New-Check -name 'Multiple IP addresses wireserver connectivity' -result 'Info' -details $multiIpNicsString
+    New-Finding -type Information -name 'Multiple IP addresses wireserver connectivity' -description $multiIpNicsString -mitigation 'If you have multiple private IPs assigned to your VM NIC then it is very important that they are set up correctly otherwise communication to the wirserver can fail. Ensure that you carefully follow the steps to <a href="https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/virtual-network-multiple-ip-addresses-portal#os-config">assign the IP configurations correctly</a>. After this, if the Guest Agent is not able to communicate with 168.63.129.16, then please check that the primary IP in Windows <a href="https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/no-internet-access-multi-ip">matches the primary IP in your VMs NIC in Azure</a>.'
+}
+elseif ($primaryNic.IPAddress.count -gt 1 -and ($wireserverPort80Reachable.Succeeded -and $wireserverPort32526Reachable.Succeeded))
+{
+    Out-Log 'Wireserver connectivity on NIC with multiple IPs :' -startLine
+    Out-Log $true -endLine -color Green
+    $details = 'VM has multiple IP addresses on its primary NIC and it can communicate with the wireserver'
+    New-Check -name 'Multiple IP addresses wireserver connectivity' -result 'OK' -details $details
 }
 
 if ($imdsReachable.Succeeded)
@@ -3362,13 +3339,11 @@ $htmFilePath = "$logFolderPath\$htmFileName"
 $htm = $htm.Replace('&lt;', '<').Replace('&gt;', '>').Replace('&quot;', '"')
 
 $htm | Out-File -FilePath $htmFilePath
-Out-Log "Report: $htmFilePath"
-if ($showReport -and $installationType -ne 'Server Core')
-{
-    Invoke-Item -Path $htmFilePath
-}
+Out-Log "Report:" -startLine
+Out-Log $htmFilePath -endLine -color Cyan
 
-Out-Log "Log: $logFilePath"
+Out-Log "Log:" -startLine
+Out-Log $logFilePath -endLine -color Cyan
 $scriptDuration = '{0:hh}:{0:mm}:{0:ss}.{0:ff}' -f (New-TimeSpan -Start $scriptStartTime -End (Get-Date))
 Out-Log "$scriptName duration:" -startLine
 Out-Log $scriptDuration -endLine -color Cyan
