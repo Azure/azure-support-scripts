@@ -2575,12 +2575,12 @@ elseif ($primaryNic.DHCP -EQ 'Enabled' -and $primaryNic.IPAddress.count -eq 1)
 if ($primaryNic.IPAddress.count -gt 1 -and (!$wireserverPort80Reachable.Succeeded -and !$wireserverPort32526Reachable.Succeeded))
 {
     Out-Log 'Wireserver connectivity on NIC with multiple IPs :' -startLine
-    Out-Log 'Please verify that the multi IP configuration was set up correctly. View HTML report for more details.' -color Yellow
+    Out-Log $false -color Yellow -endLine
 
     $multiIpNicsString = "We detected that you have multiple IPs on your primary NIC and you can't reach the Wireserver."
 
     New-Check -name 'Multiple IP addresses wireserver connectivity' -result 'Info' -details $multiIpNicsString
-    New-Finding -type Information -name 'Multiple IP addresses wireserver connectivity' -description $multiIpNicsString -mitigation 'If you have multiple private IPs assigned to your VM NIC then it is very important to ensure they are set up correctly otherwise communication to the wirserver can fail. Ensure that you carefully follow the steps to <a href="https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/virtual-network-multiple-ip-addresses-portal#os-config">assign the IP configurations correctly</a>. After this, if the Guest Agent is not able to communicate with 168.63.129.16, then please check that the primary IP in Windows <a href="https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/no-internet-access-multi-ip">matches the primary IP in your VMs NIC in Azure</a>.'
+    New-Finding -type Information -name 'Multiple IP addresses wireserver connectivity' -description $multiIpNicsString -mitigation 'If you have multiple private IPs assigned to your VM NIC then it is very important that they are set up correctly otherwise communication to the wirserver can fail. Ensure that you carefully follow the steps to <a href="https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/virtual-network-multiple-ip-addresses-portal#os-config">assign the IP configurations correctly</a>. After this, if the Guest Agent is not able to communicate with 168.63.129.16, then please check that the primary IP in Windows <a href="https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/no-internet-access-multi-ip">matches the primary IP in your VMs NIC in Azure</a>.'
 }
 elseif ($primaryNic.IPAddress.count -gt 1 -and ($wireserverPort80Reachable.Succeeded -and $wireserverPort32526Reachable.Succeeded))
 {
