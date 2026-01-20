@@ -90,7 +90,7 @@ def validate_ca_certificates():
     Used to verify whether the default certificate database has been modified or not
     """
     logger.debug('Entering validate_ca_certificates()')
-    reinstall_ca_bundle_link = 'https://learn.microsoft.com/troubleshoot/azure/virtual-machines/linux/troubleshoot-linux-rhui-certificate-issues?tabs=rhel7-eus%2Crhel7-noneus%2Crhel7-rhel-sap-apps%2Crhel8-rhel-sap-apps%2Crhel9-rhel-sap-apps#solution-4-update-or-reinstall-the-ca-certificates-package'
+    reinstall_ca_bundle_link = 'https://aka.ms/tsrhuicert?tabs=rhel7-eus%2Crhel7-noneus%2Crhel7-rhel-sap-apps%2Crhel8-rhel-sap-apps%2Crhel9-rhel-sap-apps#solution-4-update-or-reinstall-the-ca-certificates-package'
 
     try:
         result = subprocess.call('/usr/bin/rpm -V ca-certificates', shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -187,7 +187,7 @@ def connect_to_host(url, selection, mysection):
             return True
         elif r.status_code == 404:
             logger.error("Unable to find the contents for repo {}, make sure to use the correct version lock if you're using EUS repositories".format(mysection))
-            logger.error("For more detailed information and valid levels consult: https://access.redhat.com/support/policy/updates/errata#RHEL8_and_9_Life_Cycle")
+            logger.error("For more detailed information and valid levels consult: https://aka.ms/rhlifecycle#RHEL8_and_9_Life_Cycle")
             bad_hosts.append(url_host)
             return False
         else:
@@ -209,7 +209,7 @@ def rpm_names():
         return(rpm_names)
     else:
         logger.critical('Could not find a specific RHUI package installed, please refer to the documentation and install the apropriate one. ')
-        logger.critical('Consider using the following document to install RHUI support https://learn.microsoft.com/troubleshoot/azure/virtual-machines/troubleshoot-linux-rhui-certificate-issues#cause-3-rhui-package-is-missing')
+        logger.critical('Consider using the following document to install RHUI support https://aka.ms/tsrhuicert#cause-3-rhui-package-is-missing')
         exit(1) 
 
 def get_pkg_info(package_name):
@@ -250,7 +250,7 @@ def verify_pkg_info(package_name, rpm_info):
                 errors += 1
 
     if errors:
-        data_link = "https://learn.microsoft.com/troubleshoot/azure/virtual-machines/troubleshoot-linux-rhui-certificate-issues#cause-2-rhui-certificate-is-missing"
+        data_link = "https://aka.ms/tsrhuicert#cause-2-rhui-certificate-is-missing"
         logger.critical('follow {} for information to install the RHUI package'.format(data_link))
         exit(1)
 
@@ -296,12 +296,12 @@ def expiration_time(cert_path):
 
     except subprocess.CalledProcessError:
         logger.critical('Client RHUI Certificate has expired, please update the RHUI rpm.')
-        logger.critical('Refer to: https://learn.microsoft.com/troubleshoot/azure/virtual-machines/troubleshoot-linux-rhui-certificate-issues#cause-1-rhui-client-certificate-is-expired')
+        logger.critical('Refer to: https://aka.ms/tsrhuicert#cause-1-rhui-client-certificate-is-expired')
         return False
 
     if not default_policy():
         logger.critical('Client crypto policies not set to DEFAULT.')
-        logger.critical('Refer to: https://learn.microsoft.com/troubleshoot/azure/virtual-machines/linux/troubleshoot-linux-rhui-certificate-issues?tabs=rhel7-eus%2Crhel7-noneus%2Crhel7-rhel-sap-apps%2Crhel8-rhel-sap-apps%2Crhel9-rhel-sap-apps#cause-5-verification-error-in-rhel-version-8-or-9-ca-certificate-key-too-weak')
+        logger.critical('Refer to: https://aka.ms/tsrhuicert?tabs=rhel8-eus%2Crhel7-noneus%2Crhel79-rhel-sap-apps-base%2Crhel8-rhel-sap-apps%2Crhel9-rhel-sap-apps#cause-5-verification-error-in-rhel-version-8-9-or-10-ca-certificate-key-too-weak')
         return False
 
     return True
@@ -453,20 +453,20 @@ def check_repos(reposconfig):
             eus = 1
 
     if not microsoft_reponame:
-        reinstall_link = 'https://learn.microsoft.com/troubleshoot/azure/virtual-machines/linux/troubleshoot-linux-rhui-certificate-issues?source=recommendations&tabs=rhel7-eus%2Crhel7-noneus%2Crhel7-rhel-sap-apps%2Crhel8-rhel-sap-apps%2Crhel9-rhel-sap-apps#solution-2-reinstall-the-eus-non-eus-or-sap-rhui-package'
+        reinstall_link = 'https://aka.ms/tsrhuicert?source=recommendations&tabs=rhel7-eus%2Crhel7-noneus%2Crhel7-rhel-sap-apps%2Crhel8-rhel-sap-apps%2Crhel9-rhel-sap-apps#solution-2-reinstall-the-eus-non-eus-or-sap-rhui-package'
         logger.critical('Microsoft RHUI repository not found, reinstall the RHUI package following {}'.format(reinstall_link))
         local_issues['rhuirepo_missing'] = 'missing'
        
     if eus:
         if not os.path.exists('/etc/yum/vars/releasever'):
             logger.critical('Server is using EUS repostories but /etc/yum/vars/releasever file not found, please correct and test again.')
-            logger.critical('Refer to: https://learn.microsoft.com/azure/virtual-machines/workloads/redhat/redhat-rhui?tabs=rhel7#rhel-eus-and-version-locking-rhel-vms, to select the appropriate RHUI repo')
+            logger.critical('Refer to: https://aka.ms/rhui?tabs=rhel7#rhel-eus-and-version-locking-rhel-vms, to select the appropriate RHUI repo')
             local_issues['eus_missing'] = 'releasever file missing.'
 
     if not eus:
         if os.path.exists('/etc/yum/vars/releasever'):
             logger.critical('Server is using non-EUS repos and /etc/yum/vars/releasever file found, correct and try again')
-            logger.critical('Refer to: https://learn.microsoft.com/azure/virtual-machines/workloads/redhat/redhat-rhui?tabs=rhel7#rhel-eus-and-version-locking-rhel-vms, to select the appropriate RHUI repo')
+            logger.critical('Refer to: https://aka.ms/rhui?tabs=rhel7#rhel-eus-and-version-locking-rhel-vms, to select the appropriate RHUI repo')
             local_issues['extra_eus'] = 'non EUs repos but releasever file present'
 
     return [ enabled_repos, local_issues ]
@@ -496,13 +496,13 @@ def ip_address_check(host):
         else:
             logger.critical('RHUI server {} points to an invalid destination, validate /etc/hosts file for any invalid static RHUI IPs or reinstall the RHUI package.'.format(host))
             logger.warning('Please make sure your server is able to resolve {} to one of the ip addresses'.format(host))
-            rhui_link = 'https://learn.microsoft.com/azure/virtual-machines/workloads/redhat/redhat-rhui?tabs=rhel7#the-ips-for-the-rhui-content-delivery-servers'
+            rhui_link = 'https://aka.ms/rhui?tabs=rhel7#the-ips-for-the-rhui-content-delivery-servers'
             logger.warning('listed in this document {}'.format(rhui_link))
             return False
     except Exception as e:
          logger.warning('Unable to resolve IP address for host {}.'.format(host))
          logger.warning('Please make sure your server is able to resolve {} to one of the IP addresses.'.format(host))
-         rhui_link = 'https://learn.microsoft.com/azure/virtual-machines/workloads/redhat/redhat-rhui?tabs=rhel7#the-ips-for-the-rhui-content-delivery-servers'
+         rhui_link = 'https://aka.ms/rhui?tabs=rhel7#the-ips-for-the-rhui-content-delivery-servers'
          logger.warning('listed in this document {}'.format(rhui_link ))
          logger.warning(e)
          return False
@@ -532,7 +532,7 @@ def connect_to_repos(reposconfig, check_repos, issues):
         try:
             baseurl_info = reposconfig.get(repo_name, 'baseurl').strip().split('\n')
         except configparser.NoOptionError:
-            reinstall_link = 'https://learn.microsoft.com/troubleshoot/azure/virtual-machines/linux/troubleshoot-linux-rhui-certificate-issues?source=recommendations&tabs=rhel7-eus%2Crhel7-noneus%2Crhel7-rhel-sap-apps%2Crhel8-rhel-sap-apps%2Crhel9-rhel-sap-apps#solution-2-reinstall-the-eus-non-eus-or-sap-rhui-package'
+            reinstall_link = 'https://aka.ms/tsrhuicert?source=recommendations&tabs=rhel7-eus%2Crhel7-noneus%2Crhel7-rhel-sap-apps%2Crhel8-rhel-sap-apps%2Crhel9-rhel-sap-apps#solution-2-reinstall-the-eus-non-eus-or-sap-rhui-package'
             logger.critical('The baseurl is a critical component of the repository stanza, and it is not found for repo {}'.format(repo_name))
             logger.critical('Follow this link to reinstall the Microsoft RHUI repo {}'.format(reinstall_link))
             issues['invalid_repoconfig'] = 1
@@ -550,7 +550,7 @@ def connect_to_repos(reposconfig, check_repos, issues):
                 successes += 1
 
         if successes == 0:
-            error_link = 'https://learn.microsoft.com/azure/virtual-machines/workloads/redhat/redhat-rhui?tabs=rhel9#the-ips-for-the-rhui-content-delivery-servers'
+            error_link = 'https://aka.ms/rhui?tabs=rhel9#the-ips-for-the-rhui-content-delivery-servers'
             logger.critical('PROBLEM: Unable to download repository metadata from any of the configured RHUI server(s).')
             logger.critical('         Ensure the server is able to resolve to a valid IP address, the communication is allowed to the IP addresses listed in the public document {}'.format(error_link))
             logger.critical('         and if you are using EUS repositories, make sure you have a valid EUS version value in /etc/dnf/vars/releasever file.')
