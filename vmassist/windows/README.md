@@ -31,13 +31,6 @@ Run the script:
 Set-ExecutionPolicy Bypass -Force
 .\vmassist.ps1
 ```
-## Download from browser
- 1. Download the file ```vmassist.ps1``` [from a web browser.](https://aka.ms/vmassist)
- 1. From an elevated PowerShell window, ensure you're in the same directory that you downloaded the script to, then run the following to run the script:
- ```powershell
-Set-ExecutionPolicy Bypass -Force
-.\vmassist.ps1
-```
 
 # Analyzing output
 
@@ -52,4 +45,5 @@ The .log file will have a copy of the results that are displayed in the PowerShe
 The .htm file is a report that shows all of the checks and findings along with information on how to mitigate any issues it found. It will also have additional information about the OS and the VM that can further assist in troubleshooting any issues that are found.
 
 If you open a support request, please include both of the above files to aid your support representative in helping you.
+
 
