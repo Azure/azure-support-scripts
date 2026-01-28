@@ -49,7 +49,7 @@ fi
 if [ "$CONTINUE" = 'y' -o "$CONTINUE" = 'Y' ] ; then
   touch /tmp/vmassisteula
 
-  if [ ! -e ]; then
+  if [ ! -e $DLPATH ]; then
     echo "Creating $DLPATH"
     mkdir $DLPATH
   else
