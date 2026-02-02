@@ -6,8 +6,13 @@ import os
 import re
 import subprocess
 import time
+from datetime import datetime
 import sys
 #import urllib.request
+
+# Capture script start time for non-interactive output
+script_start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 eus = 0
 issues = {}
 
@@ -645,6 +650,7 @@ if not sys.stdout.isatty():
     print("")
     print("="*70)
     print("RHUI Connectivity Check Results")
+    print(f"Started at: {script_start_time}")
     print("="*70)
 
 if issues:
