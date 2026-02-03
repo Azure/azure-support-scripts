@@ -26,6 +26,7 @@
             <p>Or a plain text console log file (.log)</p>
             <p style='font-size: 0.9em;'>Supports both gzip and XZ compression</p>
             <input type="file" id="file-input" accept=".txz,.tar.xz,.tar.gz,.tgz,.log" aria-label="Drag and drop support file (.tar.gz, .tar.xz, or .log)">
+            <p id="detection-warning" class="detection-warning">Detection is pattern-based and not exhaustive. Missing findings may reflect unimplemented detectors rather than absence of issues. Manual review of the source report (hb_report, SCC, sosreport) is recommended.</p>
         </div>
         <pre id="output"></pre>
     </div>
@@ -115,6 +116,10 @@
                     const file = e.target.files[0];
                     if (!file) return;
                     
+                    // Hide the detection warning when processing starts
+                    const detectionWarning = document.getElementById('detection-warning');
+                    if (detectionWarning) detectionWarning.style.display = 'none';
+                    
                     output.textContent = `Processing ${file.name}...`;
                     
                     const reader = new FileReader();
@@ -159,6 +164,11 @@
                     const files = e.dataTransfer.files;
                     if (files.length > 0) {
                         const file = files[0];
+                        
+                        // Hide the detection warning when processing starts
+                        const detectionWarning = document.getElementById('detection-warning');
+                        if (detectionWarning) detectionWarning.style.display = 'none';
+                        
                         output.textContent = `Processing ${file.name}...`;
                         
                         const reader = new FileReader();
@@ -825,7 +835,7 @@
                 console.log('[DEBUG] Resources detail:', analysis.pacemakerResources.resources);
             }
             
-            const { fileCount, directories, fileTypes, files, totalParsed, nestedGzipTotalCount, nestedGzipTotalCompressedBytes, nestedGzipCount, nestedGzipCompressedBytes, nestedGzipDecompressedBytes, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, clusterEvents, kernelReboots, oomKiller, xfsErrors, corosyncConfig, distroPackages, antivirus, automation, kernelTuning, fstab, nvmeList, involfltVersion, involfltKernelVersion } = analysis;
+            const { fileCount, directories, fileTypes, files, totalParsed, nestedGzipTotalCount, nestedGzipTotalCompressedBytes, nestedGzipCount, nestedGzipCompressedBytes, nestedGzipDecompressedBytes, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, clusterEvents, kernelReboots, oomKiller, xfsErrors, corosyncConfig, distroPackages, antivirus, automation, kernelTuning, hugePages, timeSync, ptpClockSource, timeSyncService, timedatectl, ptpDevice, chronyTracking, chronyMakestep, lvmConfig, raidConfig, fstab, blockDevices, storageCorrelation, nvmeList, involfltVersion, involfltKernelVersion, rhuiConfig, eusVersionLock, rhelRhuiCheck, cryptoPolicies, rhuiErrors, leappReport, leappLog } = analysis;
 
             // Compute a reusable SAP detection flag early so UI sections can be gated
             const dirListGlobal = (directories || []).map(d => (d || '').toLowerCase());
@@ -983,7 +993,7 @@
                             
                             // If there's a mismatch, show alternative billing model
                             if (vm.alternativeBillingModel) {
-                                html += `<p style="margin: 5px 0; font-size: 12px;" class="text-warning"><em>⚠ Alternative detection suggests: ${vm.alternativeBillingModel}</em></p>`;
+                                html += `<p style="margin: 5px 0; font-size: 12px;" class="text-warning"><em>[!] Alternative detection suggests: ${vm.alternativeBillingModel}</em></p>`;
                                 if (vm.alternativeDetectionMethod) {
                                     html += `<p style="margin: 5px 0; font-size: 11px;" class="text-muted"><em>${vm.alternativeDetectionMethod}</em></p>`;
                                 }
@@ -1093,6 +1103,21 @@
                         if (os.majorVersion) versionParts.push(os.majorVersion);
                         if (os.minorVersion) versionParts.push(os.minorVersion);
                         html += `<p style="margin: 5px 0;"><strong>Version:</strong> <code>${versionParts.join('.')}</code></p>`;
+                    }
+                    
+                    // Display EOL warnings if present
+                    if (os.warnings && os.warnings.length > 0) {
+                        os.warnings.forEach(warning => {
+                            html += `<div class="alert-warning" style="margin: 10px 0; padding: 10px; border-radius: 4px; background-color: rgba(255, 193, 7, 0.15); border-left: 4px solid var(--warning);">`;
+                            html += `<p style="margin: 0 0 5px 0; font-weight: bold; color: var(--warning);">[!] ${warning.message}</p>`;
+                            if (warning.recommendation) {
+                                html += `<p style="margin: 0; font-size: 12px;">${warning.recommendation}</p>`;
+                            }
+                            if (warning.documentationUrl) {
+                                html += `<p style="margin: 5px 0 0 0; font-size: 11px;"><a href="${warning.documentationUrl}" target="_blank" class="text-info">Documentation</a></p>`;
+                            }
+                            html += `</div>`;
+                        });
                     }
                     
                     html += `</div>`;
@@ -1811,14 +1836,14 @@
                     html += '<div class="warning-box">';
                     corosyncConfig.warnings.forEach(warning => {
                         html += `<div style="margin-bottom: 10px;">`;
-                        html += `<p style="margin: 0;" class="text-danger"><strong>⚠ ${warning.message}</strong></p>`;
+                        html += `<p style="margin: 0;" class="text-danger"><strong>[!] ${warning.message}</strong></p>`;
                         html += `<p style="margin: 5px 0 0 0; font-size: 13px;">`;
                         html += `Expected: <code>${warning.expected}</code>, `;
                         html += `Found: <code>${warning.actual}</code>`;
                         html += `</p>`;
                         if (warning.documentationUrl) {
                             html += `<p style="margin: 5px 0 0 0; font-size: 13px;">`;
-                            html += `<a href="${warning.documentationUrl}" target="_blank" class="text-info">📘 View Documentation</a>`;
+                            html += `<a href="${warning.documentationUrl}" target="_blank" class="text-info">View Documentation</a>`;
                             html += `</p>`;
                         }
                         html += `</div>`;
@@ -1835,7 +1860,7 @@
                         // Error case
                         html += `<div class="warning-box">`;
                         html += `<p style="margin: 0 0 8px 0; font-weight: bold;"><strong>Runtime Status:</strong></p>`;
-                        html += `<p style="margin: 0;" class="text-danger"><strong>⚠ Cluster Configuration Error</strong></p>`;
+                        html += `<p style="margin: 0;" class="text-danger"><strong>[!] Cluster Configuration Error</strong></p>`;
                         html += `<p style="margin: 10px 0 0 0; font-size: 13px;"><code class="text-danger" style="padding: 4px 8px;">${status.error}</code></p>`;
                         html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-danger-dark">The corosync service cannot initialize its configuration. This indicates a critical configuration issue that prevents cluster communication.</p>`;
                         html += `</div>`;
@@ -1843,7 +1868,7 @@
                         // Success case
                         html += `<div class="subsection">`;
                         html += `<p style="margin: 0 0 10px 0; font-weight: bold;"><strong>Runtime Status:</strong></p>`;
-                        html += `<p style="margin: 5px 0;"><strong>Transport:</strong> <span class="text-success">✓ Working</span></p>`;
+                        html += `<p style="margin: 5px 0;"><strong>Transport:</strong> <span class="text-success">[OK] Working</span></p>`;
                         
                         if (status.localNodeId) {
                             html += `<p style="margin: 5px 0;"><strong>Local Node ID:</strong> <code>${status.localNodeId}</code></p>`;
@@ -1860,7 +1885,7 @@
                                 const isLocal = node.status === 'localhost';
                                 const isConnected = node.status === 'connected';
                                 const nodeStatusColorClass = isLocal ? 'text-info-dark' : (isConnected ? 'text-success' : 'text-danger');
-                                const nodeStatusIcon = isLocal ? '🏠' : (isConnected ? '✓' : '✗');
+                                const nodeStatusIcon = isLocal ? '[local]' : (isConnected ? '[OK]' : '[X]');
                                 
                                 html += `<li style="margin: 5px 0; font-size: 13px;">`;
                                 html += `<strong>Node ${node.nodeId}:</strong> `;
@@ -1872,6 +1897,124 @@
                         
                         html += `</div>`;
                     }
+                }
+                
+                // Show cluster daemon status (corosync/pacemaker enabled/disabled)
+                if (analysis.clusterDaemonStatus && analysis.clusterDaemonStatus.found) {
+                    const daemonStatus = analysis.clusterDaemonStatus;
+                    const hasWarnings = daemonStatus.warnings && daemonStatus.warnings.length > 0;
+                    const hasErrors = hasWarnings && daemonStatus.warnings.some(w => w.severity === 'error');
+                    
+                    html += `<div class="subsection" style="margin-top: 15px;">`;
+                    html += `<p style="margin: 0 0 10px 0; font-weight: bold;"><strong>Daemon Status:</strong></p>`;
+                    
+                    // Show daemon table
+                    html += `<table style="width: auto; border-collapse: collapse; font-size: 13px;">`;
+                    html += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">`;
+                    html += `<th style="padding: 5px 15px 5px 0; text-align: left;">Service</th>`;
+                    html += `<th style="padding: 5px 15px; text-align: center;">Running</th>`;
+                    html += `<th style="padding: 5px 15px; text-align: center;">Boot Enabled</th>`;
+                    html += `</tr>`;
+                    
+                    ['corosync', 'pacemaker', 'pcsd'].forEach(daemon => {
+                        const d = daemonStatus.daemons[daemon];
+                        if (d && d.active !== null) {
+                            const activeClass = d.active ? 'text-success' : 'text-danger';
+                            const activeIcon = d.active ? '[OK]' : '[X]';
+                            const enabledClass = d.enabled ? 'text-success' : 'text-danger';
+                            const enabledIcon = d.enabled ? '[OK]' : '[X]';
+                            
+                            html += `<tr>`;
+                            html += `<td style="padding: 5px 15px 5px 0;"><code>${daemon}</code></td>`;
+                            html += `<td style="padding: 5px 15px; text-align: center;" class="${activeClass}">${activeIcon} ${d.active ? 'active' : 'inactive'}</td>`;
+                            html += `<td style="padding: 5px 15px; text-align: center;" class="${enabledClass}">${enabledIcon} ${d.enabled ? 'enabled' : 'disabled'}</td>`;
+                            html += `</tr>`;
+                        }
+                    });
+                    html += `</table>`;
+                    
+                    // Show warnings/errors
+                    if (hasWarnings) {
+                        html += `<div style="margin-top: 15px;">`;
+                        daemonStatus.warnings.forEach(warning => {
+                            const blockClass = warning.severity === 'error' ? 'danger-block' : 'warning-block';
+                            const textClass = warning.severity === 'error' ? 'text-danger' : 'text-warning';
+                            const icon = warning.severity === 'error' ? '[X]' : '[!]';
+                            
+                            html += `<div class="${blockClass}" style="margin-top: 10px;">`;
+                            html += `<p style="margin: 0; font-weight: bold;" class="${textClass}">${icon} ${warning.message}</p>`;
+                            if (warning.recommendation) {
+                                html += `<p style="margin: 10px 0 0 0; font-size: 13px;"><strong>Recommendation:</strong> ${warning.recommendation}</p>`;
+                            }
+                            html += `</div>`;
+                        });
+                        html += `</div>`;
+                    }
+                    
+                    html += `</div>`;
+                }
+                
+                // Azure Scheduled Events (health-azure) configuration status
+                if (analysis.azureScheduledEvents && analysis.azureScheduledEvents.found) {
+                    const ase = analysis.azureScheduledEvents;
+                    const hasWarnings = ase.warnings && ase.warnings.length > 0;
+                    const hasErrors = hasWarnings && ase.warnings.some(w => w.severity === 'error');
+                    
+                    html += `<div class="subsection" style="margin-top: 15px;">`;
+                    html += `<p style="margin: 0 0 10px 0; font-weight: bold;"><strong>Azure Scheduled Events:</strong></p>`;
+                    
+                    // Show configuration status
+                    if (ase.healthAzureResource || ase.healthAzureConfigured) {
+                        html += `<p style="margin: 5px 0;" class="text-success">[OK] health-azure-events resource is configured</p>`;
+                    }
+                    
+                    if (ase.nodeHealthStrategy) {
+                        html += `<p style="margin: 5px 0;">node-health-strategy: <code>${ase.nodeHealthStrategy}</code></p>`;
+                    }
+                    
+                    // Show #health-azure attribute status per node
+                    if (ase.nodesWithHealthAzure && ase.nodesWithHealthAzure.length > 0) {
+                        html += `<p style="margin: 10px 0 5px 0;"><strong>#health-azure attribute:</strong></p>`;
+                        html += `<ul style="margin: 0; padding-left: 20px;">`;
+                        ase.nodesWithHealthAzure.forEach(n => {
+                            html += `<li>${n.node}: <code>${n.value}</code></li>`;
+                        });
+                        html += `</ul>`;
+                    }
+                    
+                    // Show warnings/errors
+                    if (hasWarnings) {
+                        html += `<div style="margin-top: 15px;">`;
+                        ase.warnings.forEach(warning => {
+                            const blockClass = warning.severity === 'error' ? 'danger-block' : 'warning-block';
+                            const textClass = warning.severity === 'error' ? 'text-danger' : 'text-warning';
+                            const icon = warning.severity === 'error' ? '[X]' : '[!]';
+                            
+                            html += `<div class="${blockClass}" style="margin-top: 10px;">`;
+                            html += `<p style="margin: 0; font-weight: bold;" class="${textClass}">${icon} ${warning.message}</p>`;
+                            
+                            // Show stopped resources if available
+                            if (warning.stoppedResources && warning.stoppedResources.length > 0) {
+                                html += `<p style="margin: 10px 0 5px 0; font-size: 13px;"><strong>Stopped resources:</strong></p>`;
+                                html += `<ul style="margin: 0; padding-left: 20px; font-size: 12px;">`;
+                                warning.stoppedResources.slice(0, 10).forEach(r => {
+                                    html += `<li><code>${r}</code></li>`;
+                                });
+                                if (warning.stoppedResources.length > 10) {
+                                    html += `<li>... and ${warning.stoppedResources.length - 10} more</li>`;
+                                }
+                                html += `</ul>`;
+                            }
+                            
+                            if (warning.recommendation) {
+                                html += `<p style="margin: 10px 0 0 0; font-size: 13px;"><strong>Recommendation:</strong> ${warning.recommendation}</p>`;
+                            }
+                            html += `</div>`;
+                        });
+                        html += `</div>`;
+                    }
+                    
+                    html += `</div>`;
                 }
                 
                 // Cluster Services subsection (inside Cluster Configuration)
@@ -1898,7 +2041,7 @@
                     }
                     if (dlmService.documentationUrl) {
                         html += `<p style="margin: 10px 0 0 0; font-size: 12px;">`;
-                        html += `<a href="${dlmService.documentationUrl}" target="_blank" class="text-info">📘 View Documentation</a>`;
+                        html += `<a href="${dlmService.documentationUrl}" target="_blank" class="text-info">View Documentation</a>`;
                         html += `</p>`;
                     }
                     html += `</div>`;
@@ -1933,7 +2076,7 @@
                 }
                 if (dlmService.documentationUrl) {
                     html += `<p style="margin: 10px 0 0 0; font-size: 12px;">`;
-                    html += `<a href="${dlmService.documentationUrl}" target="_blank" class="text-info">📘 View Documentation</a>`;
+                    html += `<a href="${dlmService.documentationUrl}" target="_blank" class="text-info">View Documentation</a>`;
                     html += `</p>`;
                 }
                 
@@ -1975,7 +2118,7 @@
                     if (detectionSources.length > 0) {
                         html += `<ul style="margin: 10px 0; padding-left: 20px;">`;
                         detectionSources.forEach(source => {
-                            html += `<li style="margin: 5px 0; font-size: 13px;">✓ ${source}</li>`;
+                            html += `<li style="margin: 5px 0; font-size: 13px;">[OK] ${source}</li>`;
                         });
                         html += `</ul>`;
                     }
@@ -2002,7 +2145,7 @@
                     if (epicSources.length > 0) {
                         html += `<ul style="margin: 10px 0; padding-left: 20px;">`;
                         epicSources.forEach(source => {
-                            html += `<li style="margin: 5px 0; font-size: 13px;">✓ ${source}</li>`;
+                            html += `<li style="margin: 5px 0; font-size: 13px;">[OK] ${source}</li>`;
                         });
                         html += `</ul>`;
                     }
@@ -2012,37 +2155,302 @@
                 html += `</div></details>`;
             }
             
-            // Distribution Packages section (RPM or DEB) - Always show when packages are found
-            if (analysis.distroPackages && analysis.distroPackages.found) {
-                const pkgs = analysis.distroPackages;
-                
-                // Check if this is dpkg (Debian/Ubuntu) format or RPM raw list
-                if (pkgs.isDpkg || pkgs.isRpmRaw) {
-                    const distroType = pkgs.isDpkg ? 'Debian/Ubuntu' : 'RPM-based';
-                    html += `<details class="content-details">`;
-                    html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">Distribution Packages</summary>`;
-                    html += `<div style="margin-top: 15px;">`;
-                    html += `<p style="font-size: 12px; color: rgba(255,255,255,0.7); margin: 0 0 10px 0;">`;
-                    html += `Found ${pkgs.packageCount || 'unknown'} packages (${distroType}).`;
-                    html += `</p>`;
-                    
-                    // Display raw content in a collapsible section
-                    if (pkgs.rawContent) {
-                        html += `<details class="subsection" open>`;
-                        html += `<summary style="cursor: pointer; font-weight: bold;">View Package List (${pkgs.packageCount} packages)</summary>`;
-                        html += `<div style="margin-top: 10px;">`;
-                        html += `<pre style="background: var(--code-bg); padding: 10px; border: 1px solid var(--code-border); border-radius: 4px; overflow-x: auto; overflow-y: auto; max-height: 400px; font-size: 12px; white-space: pre;">${escapeHtml(pkgs.rawContent)}</pre>`;
-                        html += `</div>`;
-                        html += `</details>`;
+            // Distribution section (Packages + RHUI/EUS info + Leapp) - Show when packages or RHUI data found
+            const hasRhuiData = (rhuiConfig && rhuiConfig.found) || (eusVersionLock && eusVersionLock.found) || (rhelRhuiCheck && rhelRhuiCheck.found) || (cryptoPolicies && cryptoPolicies.found) || (rhuiErrors && rhuiErrors.found);
+            const hasLeappData = (leappReport && leappReport.found) || (leappLog && leappLog.found);
+            const hasDistroData = (analysis.distroPackages && analysis.distroPackages.found) || hasRhuiData || hasLeappData;
+            if (hasDistroData) {
+                const pkgs = analysis.distroPackages || {};
+                const rhuiWarnings = [];
+                if (rhuiConfig && rhuiConfig.warnings) rhuiWarnings.push(...rhuiConfig.warnings);
+                if (eusVersionLock && eusVersionLock.warnings) rhuiWarnings.push(...eusVersionLock.warnings);
+                if (rhelRhuiCheck && rhelRhuiCheck.warnings) rhuiWarnings.push(...rhelRhuiCheck.warnings);
+                if (cryptoPolicies && cryptoPolicies.warnings) rhuiWarnings.push(...cryptoPolicies.warnings);
+                if (rhuiErrors && rhuiErrors.warnings) rhuiWarnings.push(...rhuiErrors.warnings);
+                if (leappReport && leappReport.warnings) rhuiWarnings.push(...leappReport.warnings);
+                if (leappLog && leappLog.warnings) rhuiWarnings.push(...leappLog.warnings);
+                const distroBlockClass = rhuiWarnings.length > 0 ? 'warning-block' : 'content-details';
+                html += `<details class="${distroBlockClass}">`;
+                html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">Distribution</summary>`;
+                html += `<div style="margin-top: 15px;">`;
+                // RHUI/EUS Information subsection
+                if (hasRhuiData) {
+                    if (rhuiWarnings.length > 0) {
+                        html += `<div class="warning-block" style="margin-bottom: 10px;">`;
+                        html += `<p style="margin: 0 0 5px 0; color: #ff9800;"><strong>RHUI Warnings (${rhuiWarnings.length}):</strong></p>`;
+                        html += `<ul style="margin: 5px 0; padding-left: 20px; font-size: 12px;">`;
+                        rhuiWarnings.forEach(warning => {
+                            html += `<li><strong>${warning.type}:</strong> ${warning.message}`;
+                            if (warning.recommendation) {
+                                html += `<br><span class="text-muted">Recommendation: ${warning.recommendation}</span>`;
+                            }
+                            if (warning.documentationUrl) {
+                                html += ` <a href="${warning.documentationUrl}" target="_blank" style="font-size: 11px;">[docs]</a>`;
+                            }
+                            html += `</li>`;
+                        });
+                        html += `</ul></div>`;
+                    }
+                    html += `<details class="subsection" open>`;
+                    html += `<summary style="cursor: pointer; font-weight: bold;">RHUI Configuration</summary>`;
+                    html += `<div style="margin-top: 10px;">`;
+                    if (rhelRhuiCheck && rhelRhuiCheck.found) {
+                        html += `<p style="margin-bottom: 5px;"><strong>RHUI Package:</strong> `;
+                        if (rhelRhuiCheck.hasRhuiPackage) {
+                            html += `<span class="text-success">${rhelRhuiCheck.rhuiPackages.join(', ')}</span>`;
+                            if (rhelRhuiCheck.rhuiType) {
+                                html += ` <span class="text-muted">(${rhelRhuiCheck.rhuiType})</span>`;
+                            }
+                        } else {
+                            html += `<span class="text-danger">Not found</span>`;
+                        }
+                        html += `</p>`;
+                    }
+                    if (eusVersionLock && eusVersionLock.found) {
+                        html += `<p style="margin-bottom: 5px;"><strong>EUS Version Lock:</strong> `;
+                        if (eusVersionLock.hasReleaseverFile) {
+                            html += `<span class="text-info">${eusVersionLock.releasever}</span>`;
+                            html += ` <span class="text-muted">(from ${eusVersionLock.source})</span>`;
+                        } else {
+                            html += `<span class="text-muted">Not locked</span>`;
+                        }
+                        html += `</p>`;
+                    }
+                    if (cryptoPolicies && cryptoPolicies.found) {
+                        html += `<p style="margin-bottom: 5px;"><strong>Crypto Policy:</strong> `;
+                        html += `<span class="${cryptoPolicies.isDefault ? 'text-success' : 'text-warning'}">${cryptoPolicies.policy}</span>`;
+                        if (!cryptoPolicies.isDefault) {
+                            html += ` <span class="text-warning">(non-default)</span>`;
+                        }
+                        html += `</p>`;
+                    }
+                    if (rhuiConfig && rhuiConfig.found && rhuiConfig.repos.length > 0) {
+                        const enabledRepos = rhuiConfig.repos.filter(r => r.enabled);
+                        html += `<p style="margin-top: 10px; margin-bottom: 5px;"><strong>RHUI Repositories:</strong> <span class="text-muted">(${enabledRepos.length} enabled)</span></p>`;
+                        html += `<ul style="margin: 5px 0; padding-left: 20px; font-size: 12px;">`;
+                        rhuiConfig.repos.filter(r => r.isMicrosoft || r.isEus).forEach(repo => {
+                            const statusClass = repo.enabled ? 'text-success' : 'text-muted';
+                            const statusText = repo.enabled ? 'enabled' : 'disabled';
+                            const eusTag = repo.isEus ? ' <span class="text-info">[EUS]</span>' : '';
+                            html += `<li><code>${repo.name}</code>${eusTag} - <span class="${statusClass}">${statusText}</span></li>`;
+                        });
+                        html += `</ul>`;
+                    }
+                    if (rhuiErrors && rhuiErrors.found) {
+                        html += `<p style="margin-top: 10px; margin-bottom: 5px;"><strong>RHUI Connectivity:</strong> `;
+                        if (rhuiErrors.hasCertExpiration || rhuiErrors.hasHttp403) {
+                            html += `<span class="text-danger">Certificate Issue Detected</span>`;
+                        } else if (rhuiErrors.hasHttp400) {
+                            html += `<span class="text-warning">EUS Version Issue Detected</span>`;
+                        } else if (rhuiErrors.hasConnectionError) {
+                            html += `<span class="text-warning">Connection Error</span>`;
+                        } else {
+                            html += `<span class="text-warning">Issues Detected</span>`;
+                        }
+                        html += `</p>`;
+                        
+                        // Show error summary with repo names and error types
+                        if (rhuiErrors.errors.length > 0) {
+                            html += `<p style="margin-bottom: 5px; font-size: 12px;"><strong>Errors Found:</strong></p>`;
+                            html += `<ul style="margin: 5px 0; padding-left: 20px; font-size: 12px;">`;
+                            rhuiErrors.errors.forEach(err => {
+                                const typeClass = err.type === 'certificate_expired' || err.type === 'http_403' ? 'text-danger' : 'text-warning';
+                                const repoInfo = err.repo ? `<code>${err.repo}</code>: ` : '';
+                                html += `<li>${repoInfo}<span class="${typeClass}">${err.message}</span></li>`;
+                            });
+                            html += `</ul>`;
+                            
+                            // Show detailed samples in collapsible
+                            const errorsWithSamples = rhuiErrors.errors.filter(e => e.sample);
+                            if (errorsWithSamples.length > 0) {
+                                html += `<details class="subsection" style="margin-top: 10px;">`;
+                                html += `<summary style="cursor: pointer; font-size: 12px;">View Raw Log Details</summary>`;
+                                html += `<ul style="margin: 10px 0; padding-left: 20px; font-size: 11px; max-height: 200px; overflow-y: auto;">`;
+                                errorsWithSamples.forEach(err => {
+                                    html += `<li style="margin-bottom: 8px;"><code style="word-break: break-all; white-space: pre-wrap;">${escapeHtml(err.sample)}</code></li>`;
+                                });
+                                html += `</ul></details>`;
+                            }
+                        } else if (rhuiErrors.affectedRepos.length > 0) {
+                            // Fallback to just showing affected repos if no detailed errors
+                            html += `<p style="margin-bottom: 5px; font-size: 12px;"><strong>Affected Repositories:</strong></p>`;
+                            html += `<ul style="margin: 5px 0; padding-left: 20px; font-size: 12px;">`;
+                            rhuiErrors.affectedRepos.forEach(repo => {
+                                html += `<li><code>${repo}</code></li>`;
+                            });
+                            html += `</ul>`;
+                        }
                     }
                     html += `</div></details>`;
-                } else {
-                    // RPM format (RHEL/SLES) with Azure package validation - show for SAP/cluster environments
-                    if (sapDetected || epicDetected || (corosyncConfig && corosyncConfig.found)) {
-                        html += `<details open class="content-details">`;
-                        html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">Azure Packages</summary>`;
-                        html += `<div style="margin-top: 15px;">`;
-                        
+                }
+                
+                // Leapp Upgrade Report subsection
+                if (hasLeappData) {
+                    const hasReport = leappReport && leappReport.found;
+                    const hasLog = leappLog && leappLog.found;
+                    const upgradeBlocked = (hasReport && leappReport.upgradeBlocked) || (hasLog && leappLog.hasErrors);
+                    const hasHighRisk = hasReport && leappReport.hasHighRisk;
+                    const hasDnsErrors = hasLog && leappLog.hasDnsErrors;
+                    const hasRhuiErrors = hasLog && leappLog.hasRhuiErrors;
+                    
+                    const leappBlockClass = upgradeBlocked ? 'error-block' : (hasHighRisk ? 'warning-block' : 'subsection');
+                    html += `<details class="${leappBlockClass}" open>`;
+                    html += `<summary style="cursor: pointer; font-weight: bold;">Leapp Upgrade Analysis</summary>`;
+                    html += `<div style="margin-top: 10px;">`;
+                    
+                    // Summary status
+                    html += `<p style="margin-bottom: 10px;">`;
+                    if (upgradeBlocked) {
+                        const errorCount = (hasReport ? leappReport.errorCount : 0) + (hasLog ? leappLog.errorCount : 0);
+                        html += `<span class="text-danger"><strong>Upgrade Blocked:</strong> ${errorCount} error(s) must be resolved</span>`;
+                    } else if (hasHighRisk) {
+                        html += `<span class="text-warning"><strong>Review Required:</strong> ${leappReport.highRiskCount} high-risk warning(s) detected</span>`;
+                    } else {
+                        html += `<span class="text-success"><strong>Upgrade Ready:</strong> No blocking issues found</span>`;
+                    }
+                    html += `</p>`;
+                    
+                    // DNS/RHUI errors from leappLog (show first as root cause)
+                    if (hasDnsErrors) {
+                        html += `<div class="error-block" style="margin-bottom: 10px;">`;
+                        html += `<p style="margin: 0 0 8px 0;"><strong>DNS Resolution Errors (Root Cause):</strong></p>`;
+                        leappLog.dnsErrors.forEach(err => {
+                            html += `<div style="margin-bottom: 8px; padding-left: 10px; border-left: 3px solid var(--danger);">`;
+                            html += `<p style="margin: 0 0 5px 0; font-family: monospace;"><strong>Curl error (${err.curlCode}): ${escapeHtml(err.message)}</strong></p>`;
+                            if (err.host) {
+                                html += `<p style="margin: 0 0 5px 0; font-size: 12px;">Host: <code>${escapeHtml(err.host)}</code></p>`;
+                            }
+                            if (err.url) {
+                                html += `<p style="margin: 0 0 5px 0; font-size: 11px; color: var(--text-muted);">URL: <code style="word-break: break-all;">${escapeHtml(err.url)}</code></p>`;
+                            }
+                            html += `<p style="margin: 0; font-size: 11px; color: var(--text-muted);"><em>Check DNS configuration (/etc/resolv.conf) and NSG rules</em></p>`;
+                            html += `</div>`;
+                        });
+                        html += `</div>`;
+                    } else if (hasRhuiErrors) {
+                        html += `<div class="error-block" style="margin-bottom: 10px;">`;
+                        html += `<p style="margin: 0 0 8px 0;"><strong>RHUI Connection Errors:</strong></p>`;
+                        leappLog.rhuiErrors.forEach(err => {
+                            html += `<div style="margin-bottom: 8px; padding-left: 10px; border-left: 3px solid var(--danger);">`;
+                            html += `<p style="margin: 0 0 5px 0; font-family: monospace;"><strong>Curl error (${err.curlCode}): ${escapeHtml(err.message)}</strong></p>`;
+                            if (err.url) {
+                                html += `<p style="margin: 0; font-size: 12px;">URL: <code style="word-break: break-all;">${escapeHtml(err.url)}</code></p>`;
+                            }
+                            html += `</div>`;
+                        });
+                        html += `</div>`;
+                    }
+                    
+                    // Issue counts from leappReport
+                    if (hasReport) {
+                        html += `<p style="font-size: 12px; margin-bottom: 10px;">`;
+                        html += `Report: ${leappReport.totalIssues} issue(s) - `;
+                        if (leappReport.errorCount > 0) html += `<span class="text-danger">${leappReport.errorCount} error(s)</span>, `;
+                        if (leappReport.highRiskCount > 0) html += `<span class="text-warning">${leappReport.highRiskCount} high</span>, `;
+                        if (leappReport.mediumRiskCount > 0) html += `${leappReport.mediumRiskCount} medium, `;
+                        if (leappReport.infoCount > 0) html += `${leappReport.infoCount} info`;
+                        html += `</p>`;
+                    
+                        // Errors (upgrade blockers) from leappReport
+                        if (leappReport.errors.length > 0) {
+                            html += `<div class="error-block" style="margin-bottom: 10px;">`;
+                            html += `<p style="margin: 0 0 8px 0;"><strong>Errors (Upgrade Blockers):</strong></p>`;
+                            leappReport.errors.forEach(issue => {
+                                html += `<div style="margin-bottom: 10px; padding-left: 10px; border-left: 3px solid var(--danger);">`;
+                                html += `<p style="margin: 0 0 5px 0;"><strong>${escapeHtml(issue.title)}</strong></p>`;
+                                if (issue.summary) {
+                                    html += `<p style="margin: 0 0 5px 0; font-size: 12px;">${escapeHtml(issue.summary.substring(0, 500))}${issue.summary.length > 500 ? '...' : ''}</p>`;
+                                }
+                                if (issue.remediation) {
+                                    html += `<p style="margin: 0; font-size: 11px; color: var(--text-muted);"><em>Remediation: ${escapeHtml(issue.remediation.substring(0, 300))}</em></p>`;
+                                }
+                                html += `</div>`;
+                            });
+                            html += `</div>`;
+                        }
+                    
+                        // High risk warnings
+                        if (leappReport.highRisk.length > 0) {
+                            html += `<details class="subsection" style="margin-bottom: 10px;">`;
+                            html += `<summary style="cursor: pointer; font-size: 13px;">High Risk Warnings (${leappReport.highRiskCount})</summary>`;
+                            html += `<div style="margin-top: 8px;">`;
+                            leappReport.highRisk.forEach(issue => {
+                                html += `<div style="margin-bottom: 10px; padding: 8px; background: var(--warning-bg); border-radius: 4px;">`;
+                                html += `<p style="margin: 0 0 5px 0;"><strong>${escapeHtml(issue.title)}</strong></p>`;
+                                if (issue.summary) {
+                                    html += `<p style="margin: 0; font-size: 12px;">${escapeHtml(issue.summary.substring(0, 400))}${issue.summary.length > 400 ? '...' : ''}</p>`;
+                                }
+                                if (issue.relatedLinks && issue.relatedLinks.length > 0) {
+                                    html += `<p style="margin: 5px 0 0 0; font-size: 11px;">`;
+                                    issue.relatedLinks.forEach(link => {
+                                        html += `<a href="${link.url}" target="_blank" class="text-info">${escapeHtml(link.text)}</a> `;
+                                    });
+                                    html += `</p>`;
+                                }
+                                html += `</div>`;
+                            });
+                            html += `</div></details>`;
+                        }
+                    
+                        // Third-party packages
+                        if (leappReport.thirdPartyPackages.length > 0) {
+                            html += `<details class="subsection" style="margin-bottom: 10px;">`;
+                            html += `<summary style="cursor: pointer; font-size: 13px;">Third-Party Packages (${leappReport.thirdPartyPackages.length})</summary>`;
+                            html += `<div style="margin-top: 8px;">`;
+                            html += `<p style="font-size: 12px; margin-bottom: 5px;">These packages are not signed by Red Hat and may need manual handling:</p>`;
+                            html += `<ul style="margin: 5px 0; padding-left: 20px; font-size: 12px;">`;
+                            leappReport.thirdPartyPackages.forEach(pkg => {
+                                html += `<li><code>${escapeHtml(pkg)}</code></li>`;
+                            });
+                            html += `</ul>`;
+                            html += `</div></details>`;
+                        }
+                    
+                        // Info items (collapsible)
+                        if (leappReport.info.length > 0) {
+                            html += `<details class="subsection">`;
+                            html += `<summary style="cursor: pointer; font-size: 13px;">Informational Notes (${leappReport.infoCount})</summary>`;
+                            html += `<div style="margin-top: 8px;">`;
+                            leappReport.info.forEach(issue => {
+                                html += `<div style="margin-bottom: 8px; padding: 6px; background: var(--info-bg, var(--code-bg)); border-radius: 4px; font-size: 12px;">`;
+                                html += `<strong>${escapeHtml(issue.title)}</strong>`;
+                                html += `</div>`;
+                            });
+                            html += `</div></details>`;
+                        }
+                    }
+                    
+                    // Curl errors from leappLog (collapsible)
+                    if (hasLog && leappLog.curlErrors.length > 0) {
+                        html += `<details class="subsection" style="margin-bottom: 10px;">`;
+                        html += `<summary style="cursor: pointer; font-size: 13px;">Connection Errors from Log (${leappLog.curlErrors.length})</summary>`;
+                        html += `<div style="margin-top: 8px; max-height: 200px; overflow-y: auto;">`;
+                        leappLog.curlErrors.forEach(err => {
+                            html += `<div style="margin-bottom: 8px; padding: 6px; background: var(--code-bg); border-radius: 4px; font-size: 11px;">`;
+                            html += `<code style="word-break: break-all;"><strong>Curl error (${err.curlCode}):</strong> ${escapeHtml(err.message)}</code>`;
+                            if (err.url) html += `<br><code style="color: var(--text-muted); word-break: break-all;">${escapeHtml(err.url)}</code>`;
+                            html += `</div>`;
+                        });
+                        html += `</div></details>`;
+                    }
+                    
+                    html += `<p style="margin-top: 10px; font-size: 11px;"><a href="https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/9/html/upgrading_from_rhel_8_to_rhel_9/index" target="_blank" class="text-info">Leapp Upgrade Documentation</a></p>`;
+                    html += `</div></details>`;
+                }
+                
+                // Packages subsection
+                if (pkgs.found) {
+                    if (pkgs.isDpkg || pkgs.isRpmRaw) {
+                        const distroType = pkgs.isDpkg ? 'Debian/Ubuntu' : 'RPM-based';
+                        html += `<details class="subsection">`;
+                        html += `<summary style="cursor: pointer; font-weight: bold;">Packages (${pkgs.packageCount || 'unknown'} ${distroType})</summary>`;
+                        html += `<div style="margin-top: 10px;">`;
+                        if (pkgs.rawContent) {
+                            html += `<pre style="background: var(--code-bg); padding: 10px; border: 1px solid var(--code-border); border-radius: 4px; overflow-x: auto; overflow-y: auto; max-height: 400px; font-size: 12px; white-space: pre;">${escapeHtml(pkgs.rawContent)}</pre>`;
+                        }
+                        html += `</div></details>`;
+                    } else if (sapDetected || epicDetected || (corosyncConfig && corosyncConfig.found)) {
+                        // RPM format with Azure package validation for SAP/cluster
                         if (pkgs.warnings && pkgs.warnings.length > 0) {
                             html += `<div class="warning-block" style="margin-bottom: 10px;">`;
                             html += `<p style="margin: 0 0 5px 0; color: #ff9800;"><strong>Package Warnings (${pkgs.warnings.length}):</strong></p>`;
@@ -2050,29 +2458,24 @@
                             pkgs.warnings.forEach(warning => {
                                 html += `<li><strong>${warning.package}:</strong> ${warning.message}`;
                                 if (warning.documentationUrl) {
-                                     html += ` <a href="${warning.documentationUrl}" target="_blank" style="font-size: 11px;">[docs]</a>`;
+                                    html += ` <a href="${warning.documentationUrl}" target="_blank" style="font-size: 11px;">[docs]</a>`;
                                 }
                                 html += `</li>`;
                             });
-                            html += `</ul>`;
-                            html += `</div>`;
+                            html += `</ul></div>`;
                         }
-                        
                         if (pkgs.packages && Object.keys(pkgs.packages).length > 0) {
                             html += `<details class="subsection">`;
-                            html += `<summary style="cursor: pointer; font-weight: bold;">Installed Packages (${Object.keys(pkgs.packages).length})</summary>`;
+                            html += `<summary style="cursor: pointer; font-weight: bold;">Azure Packages (${Object.keys(pkgs.packages).length})</summary>`;
                             html += `<ul style="margin: 10px 0; padding-left: 20px; font-size: 12px;">`;
                             Object.entries(pkgs.packages).forEach(([pkgName, version]) => {
                                 html += `<li><code>${pkgName}</code>: ${version}</li>`;
                             });
-                            html += `</ul>`;
-                            html += `</details>`;
-                        } else {
-                            html += `<p style="font-size: 13px;" class="text-muted"><em>No Azure packages found</em></p>`;
+                            html += `</ul></details>`;
                         }
-                        html += `</div></details>`;
                     }
                 }
+                html += `</div></details>`;
             }
             
             // Events - group Live Migration, Kernel Reboots, OOM, and XFS Errors (collapsed by default)
@@ -2320,7 +2723,7 @@
                 
                 html += '</ul>';
                 html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection patterns: "Out of memory: Kill process", "oom-killer: invoked", "oom_reaper:", "Cannot allocate memory"</em></p>`;
-                html += `<p style="margin-top: 5px; font-size: 12px;" class="text-danger"><strong>⚠ Warning:</strong> OOM events indicate severe memory pressure. Review memory configuration and process memory usage.</p>`;
+                html += `<p style="margin-top: 5px; font-size: 12px;" class="text-danger"><strong>[!] Warning:</strong> OOM events indicate severe memory pressure. Review memory configuration and process memory usage.</p>`;
             } else {
                 html += `<p class="text-muted"><em>No OOM (Out of Memory) killer events were detected in the analyzed files.</em></p>`;
                 html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection patterns: "Out of memory: Kill process", "oom-killer: invoked", "oom_reaper:", "Cannot allocate memory"</em></p>`;
@@ -2363,7 +2766,7 @@
                 
                 html += '</ul>';
                 html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection patterns: "XFS (...): Please unmount", "metadata corruption", "corruption detected", "internal error", "shutting down filesystem"</em></p>`;
-                html += `<p style="margin-top: 5px; font-size: 12px;" class="text-danger"><strong>⚠ Warning:</strong> XFS errors may indicate filesystem corruption. Unmount the affected filesystem and run xfs_repair.</p>`;
+                html += `<p style="margin-top: 5px; font-size: 12px;" class="text-danger"><strong>[!] Warning:</strong> XFS errors may indicate filesystem corruption. Unmount the affected filesystem and run xfs_repair.</p>`;
                 html += `<p style="margin-top: 5px; font-size: 12px;"><strong>Recommended action:</strong> <code>umount /dev/device && xfs_repair /dev/device</code></p>`;
             } else {
                 html += `<p class="text-muted"><em>No XFS filesystem errors were detected in the analyzed files.</em></p>`;
@@ -2408,7 +2811,7 @@
                 
                 html += '</ul>';
                 html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection pattern: "You are in emergency mode"</em></p>`;
-                html += `<p style="margin-top: 5px; font-size: 12px;" class="text-danger"><strong>⚠ Warning:</strong> Emergency mode indicates the system failed to boot normally. Review console logs for boot failures.</p>`;
+                html += `<p style="margin-top: 5px; font-size: 12px;" class="text-danger"><strong>[!] Warning:</strong> Emergency mode indicates the system failed to boot normally. Review console logs for boot failures.</p>`;
             } else {
                 html += `<p class="text-muted"><em>No emergency mode events were detected in the analyzed files.</em></p>`;
                 html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection pattern: "You are in emergency mode"</em></p>`;
@@ -2443,9 +2846,9 @@
                     
                     // Add specific guidance based on issue type
                     if (event.issueType === 'ssh_start_failed') {
-                        html += `<br><span style="font-size: 12px;" class="text-warning">⚠ OpenSSH server failed to start</span>`;
+                        html += `<br><span style="font-size: 12px;" class="text-warning">[!] OpenSSH server failed to start</span>`;
                     } else if (event.issueType === 'ssh_permission_error') {
-                        html += `<br><span style="font-size: 12px;" class="text-warning">⚠ Permission issue detected</span>`;
+                        html += `<br><span style="font-size: 12px;" class="text-warning">[!] Permission issue detected</span>`;
                     }
                     
                     if (event.lineNumber) {
@@ -2460,7 +2863,7 @@
                 
                 html += '</ul>';
                 html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Detection patterns: "Failed to start OpenSSH server daemon", "/var/empty/sshd must be owned by root"</em></p>`;
-                html += `<p style="margin-top: 5px; font-size: 12px;" class="text-danger"><strong>⚠ Warning:</strong> SSH service issues may prevent remote access to the system.</p>`;
+                html += `<p style="margin-top: 5px; font-size: 12px;" class="text-danger"><strong>[!] Warning:</strong> SSH service issues may prevent remote access to the system.</p>`;
                 html += `<p style="margin-top: 5px; font-size: 12px;"><strong>Recommended action:</strong> Check SSH configuration and /var/empty/sshd permissions: <code>ls -ld /var/empty/sshd && systemctl status sshd</code></p>`;
             } else {
                 html += `<p class="text-muted"><em>No SSH service issues were detected in the analyzed files.</em></p>`;
@@ -2574,7 +2977,7 @@
                     const hasExcept = falcon.sapExceptions;
                     const statusColorClass = hasExcept ? 'text-success' : 'text-danger';
                     const statusBorderColor = hasExcept ? 'var(--success-color)' : 'var(--danger-color)';
-                    const statusIcon = hasExcept ? '✓' : '✗';
+                    const statusIcon = hasExcept ? '[OK]' : '[X]';
 
                     html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor};">`;
                     html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} CrowdStrike Falcon Sensor</p>`;
@@ -2595,12 +2998,12 @@
                             });
                             html += `</ul>`;
                         } else {
-                            html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-danger"><strong>⚠ SAP exclusions not detected.</strong></p>`;
+                            html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-danger"><strong>[!] SAP exclusions not detected.</strong></p>`;
                             html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
                             html += `Required SAP paths should be excluded: /usr/sap, /hana/shared, /hana/data, /hana/log, /sapmnt`;
                             html += `</p>`;
                             html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
-                            html += `<a href="https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-suse-pacemaker" target="_blank" class="text-info">📘 View SAP on Azure Documentation</a>`;
+                            html += `<a href="https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-suse-pacemaker" target="_blank" class="text-info">View SAP on Azure Documentation</a>`;
                             html += `</p>`;
                         }
                     } else {
@@ -2620,7 +3023,7 @@
                     const hasExcept = defender.sapExceptions;
                     const statusColorClass = hasExcept ? 'text-success' : 'text-warning-dark';
                     const statusBorderColor = hasExcept ? 'var(--success-color)' : 'var(--warning-color)';
-                    const statusIcon = hasExcept ? '✓' : '⚠';
+                    const statusIcon = hasExcept ? '[OK]' : '[!]';
 
                     html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor}; max-width: 100%; overflow-wrap: break-word; word-break: break-word; white-space: normal;">`;
                     html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} Microsoft Defender for Endpoint</p>`;
@@ -2640,12 +3043,12 @@
                             });
                             html += `</ul>`;
                         } else {
-                            html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-warning-dark"><strong>⚠ SAP exclusions need verification</strong></p>`;
+                            html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-warning-dark"><strong>[!] SAP exclusions need verification</strong></p>`;
                             html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
                             html += `The exclusion configuration file was not found in the analyzed files. Please verify that the following SAP paths are excluded: /usr/sap, /hana/shared, /hana/data, /hana/log, /sapmnt`;
                             html += `</p>`;
                             html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
-                            html += `<a href="https://learn.microsoft.com/en-us/defender-endpoint/mde-linux-deployment-on-sap" target="_blank" class="text-info">📘 Configure Defender Exclusions on Linux</a>`;
+                            html += `<a href="https://learn.microsoft.com/en-us/defender-endpoint/mde-linux-deployment-on-sap" target="_blank" class="text-info">Configure Defender Exclusions on Linux</a>`;
                             html += `</p>`;
                         }
                     } else {
@@ -2664,13 +3067,13 @@
                     const illumio = antivirusData.illumio;
                     const statusColorClass = 'text-warning-dark';
                     const statusBorderColor = 'var(--warning-color)';
-                    const statusIcon = '⚠';
+                    const statusIcon = '[!]';
 
                     html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor};">`;
                     html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} Illumio</p>`;
 
                     if (sapDetected) {
-                        html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-warning-dark"><strong>⚠ SAP exclusions need verification</strong></p>`;
+                        html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-warning-dark"><strong>[!] SAP exclusions need verification</strong></p>`;
                         html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
                         html += `Please verify that SAP paths are excluded in Illumio policy configuration: /usr/sap, /hana/shared, /hana/data, /hana/log, /sapmnt`;
                         html += `</p>`;
@@ -2689,13 +3092,13 @@
                     const trendMicro = antivirusData.trendMicro;
                     const statusColorClass = 'text-warning-dark';
                     const statusBorderColor = 'var(--warning-color)';
-                    const statusIcon = '⚠';
+                    const statusIcon = '[!]';
 
                     html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor};">`;
                     html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} Trend Micro Deep Security</p>`;
 
                     if (sapDetected) {
-                        html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-warning-dark"><strong>⚠ SAP exclusions need verification</strong></p>`;
+                        html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-warning-dark"><strong>[!] SAP exclusions need verification</strong></p>`;
                         html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
                         html += `Please verify that SAP paths are excluded in Deep Security Manager: /usr/sap, /hana/shared, /hana/data, /hana/log, /sapmnt`;
                         html += `</p>`;
@@ -2714,14 +3117,14 @@
                     const guardicore = antivirusData.guardicoreAgent;
                     const statusColorClass = 'text-warning-dark';
                     const statusBorderColor = 'var(--warning-color)';
-                    const statusIcon = '⚠';
+                    const statusIcon = '[!]';
 
                     html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor};">`;
                     html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} Guardicore Agent</p>`;
                     html += `<p style="margin: 8px 0 0 0; font-size: 13px;">${guardicore.message}</p>`;
                     
                     if (sapDetected) {
-                        html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-warning-dark"><strong>⚠ SAP exclusions need verification</strong></p>`;
+                        html += `<p style="margin: 10px 0 0 0; font-size: 13px;" class="text-warning-dark"><strong>[!] SAP exclusions need verification</strong></p>`;
                         html += `<p style="margin: 5px 0 0 0; font-size: 12px;" class="text-muted">`;
                         html += `Please verify that SAP paths are excluded in Guardicore policy configuration: /usr/sap, /hana/shared, /hana/data, /hana/log, /sapmnt`;
                         html += `</p>`;
@@ -2745,7 +3148,7 @@
                     const puppet = antivirusData.puppetAgent;
                     const statusColorClass = 'text-info';
                     const statusBorderColor = 'var(--info-color)';
-                    const statusIcon = 'ℹ';
+                    const statusIcon = '[i]';
 
                     html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor};">`;
                     html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} Puppet Agent</p>`;
@@ -2769,7 +3172,7 @@
                     const chef = antivirusData.chefClient;
                     const statusColorClass = 'text-info';
                     const statusBorderColor = 'var(--info-color)';
-                    const statusIcon = 'ℹ';
+                    const statusIcon = '[i]';
 
                     html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor};">`;
                     html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} Chef Client</p>`;
@@ -2794,7 +3197,7 @@
                     const hasASR = asr && asr.detected;
                     const statusColorClass = 'text-info';
                     const statusBorderColor = 'var(--info-color)';
-                    const statusIcon = 'ℹ';
+                    const statusIcon = '[i]';
 
                     html += `<div class="subsection" style="margin-bottom: 15px; border-left: 3px solid ${statusBorderColor};">`;
                     html += `<p style="margin: 0; font-weight: bold;" class="${statusColorClass}">${statusIcon} Azure Site Recovery</p>`;
@@ -2874,14 +3277,41 @@
             html += `</div></details>`;
             
             // Kernel and System Parameters Section (show SAP-relevant warnings only when SAP detected)
-            if ((kernelTuning && kernelTuning.found) || (fstab && fstab.found) || (nvmeList && nvmeList.hasNVMe)) {
+            const hasAnyTimeSyncData = (timeSync && timeSync.found) || (ptpClockSource && ptpClockSource.found) || 
+                (timeSyncService && timeSyncService.found) || (timedatectl && timedatectl.found) || 
+                (ptpDevice && ptpDevice.found) || (chronyTracking && chronyTracking.found) || (chronyMakestep && chronyMakestep.found);
+            
+            if ((kernelTuning && kernelTuning.found) || (hugePages && hugePages.found) || hasAnyTimeSyncData || (fstab && fstab.found) || (nvmeList && nvmeList.hasNVMe) || (blockDevices && blockDevices.found) || (storageCorrelation && storageCorrelation.found)) {
                 html += `<details class="content-details">`;
                 html += `<summary>Kernel and System Parameters`;
                 if (kernelTuning && kernelTuning.hasWarnings && sapDetected) {
-                    html += ` <span class="badge badge-warning">⚠ ${kernelTuning.warnings.length} warning${kernelTuning.warnings.length > 1 ? 's' : ''}</span>`;
+                    html += ` <span class="badge badge-warning">[!] ${kernelTuning.warnings.length} warning${kernelTuning.warnings.length > 1 ? 's' : ''}</span>`;
                 }
                 if (kernelTuning && kernelTuning.hasAzureNetworkWarnings) {
-                    html += ` <span class="badge badge-warning">⚠ Network tuning</span>`;
+                    html += ` <span class="badge badge-warning">[!] Network tuning</span>`;
+                }
+                // Compute time sync errors/warnings for badge
+                const tsErrors = ((timeSync && timeSync.hasErrors) || (timeSyncService && timeSyncService.hasErrors) || 
+                    (timedatectl && timedatectl.hasErrors) || (chronyTracking && chronyTracking.hasErrors));
+                const tsWarnings = ((timeSync && timeSync.hasWarnings) || (ptpClockSource && ptpClockSource.hasWarnings) ||
+                    (timeSyncService && timeSyncService.hasWarnings) || (ptpDevice && ptpDevice.hasWarnings) ||
+                    (chronyTracking && chronyTracking.hasWarnings) || (chronyMakestep && chronyMakestep.hasWarnings));
+                if (tsErrors) {
+                    html += ` <span class="badge badge-danger">[X] Time sync</span>`;
+                } else if (tsWarnings) {
+                    html += ` <span class="badge badge-warning">[!] Time sync</span>`;
+                }
+                if (hugePages && hugePages.hasWarnings) {
+                    html += ` <span class="badge badge-warning">[!] Huge pages</span>`;
+                }
+                if (hugePages && hugePages.hasRecommendations && sapDetected) {
+                    html += ` <span class="badge badge-info">[i] Huge pages</span>`;
+                }
+                if (storageCorrelation && storageCorrelation.errors && storageCorrelation.errors.length > 0) {
+                    html += ` <span class="badge badge-danger">[X] ${storageCorrelation.errors.length} UUID error${storageCorrelation.errors.length > 1 ? 's' : ''}</span>`;
+                }
+                if (storageCorrelation && storageCorrelation.warnings && storageCorrelation.warnings.length > 0) {
+                    html += ` <span class="badge badge-warning">[!] ${storageCorrelation.warnings.length} storage warning${storageCorrelation.warnings.length > 1 ? 's' : ''}</span>`;
                 }
                 html += `</summary>`;
                 html += `<div style="margin-top: 15px;">`;
@@ -2891,7 +3321,7 @@
                     // Show SAP warnings only if SAP detected
                     if (kernelTuning.hasWarnings && sapDetected) {
                         html += `<div class="warning-block">`;
-                        html += `<p style="margin: 0 0 10px 0;"><strong>⚠ Kernel Parameter Warnings</strong></p>`;
+                        html += `<p style="margin: 0 0 10px 0;"><strong>[!] Kernel Parameter Warnings</strong></p>`;
 
                         kernelTuning.warnings.forEach(warning => {
                             html += `<div style="margin-bottom: 15px;">`;
@@ -2902,7 +3332,7 @@
                             html += `</p>`;
                             if (warning.documentationUrl) {
                                 html += `<p style="margin: 5px 0 0 0; font-size: 12px;">`;
-                                html += `<a href="${warning.documentationUrl}" target="_blank" class="text-info">📘 View Documentation</a>`;
+                                html += `<a href="${warning.documentationUrl}" target="_blank" class="text-info">View Documentation</a>`;
                                 html += `</p>`;
                             }
                             html += `</div>`;
@@ -2915,15 +3345,15 @@
                     if (kernelTuning.azureNetworkTuned) {
                         // All parameters are correctly configured
                         html += `<div class="info-block" style="margin-top: 15px;">`;
-                        html += `<p style="margin: 0;"><strong>✅ Kernel parameters tuned for Azure Network</strong></p>`;
+                        html += `<p style="margin: 0;"><strong>[OK] Kernel parameters tuned for Azure Network</strong></p>`;
                         html += `<p style="margin: 5px 0 0 0; font-size: 12px;">`;
-                        html += `<a href="https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-optimize-network-bandwidth#linux-virtual-machines" target="_blank" class="text-info">📘 View Documentation</a>`;
+                        html += `<a href="https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-optimize-network-bandwidth#linux-virtual-machines" target="_blank" class="text-info">View Documentation</a>`;
                         html += `</p>`;
                         html += `</div>`;
                     } else if (kernelTuning.hasAzureNetworkWarnings) {
                         // Some parameters need adjustment
                         html += `<div class="warning-block" style="margin-top: 15px;">`;
-                        html += `<p style="margin: 0 0 10px 0;"><strong>⚠ Azure Network Optimization - Parameters Need Adjustment</strong></p>`;
+                        html += `<p style="margin: 0 0 10px 0;"><strong>[!] Azure Network Optimization - Parameters Need Adjustment</strong></p>`;
 
                         kernelTuning.azureNetworkWarnings.forEach(warning => {
                             html += `<div style="margin-bottom: 15px;">`;
@@ -2936,7 +3366,7 @@
                         });
 
                         html += `<p style="margin: 10px 0 0 0; font-size: 12px;">`;
-                        html += `<a href="https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-optimize-network-bandwidth#linux-virtual-machines" target="_blank" class="text-info">📘 View Documentation</a>`;
+                        html += `<a href="https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-optimize-network-bandwidth#linux-virtual-machines" target="_blank" class="text-info">View Documentation</a>`;
                         html += `</p>`;
                         html += `</div>`;
                     }
@@ -2953,7 +3383,7 @@
                         html += `</p>`;
 
                         kernelTuning.optionalNetworkInfo.forEach(info => {
-                            const statusIcon = info.matches ? '✅' : 'ℹ️';
+                            const statusIcon = info.matches ? '[OK]' : '[i]';
                             const statusColor = info.matches ? 'color: var(--success);' : 'color: var(--text-secondary);';
                             
                             html += `<div style="margin-bottom: 12px;">`;
@@ -2969,7 +3399,7 @@
                         });
 
                         html += `<p style="margin: 10px 0 0 0; font-size: 12px;">`;
-                        html += `<a href="${kernelTuning.optionalNetworkInfo[0].documentationUrl}" target="_blank" class="text-info">📘 View Documentation</a>`;
+                        html += `<a href="${kernelTuning.optionalNetworkInfo[0].documentationUrl}" target="_blank" class="text-info">View Documentation</a>`;
                         html += `</p>`;
                         html += `</div>`;
                         html += `</details>`;
@@ -3004,7 +3434,918 @@
                     }
                 }
 
-                // fstab section
+                // Huge Pages section
+                if (hugePages && hugePages.found) {
+                    html += `<div style="margin-top: 15px;">`;
+                    html += `<h4 style="margin: 0 0 10px 0; font-size: 14px;">Huge Pages Configuration</h4>`;
+                    
+                    // Show warnings if any
+                    if (hugePages.hasWarnings && hugePages.warnings.length > 0) {
+                        html += `<div class="warning-block" style="margin-bottom: 15px;">`;
+                        html += `<p style="margin: 0 0 10px 0;"><strong>[!] Huge Pages Warnings</strong></p>`;
+                        
+                        hugePages.warnings.forEach(warning => {
+                            html += `<p style="margin: 5px 0; font-size: 13px;">${warning.message}</p>`;
+                        });
+                        
+                        html += `</div>`;
+                    }
+                    
+                    // Show recommendations for SAP workloads
+                    if (hugePages.hasRecommendations && hugePages.recommendations.length > 0) {
+                        html += `<div class="info-block" style="margin-bottom: 15px;">`;
+                        html += `<p style="margin: 0 0 10px 0;"><strong>[i] Huge Pages Recommendations</strong></p>`;
+                        
+                        hugePages.recommendations.forEach(rec => {
+                            html += `<p style="margin: 5px 0; font-size: 13px;">${rec.message}</p>`;
+                            if (rec.documentationUrl) {
+                                html += `<p style="margin: 5px 0 0 0; font-size: 12px;">`;
+                                html += `<a href="${rec.documentationUrl}" target="_blank" class="text-info">View Documentation</a>`;
+                                html += `</p>`;
+                            }
+                        });
+                        
+                        html += `</div>`;
+                    }
+                    
+                    // Static Huge Pages details
+                    if (Object.keys(hugePages.staticHugePages).length > 0) {
+                        html += `<details style="margin-top: 10px;">`;
+                        html += `<summary style="font-size: 14px; cursor: pointer;">Static Huge Pages`;
+                        if (hugePages.staticHugePages.total !== undefined) {
+                            html += ` <span style="font-size: 12px; font-weight: normal;">(${hugePages.staticHugePages.total} pages`;
+                            if (hugePages.staticHugePages.total_mb !== undefined) {
+                                html += `, ${hugePages.staticHugePages.total_mb.toFixed(0)} MB`;
+                            }
+                            html += `)</span>`;
+                        }
+                        html += `</summary>`;
+                        html += `<div style="margin-top: 10px;">`;
+                        html += `<table style="width: 100%; font-size: 12px; border-collapse: collapse;">`;
+                        html += `<thead><tr style="background: var(--code-bg); border-bottom: 2px solid var(--border-color);">`;
+                        html += `<th style="text-align: left; padding: 8px;">Property</th>`;
+                        html += `<th style="text-align: left; padding: 8px;">Value</th>`;
+                        html += `</tr></thead>`;
+                        html += `<tbody>`;
+                        
+                        // Display static huge pages properties
+                        if (hugePages.staticHugePages.total !== undefined) {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 6px;">Total Pages</td>`;
+                            html += `<td style="padding: 6px; font-family: monospace;">${hugePages.staticHugePages.total}</td>`;
+                            html += `</tr>`;
+                        }
+                        if (hugePages.staticHugePages.free !== undefined) {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 6px;">Free Pages</td>`;
+                            html += `<td style="padding: 6px; font-family: monospace;">${hugePages.staticHugePages.free}</td>`;
+                            html += `</tr>`;
+                        }
+                        if (hugePages.staticHugePages.rsvd !== undefined) {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 6px;">Reserved Pages</td>`;
+                            html += `<td style="padding: 6px; font-family: monospace;">${hugePages.staticHugePages.rsvd}</td>`;
+                            html += `</tr>`;
+                        }
+                        if (hugePages.staticHugePages.surp !== undefined) {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 6px;">Surplus Pages</td>`;
+                            html += `<td style="padding: 6px; font-family: monospace;">${hugePages.staticHugePages.surp}</td>`;
+                            html += `</tr>`;
+                        }
+                        if (hugePages.staticHugePages.pagesize_kb !== undefined) {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 6px;">Page Size</td>`;
+                            html += `<td style="padding: 6px; font-family: monospace;">${hugePages.staticHugePages.pagesize_kb} kB</td>`;
+                            html += `</tr>`;
+                        }
+                        if (hugePages.staticHugePages.total_mb !== undefined) {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 6px;">Total Memory</td>`;
+                            html += `<td style="padding: 6px; font-family: monospace;">${hugePages.staticHugePages.total_mb.toFixed(0)} MB</td>`;
+                            html += `</tr>`;
+                        }
+                        
+                        html += `</tbody></table>`;
+                        html += `</div>`;
+                        html += `</details>`;
+                    }
+                    
+                    // Transparent Huge Pages details
+                    if (Object.keys(hugePages.transparentHugePages).length > 0) {
+                        html += `<details style="margin-top: 10px;">`;
+                        html += `<summary style="font-size: 14px; cursor: pointer;">Transparent Huge Pages (THP)`;
+                        if (hugePages.transparentHugePages.anon_mb !== undefined) {
+                            html += ` <span style="font-size: 12px; font-weight: normal;">(${hugePages.transparentHugePages.anon_mb.toFixed(0)} MB in use)</span>`;
+                        }
+                        html += `</summary>`;
+                        html += `<div style="margin-top: 10px;">`;
+                        html += `<table style="width: 100%; font-size: 12px; border-collapse: collapse;">`;
+                        html += `<thead><tr style="background: var(--code-bg); border-bottom: 2px solid var(--border-color);">`;
+                        html += `<th style="text-align: left; padding: 8px;">Property</th>`;
+                        html += `<th style="text-align: left; padding: 8px;">Value</th>`;
+                        html += `</tr></thead>`;
+                        html += `<tbody>`;
+                        
+                        if (hugePages.transparentHugePages.anon_kb !== undefined) {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 6px;">Anonymous Huge Pages</td>`;
+                            html += `<td style="padding: 6px; font-family: monospace;">${hugePages.transparentHugePages.anon_kb} kB</td>`;
+                            html += `</tr>`;
+                        }
+                        if (hugePages.transparentHugePages.shmem_kb !== undefined) {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 6px;">Shared Memory Huge Pages</td>`;
+                            html += `<td style="padding: 6px; font-family: monospace;">${hugePages.transparentHugePages.shmem_kb} kB</td>`;
+                            html += `</tr>`;
+                        }
+                        if (hugePages.transparentHugePages.shmem_pmd_mapped_kb !== undefined) {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 6px;">Shared Memory PMD Mapped</td>`;
+                            html += `<td style="padding: 6px; font-family: monospace;">${hugePages.transparentHugePages.shmem_pmd_mapped_kb} kB</td>`;
+                            html += `</tr>`;
+                        }
+                        
+                        html += `</tbody></table>`;
+                        html += `</div>`;
+                        html += `</details>`;
+                    }
+                    
+                    // Sysctl parameters
+                    if (Object.keys(hugePages.sysctlParams).length > 0) {
+                        html += `<details style="margin-top: 10px;">`;
+                        html += `<summary style="font-size: 14px; cursor: pointer;">Kernel Parameters (sysctl)</summary>`;
+                        html += `<div style="margin-top: 10px;">`;
+                        html += `<table style="width: 100%; font-size: 12px; border-collapse: collapse;">`;
+                        html += `<thead><tr style="background: var(--code-bg); border-bottom: 2px solid var(--border-color);">`;
+                        html += `<th style="text-align: left; padding: 8px;">Parameter</th>`;
+                        html += `<th style="text-align: left; padding: 8px;">Value</th>`;
+                        html += `</tr></thead>`;
+                        html += `<tbody>`;
+                        
+                        if (hugePages.sysctlParams.nr_hugepages !== undefined) {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 6px; font-family: monospace;">vm.nr_hugepages</td>`;
+                            html += `<td style="padding: 6px; font-family: monospace;">${hugePages.sysctlParams.nr_hugepages}</td>`;
+                            html += `</tr>`;
+                        }
+                        if (hugePages.sysctlParams.nr_overcommit_hugepages !== undefined) {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 6px; font-family: monospace;">vm.nr_overcommit_hugepages</td>`;
+                            html += `<td style="padding: 6px; font-family: monospace;">${hugePages.sysctlParams.nr_overcommit_hugepages}</td>`;
+                            html += `</tr>`;
+                        }
+                        if (hugePages.sysctlParams.hugetlb_shm_group !== undefined) {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 6px; font-family: monospace;">vm.hugetlb_shm_group</td>`;
+                            html += `<td style="padding: 6px; font-family: monospace;">${hugePages.sysctlParams.hugetlb_shm_group}</td>`;
+                            html += `</tr>`;
+                        }
+                        
+                        html += `</tbody></table>`;
+                        html += `</div>`;
+                        html += `</details>`;
+                    }
+                    
+                    html += `</div>`;
+                }
+
+                // Time Synchronization section (collapsed by default)
+                const hasTimeSyncData = (timeSync && timeSync.found) || 
+                    (ptpClockSource && ptpClockSource.found) || 
+                    (timeSyncService && timeSyncService.found) ||
+                    (timedatectl && timedatectl.found) ||
+                    (ptpDevice && ptpDevice.found) ||
+                    (chronyTracking && chronyTracking.found) ||
+                    (chronyMakestep && chronyMakestep.found);
+                
+                if (hasTimeSyncData) {
+                    // Compute overall status
+                    const timeSyncErrors = [];
+                    const timeSyncWarnings = [];
+                    const timeSyncInfo = [];
+                    
+                    if (timeSync && timeSync.hasErrors) timeSyncErrors.push(...timeSync.warnings.filter(w => w.severity === 'error'));
+                    if (timeSync && timeSync.hasWarnings) timeSyncWarnings.push(...timeSync.warnings.filter(w => w.severity === 'warning'));
+                    if (timeSyncService && timeSyncService.hasErrors) timeSyncErrors.push(...timeSyncService.warnings.filter(w => w.severity === 'error'));
+                    if (timeSyncService && timeSyncService.hasWarnings) timeSyncWarnings.push(...timeSyncService.warnings.filter(w => w.severity === 'warning'));
+                    if (timedatectl && timedatectl.hasErrors) timeSyncErrors.push(...timedatectl.warnings.filter(w => w.severity === 'error'));
+                    if (timedatectl && timedatectl.hasWarnings) timeSyncWarnings.push(...timedatectl.warnings.filter(w => w.severity === 'warning'));
+                    if (ptpDevice && ptpDevice.hasWarnings) timeSyncWarnings.push(...ptpDevice.warnings);
+                    if (ptpClockSource && ptpClockSource.hasWarnings) timeSyncWarnings.push(...ptpClockSource.warnings);
+                    if (chronyTracking && chronyTracking.hasErrors) timeSyncErrors.push(...chronyTracking.warnings.filter(w => w.severity === 'error'));
+                    if (chronyTracking && chronyTracking.hasWarnings) timeSyncWarnings.push(...chronyTracking.warnings.filter(w => w.severity === 'warning'));
+                    if (chronyMakestep && chronyMakestep.hasWarnings) timeSyncWarnings.push(...chronyMakestep.warnings);
+                    
+                    html += `<details style="margin-top: 15px;">`;
+                    html += `<summary style="font-size: 14px; cursor: pointer;">`;
+                    html += `Time Synchronization`;
+                    
+                    // Add status badges
+                    if (timeSyncErrors.length > 0) {
+                        html += ` <span class="badge badge-danger">[X] ${timeSyncErrors.length} error${timeSyncErrors.length > 1 ? 's' : ''}</span>`;
+                    }
+                    if (timeSyncWarnings.length > 0) {
+                        html += ` <span class="badge badge-warning">[!] ${timeSyncWarnings.length} warning${timeSyncWarnings.length > 1 ? 's' : ''}</span>`;
+                    }
+                    if (timeSyncErrors.length === 0 && timeSyncWarnings.length === 0) {
+                        // All good indicators
+                        if (timedatectl && timedatectl.ntpSynchronized) {
+                            html += ` <span class="badge badge-success">[OK] Synchronized</span>`;
+                        }
+                        if (chronyTracking && chronyTracking.isPtpSource) {
+                            html += ` <span class="badge badge-success">[OK] PTP active</span>`;
+                        }
+                    }
+                    
+                    html += `</summary>`;
+                    html += `<div style="margin-top: 10px;">`;
+                    html += `<p style="margin: 0 0 10px 0; font-size: 12px; color: var(--text-secondary);">`;
+                    html += `Azure Linux VMs should use PTP from the host for accurate time synchronization. `;
+                    html += `<a href="https://learn.microsoft.com/en-us/azure/virtual-machines/linux/time-sync" target="_blank" class="text-info">Documentation</a>`;
+                    html += `</p>`;
+                    
+                    // === Summary Table (Detector Status) ===
+                    html += `<div style="margin-bottom: 15px;">`;
+                    html += `<h5 style="margin: 0 0 8px 0; font-size: 13px;">Summary Table</h5>`;
+                    html += `<table style="width: 100%; font-size: 12px; border-collapse: collapse;">`;
+                    html += `<thead><tr style="background: var(--code-bg); border-bottom: 2px solid var(--border-color);">`;
+                    html += `<th style="text-align: left; padding: 8px; width: 80px;">Status</th>`;
+                    html += `<th style="text-align: left; padding: 8px;">Detector</th>`;
+                    html += `<th style="text-align: left; padding: 8px;">Findings</th>`;
+                    html += `<th style="text-align: left; padding: 8px; font-size: 11px;">Source File</th>`;
+                    html += `</tr></thead>`;
+                    html += `<tbody>`;
+                    
+                    // Define all detectors with their status, source, and details
+                    // Use detectionFile from parser results when available (supports both sosreport and SCC)
+                    const detectors = [
+                        {
+                            name: 'hv_utils module loaded',
+                            category: 'Integration Services',
+                            check: () => timeSync && timeSync.hvUtilsLoaded,
+                            severity: 'error',
+                            getSource: () => timeSync?.detectionFile || 'lsmod',
+                            getDetails: () => {
+                                if (!timeSync) return 'No data available';
+                                if (timeSync.hvUtilsLoaded) return `Loaded (${timeSync.hypervModules?.length || 0} Hyper-V modules)`;
+                                return `Not loaded! Modules found: ${timeSync.hypervModules?.join(', ') || 'none'}`;
+                            }
+                        },
+                        {
+                            name: 'PTP clock source exists',
+                            category: 'Time Source',
+                            check: () => (ptpClockSource && ptpClockSource.hasPtpSource) || (chronyTracking && chronyTracking.isPtpSource),
+                            severity: 'warning',
+                            getSource: () => ptpClockSource?.detectionFile || chronyTracking?.detectionFile || 'chronyc sources',
+                            getDetails: () => {
+                                if (ptpClockSource?.hasPtpSource) return `PHC source: ${ptpClockSource.ptpDevice || 'detected'}${ptpClockSource.ptpActive ? ' (active)' : ''}`;
+                                if (chronyTracking?.isPtpSource) return `Reference: ${chronyTracking.referenceName}`;
+                                return 'No PTP source configured';
+                            }
+                        },
+                        {
+                            name: 'PTP clock name is hyperv',
+                            category: 'Time Source',
+                            check: () => chronyMakestep && chronyMakestep.usesHypervSymlink,
+                            severity: 'warning',
+                            getSource: () => chronyMakestep?.detectionFile || 'chrony.conf',
+                            getDetails: () => {
+                                if (!chronyMakestep?.hasRefclock) return 'No refclock configured';
+                                if (chronyMakestep.usesHypervSymlink) return `Using ${chronyMakestep.refclockDevice}`;
+                                return `Using ${chronyMakestep.refclockDevice} (hardcoded, should use /dev/ptp_hyperv)`;
+                            }
+                        },
+                        {
+                            name: '/dev/ptp_hyperv symlink exists',
+                            category: 'Configuration',
+                            check: () => ptpDevice && ptpDevice.hasPtpHypervSymlink,
+                            severity: 'warning',
+                            getSource: () => ptpDevice?.detectionFile || 'ls -lanR /dev',
+                            getDetails: () => {
+                                if (!ptpDevice) return 'No data available';
+                                const devs = ptpDevice.ptpDevices?.join(', ') || 'none';
+                                if (ptpDevice.hasPtpHypervSymlink) return `ptp_hyperv → ${ptpDevice.ptpHypervTarget} (devices: ${devs})`;
+                                return `Symlink missing (devices: ${devs})`;
+                            }
+                        },
+                        {
+                            name: 'Time sync service running',
+                            category: 'Service',
+                            check: () => timeSyncService && (timeSyncService.chronyEnabled || timeSyncService.ntpdEnabled),
+                            severity: 'error',
+                            getSource: () => timeSyncService?.detectionFile || 'systemctl list-unit-files',
+                            getDetails: () => {
+                                if (!timeSyncService) return 'No data available';
+                                const parts = [];
+                                if (timeSyncService.chronyStatus) parts.push(`chrony: ${timeSyncService.chronyStatus}`);
+                                if (timeSyncService.ntpdStatus) parts.push(`ntpd: ${timeSyncService.ntpdStatus}`);
+                                if (timeSyncService.timesyncdStatus) parts.push(`timesyncd: ${timeSyncService.timesyncdStatus}`);
+                                return parts.length > 0 ? parts.join(', ') : 'No time services found';
+                            }
+                        },
+                        {
+                            name: 'Chrony using PTP refclock',
+                            category: 'Configuration',
+                            check: () => chronyMakestep && chronyMakestep.hasRefclock,
+                            severity: 'warning',
+                            getSource: () => chronyMakestep?.detectionFile || 'chrony.conf',
+                            getDetails: () => {
+                                if (!chronyMakestep) return 'No chrony config found';
+                                if (chronyMakestep.hasRefclock) return `refclock PHC ${chronyMakestep.refclockDevice}`;
+                                return 'No PTP refclock configured (using NTP servers)';
+                            }
+                        },
+                        {
+                            name: 'Time source synchronized',
+                            category: 'Synchronization',
+                            check: () => timedatectl && timedatectl.ntpSynchronized,
+                            severity: 'error',
+                            getSource: () => timedatectl?.detectionFile || 'timedatectl',
+                            getDetails: () => {
+                                if (!timedatectl) return 'No data available';
+                                const sync = timedatectl.ntpSynchronized ? 'synchronized' : 'NOT synchronized';
+                                const svc = timedatectl.ntpService ? ` (${timedatectl.ntpService})` : '';
+                                return `Clock ${sync}${svc}`;
+                            }
+                        },
+                        {
+                            name: 'systemd-timesyncd disabled',
+                            category: 'Conflicts',
+                            check: () => !timeSyncService || timeSyncService.timesyncdMasked || !timeSyncService.timesyncdEnabled,
+                            severity: 'warning',
+                            getSource: () => timeSyncService?.detectionFile || 'systemctl list-unit-files',
+                            getDetails: () => {
+                                if (!timeSyncService) return 'Service list not available';
+                                if (timeSyncService.timesyncdMasked) return 'timesyncd masked (good)';
+                                if (!timeSyncService.timesyncdEnabled) return 'timesyncd disabled (good)';
+                                return `timesyncd ${timeSyncService.timesyncdStatus} - may conflict with chrony`;
+                            }
+                        },
+                        {
+                            name: 'Time offset within bounds',
+                            category: 'Health',
+                            check: () => !chronyTracking || chronyTracking.lastOffsetSeconds === null || Math.abs(chronyTracking.lastOffsetSeconds) < 0.1,
+                            severity: 'warning',
+                            getSource: () => chronyTracking?.detectionFile || 'chronyc tracking',
+                            getDetails: () => {
+                                if (!chronyTracking || chronyTracking.lastOffsetSeconds === null) return 'No offset data';
+                                const offsetMs = (chronyTracking.lastOffsetSeconds * 1000).toFixed(3);
+                                const stratum = chronyTracking.stratum ? `, stratum ${chronyTracking.stratum}` : '';
+                                return `Offset: ${offsetMs}ms${stratum}`;
+                            }
+                        },
+                        {
+                            name: 'makestep configured',
+                            category: 'Configuration',
+                            check: () => chronyMakestep && chronyMakestep.hasMakestep,
+                            severity: 'info',
+                            getSource: () => chronyMakestep?.detectionFile || 'chrony.conf',
+                            getDetails: () => {
+                                if (!chronyMakestep) return 'No chrony config found';
+                                if (chronyMakestep.hasMakestep) return `makestep ${chronyMakestep.makestepThreshold} ${chronyMakestep.makestepLimit}`;
+                                return 'makestep not configured';
+                            }
+                        }
+                    ];
+                    
+                    detectors.forEach(det => {
+                        const passed = det.check();
+                        let statusIcon, statusColor;
+                        if (passed) {
+                            statusIcon = '[OK]';
+                            statusColor = 'var(--success)';
+                        } else {
+                            statusIcon = det.severity === 'error' ? '[ERROR]' : det.severity === 'warning' ? '[WARN]' : '[INFO]';
+                            statusColor = det.severity === 'error' ? 'var(--danger)' : det.severity === 'warning' ? 'var(--warning)' : 'var(--info)';
+                        }
+                        const details = det.getDetails();
+                        const sourceFile = det.getSource();
+                        html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                        html += `<td style="padding: 6px; color: ${statusColor}; font-weight: 500;">${statusIcon}</td>`;
+                        html += `<td style="padding: 6px;"><strong>${det.name}</strong><br><span style="font-size: 10px; color: var(--text-muted);">${det.category}</span></td>`;
+                        html += `<td style="padding: 6px; font-size: 11px;">${details}</td>`;
+                        html += `<td style="padding: 6px; font-size: 10px; color: var(--text-muted); font-family: monospace;">${sourceFile}</td>`;
+                        html += `</tr>`;
+                    });
+                    
+                    html += `</tbody></table>`;
+                    html += `</div>`;
+                    
+                    // === Errors and Warnings Section ===
+                    if (timeSyncErrors.length > 0 || timeSyncWarnings.length > 0) {
+                        html += `<div style="margin-bottom: 15px;">`;
+                        html += `<h5 style="margin: 0 0 8px 0; font-size: 13px;">Issues Detected</h5>`;
+                        
+                        [...timeSyncErrors, ...timeSyncWarnings].forEach(issue => {
+                            const isError = issue.severity === 'error';
+                            const blockClass = isError ? 'error-block' : 'warning-block';
+                            const icon = isError ? '[X]' : '[!]';
+                            html += `<div class="${blockClass}" style="margin-bottom: 10px;">`;
+                            html += `<p style="margin: 0;"><strong>${icon} ${issue.message}</strong></p>`;
+                            if (issue.recommendation) {
+                                html += `<p style="margin: 5px 0 0 0; font-size: 12px;">${issue.recommendation}</p>`;
+                            }
+                            if (issue.documentationUrl) {
+                                html += `<p style="margin: 5px 0 0 0; font-size: 12px;">`;
+                                html += `<a href="${issue.documentationUrl}" target="_blank" class="text-info">View Documentation</a>`;
+                                html += `</p>`;
+                            }
+                            html += `</div>`;
+                        });
+                        html += `</div>`;
+                    }
+                    
+                    // === Hyper-V Integration Services ===
+                    if (timeSync && timeSync.found) {
+                        html += `<details style="margin-bottom: 10px;">`;
+                        html += `<summary style="font-size: 13px; cursor: pointer;">Hyper-V Integration Services</summary>`;
+                        html += `<div style="margin-top: 8px; margin-left: 10px;">`;
+                        
+                        html += `<table style="width: 100%; font-size: 12px; border-collapse: collapse;">`;
+                        html += `<thead><tr style="background: var(--code-bg); border-bottom: 2px solid var(--border-color);">`;
+                        html += `<th style="text-align: left; padding: 8px;">Module</th>`;
+                        html += `<th style="text-align: left; padding: 8px;">Status</th>`;
+                        html += `<th style="text-align: left; padding: 8px;">Purpose</th>`;
+                        html += `</tr></thead>`;
+                        html += `<tbody>`;
+                        
+                        const modules = [
+                            { name: 'hv_utils', loaded: timeSync.hvUtilsLoaded, purpose: 'Time sync & host integration' },
+                            { name: 'hv_vmbus', loaded: timeSync.hvVmbusLoaded, purpose: 'Hyper-V VMBus driver' }
+                        ];
+                        
+                        modules.forEach(mod => {
+                            const statusIcon = mod.loaded ? '[Y]' : '[N]';
+                            const statusColor = mod.loaded ? 'var(--success)' : 'var(--danger)';
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 6px; font-family: monospace;"><code>${mod.name}</code></td>`;
+                            html += `<td style="padding: 6px; color: ${statusColor};">${statusIcon} ${mod.loaded ? 'Loaded' : 'Not loaded'}</td>`;
+                            html += `<td style="padding: 6px; font-size: 11px;">${mod.purpose}</td>`;
+                            html += `</tr>`;
+                        });
+                        
+                        html += `</tbody></table>`;
+                        
+                        html += `<p style="margin: 10px 0 5px 0; font-size: 11px;">`;
+                        html += `<a href="https://learn.microsoft.com/en-us/azure/virtual-machines/linux/time-sync#check-for-ptp-clock-source" target="_blank" class="text-info">Azure VM Time Sync Documentation</a>`;
+                        html += `</p>`;
+                        
+                        if (timeSync.hypervModules && timeSync.hypervModules.length > 0) {
+                            html += `<p style="margin: 10px 0 0 0; font-size: 11px; color: var(--text-secondary);">`;
+                            html += `All Hyper-V modules: <code>${timeSync.hypervModules.join('</code>, <code>')}</code>`;
+                            html += `</p>`;
+                        }
+                        
+                        html += `</div></details>`;
+                    }
+                    
+                    // === Time Sync Services ===
+                    if (timeSyncService && timeSyncService.found) {
+                        html += `<details style="margin-bottom: 10px;">`;
+                        html += `<summary style="font-size: 13px; cursor: pointer;">Time Sync Services</summary>`;
+                        html += `<div style="margin-top: 8px; margin-left: 10px;">`;
+                        
+                        html += `<table style="width: 100%; font-size: 12px; border-collapse: collapse;">`;
+                        html += `<thead><tr style="background: var(--code-bg); border-bottom: 2px solid var(--border-color);">`;
+                        html += `<th style="text-align: left; padding: 8px;">Service</th>`;
+                        html += `<th style="text-align: left; padding: 8px;">Status</th>`;
+                        html += `</tr></thead>`;
+                        html += `<tbody>`;
+                        
+                        const services = [
+                            { name: 'chronyd.service', status: timeSyncService.chronyStatus, enabled: timeSyncService.chronyEnabled },
+                            { name: 'ntpd.service', status: timeSyncService.ntpdStatus, enabled: timeSyncService.ntpdEnabled },
+                            { name: 'systemd-timesyncd.service', status: timeSyncService.timesyncdStatus, enabled: timeSyncService.timesyncdEnabled, masked: timeSyncService.timesyncdMasked }
+                        ];
+                        
+                        services.forEach(svc => {
+                            if (svc.status) {
+                                let statusColor = 'var(--text-secondary)';
+                                let statusIcon = '[-]';
+                                if (svc.enabled) {
+                                    statusColor = 'var(--success)';
+                                    statusIcon = '[Y]';
+                                } else if (svc.masked) {
+                                    statusColor = 'var(--info)';
+                                    statusIcon = '[M]';
+                                }
+                                html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                                html += `<td style="padding: 6px; font-family: monospace;"><code>${svc.name}</code></td>`;
+                                html += `<td style="padding: 6px; color: ${statusColor};">${statusIcon} ${svc.status}</td>`;
+                                html += `</tr>`;
+                            }
+                        });
+                        
+                        html += `</tbody></table>`;
+                        html += `</div></details>`;
+                    }
+                    
+                    // === System Time Status (timedatectl) ===
+                    if (timedatectl && timedatectl.found) {
+                        html += `<details style="margin-bottom: 10px;">`;
+                        html += `<summary style="font-size: 13px; cursor: pointer;">System Time Status</summary>`;
+                        html += `<div style="margin-top: 8px; margin-left: 10px;">`;
+                        
+                        const syncIcon = timedatectl.ntpSynchronized ? '[Y]' : '[N]';
+                        const syncColor = timedatectl.ntpSynchronized ? 'var(--success)' : 'var(--danger)';
+                        const ntpIcon = timedatectl.ntpEnabled ? '[Y]' : '[N]';
+                        const ntpColor = timedatectl.ntpEnabled ? 'var(--success)' : 'var(--danger)';
+                        
+                        html += `<p style="margin: 5px 0; font-size: 13px;"><span style="color: ${syncColor};">${syncIcon}</span> NTP Synchronized: ${timedatectl.ntpSynchronized ? 'Yes' : 'No'}</p>`;
+                        html += `<p style="margin: 5px 0; font-size: 13px;"><span style="color: ${ntpColor};">${ntpIcon}</span> NTP Enabled: ${timedatectl.ntpEnabled ? 'Yes' : 'No'}</p>`;
+                        if (timedatectl.localTime) {
+                            html += `<p style="margin: 5px 0; font-size: 12px; color: var(--text-secondary);">Local Time: ${timedatectl.localTime}</p>`;
+                        }
+                        if (timedatectl.timezone) {
+                            html += `<p style="margin: 5px 0; font-size: 12px; color: var(--text-secondary);">Timezone: ${timedatectl.timezone}</p>`;
+                        }
+                        
+                        html += `</div></details>`;
+                    }
+                    
+                    // === PTP Device Status ===
+                    if (ptpDevice && ptpDevice.found) {
+                        html += `<details style="margin-bottom: 10px;">`;
+                        html += `<summary style="font-size: 13px; cursor: pointer;">PTP Devices</summary>`;
+                        html += `<div style="margin-top: 8px; margin-left: 10px;">`;
+                        
+                        if (ptpDevice.ptpDevices && ptpDevice.ptpDevices.length > 0) {
+                            html += `<p style="margin: 5px 0; font-size: 13px;">Devices: <code>${ptpDevice.ptpDevices.map(d => '/dev/' + d).join('</code>, <code>')}</code></p>`;
+                        }
+                        
+                        const symlinkIcon = ptpDevice.hasPtpHypervSymlink ? '[Y]' : '[N]';
+                        const symlinkColor = ptpDevice.hasPtpHypervSymlink ? 'var(--success)' : 'var(--warning)';
+                        html += `<p style="margin: 5px 0; font-size: 13px;"><span style="color: ${symlinkColor};">${symlinkIcon}</span> /dev/ptp_hyperv symlink: ${ptpDevice.hasPtpHypervSymlink ? 'Present → ' + ptpDevice.ptpHypervTarget : 'Not present'}</p>`;
+                        
+                        html += `</div></details>`;
+                    }
+                    
+                    // === Chrony Tracking (Time Offset) ===
+                    if (chronyTracking && chronyTracking.found) {
+                        html += `<details style="margin-bottom: 10px;">`;
+                        html += `<summary style="font-size: 13px; cursor: pointer;">Chrony Tracking</summary>`;
+                        html += `<div style="margin-top: 8px; margin-left: 10px;">`;
+                        
+                        if (chronyTracking.referenceName) {
+                            const srcIcon = chronyTracking.isPtpSource ? '[Y]' : '-';
+                            const srcColor = chronyTracking.isPtpSource ? 'var(--success)' : 'var(--text-secondary)';
+                            html += `<p style="margin: 5px 0; font-size: 13px;"><span style="color: ${srcColor};">${srcIcon}</span> Reference: ${chronyTracking.referenceName} ${chronyTracking.isPtpSource ? '(PTP)' : ''}</p>`;
+                        }
+                        if (chronyTracking.stratum !== null) {
+                            html += `<p style="margin: 5px 0; font-size: 13px;">Stratum: ${chronyTracking.stratum}</p>`;
+                        }
+                        if (chronyTracking.lastOffsetSeconds !== null) {
+                            const offsetMs = (chronyTracking.lastOffsetSeconds * 1000).toFixed(3);
+                            const offsetColor = Math.abs(chronyTracking.lastOffsetSeconds) > 0.1 ? 'var(--warning)' : 'var(--success)';
+                            html += `<p style="margin: 5px 0; font-size: 13px;">Last Offset: <span style="color: ${offsetColor};">${offsetMs} ms</span></p>`;
+                        }
+                        if (chronyTracking.systemTime) {
+                            html += `<p style="margin: 5px 0; font-size: 12px; color: var(--text-secondary);">System Time: ${chronyTracking.systemTime}</p>`;
+                        }
+                        if (chronyTracking.leapStatus) {
+                            const leapOk = chronyTracking.leapStatus.toLowerCase() === 'normal';
+                            const leapColor = leapOk ? 'var(--success)' : 'var(--warning)';
+                            html += `<p style="margin: 5px 0; font-size: 13px;">Leap Status: <span style="color: ${leapColor};">${chronyTracking.leapStatus}</span></p>`;
+                        }
+                        
+                        html += `</div></details>`;
+                    }
+                    
+                    // === Chrony Configuration ===
+                    if (chronyMakestep && chronyMakestep.found) {
+                        html += `<details style="margin-bottom: 10px;">`;
+                        html += `<summary style="font-size: 13px; cursor: pointer;">Chrony Configuration</summary>`;
+                        html += `<div style="margin-top: 8px; margin-left: 10px;">`;
+                        
+                        const makestepIcon = chronyMakestep.hasMakestep ? '[Y]' : '-';
+                        const makestepColor = chronyMakestep.hasMakestep ? 'var(--success)' : 'var(--text-secondary)';
+                        html += `<p style="margin: 5px 0; font-size: 13px;"><span style="color: ${makestepColor};">${makestepIcon}</span> makestep: ${chronyMakestep.hasMakestep ? chronyMakestep.makestepThreshold + ' ' + chronyMakestep.makestepLimit : 'Not configured'}</p>`;
+                        
+                        const refclockIcon = chronyMakestep.hasRefclock ? '[Y]' : '[N]';
+                        const refclockColor = chronyMakestep.hasRefclock ? 'var(--success)' : 'var(--warning)';
+                        html += `<p style="margin: 5px 0; font-size: 13px;"><span style="color: ${refclockColor};">${refclockIcon}</span> PTP refclock: ${chronyMakestep.hasRefclock ? chronyMakestep.refclockDevice : 'Not configured'}</p>`;
+                        
+                        if (chronyMakestep.hasRefclock) {
+                            const hypervIcon = chronyMakestep.usesHypervSymlink ? '[Y]' : '[!]';
+                            const hypervColor = chronyMakestep.usesHypervSymlink ? 'var(--success)' : 'var(--warning)';
+                            html += `<p style="margin: 5px 0; font-size: 13px;"><span style="color: ${hypervColor};">${hypervIcon}</span> Uses ptp_hyperv symlink: ${chronyMakestep.usesHypervSymlink ? 'Yes' : 'No (hardcoded device)'}</p>`;
+                        }
+                        
+                        html += `</div></details>`;
+                    }
+                    
+                    // === PTP Clock Sources (chronyc sources) ===
+                    if (ptpClockSource && ptpClockSource.found && ptpClockSource.chronySources && ptpClockSource.chronySources.length > 0) {
+                        html += `<details style="margin-bottom: 10px;">`;
+                        html += `<summary style="font-size: 13px; cursor: pointer;">Chrony Sources</summary>`;
+                        html += `<div style="margin-top: 8px; margin-left: 10px;">`;
+                        
+                        html += `<table style="width: 100%; font-size: 12px; border-collapse: collapse;">`;
+                        html += `<thead><tr style="background: var(--code-bg); border-bottom: 2px solid var(--border-color);">`;
+                        html += `<th style="text-align: left; padding: 8px;">Type</th>`;
+                        html += `<th style="text-align: left; padding: 8px;">Source</th>`;
+                        html += `<th style="text-align: left; padding: 8px;">Status</th>`;
+                        html += `</tr></thead>`;
+                        html += `<tbody>`;
+                        
+                        ptpClockSource.chronySources.forEach(source => {
+                            const activeMarker = source.active ? '★' : '';
+                            const rowStyle = source.active ? 'background: var(--success-bg);' : '';
+                            html += `<tr style="border-bottom: 1px solid var(--code-border); ${rowStyle}">`;
+                            html += `<td style="padding: 6px;">${source.type}</td>`;
+                            html += `<td style="padding: 6px; font-family: monospace;">${activeMarker} ${source.name}</td>`;
+                            html += `<td style="padding: 6px;">${source.active ? 'Active sync source' : 'Available'}</td>`;
+                            html += `</tr>`;
+                        });
+                        
+                        html += `</tbody></table>`;
+                        html += `</div></details>`;
+                    }
+                    
+                    // === Recommendations ===
+                    const allRecommendations = [];
+                    if (ptpClockSource && ptpClockSource.recommendations) allRecommendations.push(...ptpClockSource.recommendations);
+                    if (chronyMakestep && chronyMakestep.recommendations) allRecommendations.push(...chronyMakestep.recommendations);
+                    if (chronyTracking && chronyTracking.recommendations) allRecommendations.push(...chronyTracking.recommendations);
+                    if (ptpDevice && ptpDevice.recommendations) allRecommendations.push(...ptpDevice.recommendations);
+                    if (timeSyncService && timeSyncService.recommendations) allRecommendations.push(...timeSyncService.recommendations);
+                    
+                    if (allRecommendations.length > 0) {
+                        html += `<div class="info-block" style="margin-top: 10px;">`;
+                        html += `<p style="margin: 0 0 5px 0;"><strong>[i] Information</strong></p>`;
+                        allRecommendations.forEach(rec => {
+                            html += `<p style="margin: 5px 0; font-size: 12px;">${rec.message}</p>`;
+                            if (rec.recommendation) {
+                                html += `<p style="margin: 0 0 5px 0; font-size: 11px; font-family: monospace; background: var(--code-bg); padding: 5px; border-radius: 3px;">${rec.recommendation}</p>`;
+                            }
+                        });
+                        html += `</div>`;
+                    }
+                    
+                    html += `</div>`;
+                    html += `</details>`;
+                }
+
+                // LVM Configuration section
+                if (analysis.lvmConfig && analysis.lvmConfig.found) {
+                    const lvmConfig = analysis.lvmConfig;
+                    html += `<div style="margin-top: 8px;"><h3>LVM Configuration</h3>`;
+                    
+                    // Show warnings if any
+                    if (lvmConfig.warnings && lvmConfig.warnings.length > 0) {
+                        html += `<div class="warning-box" style="margin-top: 5px;">`;
+                        lvmConfig.warnings.forEach(warning => {
+                            html += `<div style="display: flex; align-items: flex-start; margin-bottom: 8px;">`;
+                            html += `<span style="color: #f0ad4e; margin-right: 8px;">[!]</span>`;
+                            html += `<div style="flex: 1;">`;
+                            html += `<strong>${warning.type}:</strong> ${warning.message}`;
+                            if (warning.details) {
+                                html += `<br><small>${warning.details}</small>`;
+                            }
+                            html += `</div></div>`;
+                        });
+                        html += `</div>`;
+                    }
+                    
+                    // Physical Volumes section
+                    if (lvmConfig.pvs && lvmConfig.pvs.length > 0) {
+                        html += `<details style="margin-top: 8px;"><summary style="cursor: pointer; font-weight: bold; padding: 4px 8px; background: var(--code-bg); border-radius: 4px;">Physical Volumes (${lvmConfig.pvs.length})</summary><div style="margin-top: 2px; margin-left: 20px;"><table style="border-collapse: collapse; width: 100%; font-size: 12px;">
+<thead><tr style="background: var(--code-bg); border-bottom: 2px solid var(--code-border);"><th style="padding: 2px 8px; text-align: left;">Device</th><th style="padding: 2px 8px; text-align: left;">Volume Group</th><th style="padding: 2px 8px; text-align: left;">Size</th><th style="padding: 2px 8px; text-align: left;">Free</th><th style="padding: 2px 8px; text-align: left;">Attributes</th></tr></thead><tbody>`;
+                        
+                        lvmConfig.pvs.forEach(pv => {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${pv.device}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${pv.vg || '-'}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${pv.size || '-'}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${pv.free || '-'}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${pv.attr || '-'}</td>`;
+                            html += `</tr>`;
+                        });
+                        
+                        html += `</tbody></table>`;
+                        if (lvmConfig.rawOutput && lvmConfig.rawOutput.pvs) {
+                            html += `<details style="margin-top: 5px;"><summary style="cursor: pointer; font-size: 11px; color: #666;">Raw pvs output</summary><pre style="background: var(--code-bg); padding: 6px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 2px;">${lvmConfig.rawOutput.pvs}</pre></details>`;
+                        }
+                        html += `</div></details>`;
+                    }
+                    
+                    // Volume Groups section
+                    if (lvmConfig.vgs && lvmConfig.vgs.length > 0) {
+                        html += `<details style="margin-top: 3px;"><summary style="cursor: pointer; font-weight: bold; padding: 4px 8px; background: var(--code-bg); border-radius: 4px;">Volume Groups (${lvmConfig.vgs.length})</summary><div style="margin-top: 2px; margin-left: 20px;"><table style="border-collapse: collapse; width: 100%; font-size: 12px;">
+<thead><tr style="background: var(--code-bg); border-bottom: 2px solid var(--code-border);"><th style="padding: 2px 8px; text-align: left;">Volume Group</th><th style="padding: 2px 8px; text-align: left;">PVs</th><th style="padding: 2px 8px; text-align: left;">LVs</th><th style="padding: 2px 8px; text-align: left;">Size</th><th style="padding: 2px 8px; text-align: left;">Free</th><th style="padding: 2px 8px; text-align: left;">Attributes</th></tr></thead><tbody>`;
+                        
+                        lvmConfig.vgs.forEach(vg => {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace; font-weight: bold;">${vg.name}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${vg.pv_count || '-'}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${vg.lv_count || '-'}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${vg.size || '-'}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${vg.free || '-'}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${vg.attr || '-'}</td>`;
+                            html += `</tr>`;
+                        });
+                        
+                        html += `</tbody></table>`;
+                        if (lvmConfig.rawOutput && lvmConfig.rawOutput.vgs) {
+                            html += `<details style="margin-top: 5px;"><summary style="cursor: pointer; font-size: 11px; color: #666;">Raw vgs output</summary><pre style="background: var(--code-bg); padding: 6px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 2px;">${lvmConfig.rawOutput.vgs}</pre></details>`;
+                        }
+                        html += `</div></details>`;
+                    }
+                    
+                    // Logical Volumes section
+                    if (lvmConfig.lvs && lvmConfig.lvs.length > 0) {
+                        html += `<details style="margin-top: 3px;"><summary style="cursor: pointer; font-weight: bold; padding: 4px 8px; background: var(--code-bg); border-radius: 4px;">Logical Volumes (${lvmConfig.lvs.length})</summary><div style="margin-top: 2px; margin-left: 20px;"><table style="border-collapse: collapse; width: 100%; font-size: 12px;">
+<thead><tr style="background: var(--code-bg); border-bottom: 2px solid var(--code-border);"><th style="padding: 2px 8px; text-align: left;">Logical Volume</th><th style="padding: 2px 8px; text-align: left;">Volume Group</th><th style="padding: 2px 8px; text-align: left;">Size</th><th style="padding: 2px 8px; text-align: left;">Pool</th><th style="padding: 2px 8px; text-align: left;">Attributes</th></tr></thead><tbody>`;
+                        
+                        lvmConfig.lvs.forEach(lv => {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${lv.name}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${lv.vg || '-'}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${lv.size || '-'}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${lv.pool || '-'}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${lv.attr || '-'}</td>`;
+                            html += `</tr>`;
+                        });
+                        
+                        html += `</tbody></table>`;
+                        if (lvmConfig.rawOutput && lvmConfig.rawOutput.lvs) {
+                            html += `<details style="margin-top: 5px;"><summary style="cursor: pointer; font-size: 11px; color: #666;">Raw lvs output</summary><pre style="background: var(--code-bg); padding: 6px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 2px;">${lvmConfig.rawOutput.lvs}</pre></details>`;
+                        }
+                        html += `</div></details>`;
+                    }
+                    
+                    html += `</div>`;
+                }
+                if (analysis.raidConfig && analysis.raidConfig.found) {
+                    const raidConfig = analysis.raidConfig;
+                    html += `<div style="margin-top: 20px;"><h3>RAID Configuration</h3>`;
+                    if (raidConfig.warnings && raidConfig.warnings.length > 0) {
+                        html += `<div class="warning-box" style="margin-top: 10px;">`;
+                        raidConfig.warnings.forEach(warning => {
+                            html += `<div style="display: flex; align-items: flex-start; margin-bottom: 8px;">`;
+                            html += `<span style="color: #d9534f; margin-right: 8px;">[X]</span>`;
+                            html += `<div style="flex: 1;">`;
+                            html += `<strong>${warning.type}:</strong> ${warning.message}`;
+                            if (warning.details) {
+                                html += `<br><small>${warning.details}</small>`;
+                            }
+                            html += `</div></div>`;
+                        });
+                        html += `</div>`;
+                    }
+                    if (raidConfig.arrays && raidConfig.arrays.length > 0) {
+                        html += `<details open style="margin-top: 15px;"><summary style="cursor: pointer; font-weight: bold; padding: 8px; background: var(--code-bg); border-radius: 4px;">RAID Arrays (${raidConfig.arrays.length})</summary><div style="margin-top: 10px; margin-left: 20px;">`;
+                        raidConfig.arrays.forEach(array => {
+                            const statusBadge = array.state === 'active' ? '<span style="background: #5cb85c; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px;">ACTIVE</span>' : array.state === 'degraded' ? '<span style="background: #f0ad4e; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px;">DEGRADED</span>' : '<span style="background: #d9534f; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px;">INACTIVE</span>';
+                            html += `<div style="border: 1px solid var(--code-border); border-radius: 4px; padding: 12px; margin-bottom: 10px; background: var(--code-bg);"><div style="display: flex; align-items: center; margin-bottom: 8px;"><strong style="font-family: monospace; font-size: 16px;">${array.device}</strong><span style="margin-left: 10px;">${statusBadge}</span><span style="margin-left: 10px; font-size: 12px; color: #666;">Level: ${array.level}</span></div>`;
+                            if (array.devices && array.devices.length > 0) {
+                                html += `<div style="margin-top: 8px;"><strong>Devices:</strong><br>`;
+                                array.devices.forEach(dev => {
+                                    html += `<div style="margin-left: 15px; font-family: monospace; font-size: 13px;">${dev.device} - ${dev.state}</div>`;
+                                });
+                                html += `</div>`;
+                            }
+                            if (array.size) {
+                                html += `<div style="margin-top: 8px; font-size: 13px;"><strong>Size:</strong> ${array.size}</div>`;
+                            }
+                            if (array.syncStatus) {
+                                html += `<div style="margin-top: 8px; padding: 8px; background: #f0ad4e; border-radius: 4px; color: white;">`;
+                                html += `<div style="font-weight: bold; margin-bottom: 4px;">${array.syncStatus.operation.toUpperCase()} in Progress</div>`;
+                                html += `<div style="font-size: 12px;">Progress: ${array.syncStatus.percentage}%</div>`;
+                                if (array.syncStatus.finish) {
+                                    html += `<div style="font-size: 12px;">Estimated finish: ${array.syncStatus.finish}</div>`;
+                                }
+                                if (array.syncStatus.speed) {
+                                    html += `<div style="font-size: 12px;">Speed: ${array.syncStatus.speed}</div>`;
+                                }
+                                html += `</div>`;
+                            }
+                            html += `</div>`;
+                        });
+                        if (raidConfig.rawOutput && raidConfig.rawOutput.mdstat) {
+                            html += `<details style="margin-top: 10px;"><summary style="cursor: pointer; font-size: 12px; color: #666;">Raw /proc/mdstat</summary><pre style="background: var(--code-bg); padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 12px; margin-top: 5px;">${raidConfig.rawOutput.mdstat}</pre></details>`;
+                        }
+                        html += `</div></details>`;
+                    }
+                    html += `</div>`;
+                }
+                if (analysis.btrfsConfig && analysis.btrfsConfig.found) {
+                    const btrfsConfig = analysis.btrfsConfig;
+                    html += `<div style="margin-top: 8px;"><h3>BTRFS Configuration</h3>`;
+                    if (btrfsConfig.filesystems && btrfsConfig.filesystems.length > 0) {
+                        html += `<details style="margin-top: 8px;"><summary style="cursor: pointer; font-weight: bold; padding: 4px 8px; background: var(--code-bg); border-radius: 4px;">BTRFS Filesystems (${btrfsConfig.filesystems.length})</summary><div style="margin-top: 2px; margin-left: 20px;">`;
+                        
+                        btrfsConfig.filesystems.forEach(fs => {
+                            html += `<div style="border: 1px solid var(--code-border); border-radius: 4px; padding: 8px; margin-bottom: 8px; background: var(--code-bg);">`;
+                            html += `<div style="margin-bottom: 4px;"><strong>Label:</strong> ${fs.label}</div>`;
+                            html += `<div style="margin-bottom: 4px; font-family: monospace; font-size: 11px; color: #666;">UUID: ${fs.uuid}</div>`;
+                            if (fs.deviceCount) {
+                                html += `<div style="margin-bottom: 4px;"><strong>Devices:</strong> ${fs.deviceCount} | <strong>Used:</strong> ${fs.totalSize}</div>`;
+                            }
+                            if (fs.devices && fs.devices.length > 0) {
+                                html += `<table style="border-collapse: collapse; width: 100%; font-size: 11px; margin-top: 6px;"><thead><tr style="background: var(--code-bg); border-bottom: 1px solid var(--code-border);"><th style="padding: 2px 6px; text-align: left;">Device</th><th style="padding: 2px 6px; text-align: left;">Size</th><th style="padding: 2px 6px; text-align: left;">Used</th></tr></thead><tbody>`;
+                                fs.devices.forEach(dev => {
+                                    html += `<tr style="border-bottom: 1px solid var(--code-border);"><td style="padding: 2px 6px; font-family: monospace;">${dev.path}</td><td style="padding: 2px 6px;">${dev.size}</td><td style="padding: 2px 6px;">${dev.used}</td></tr>`;
+                                });
+                                html += `</tbody></table>`;
+                            }
+                            html += `</div>`;
+                        });
+                        if (btrfsConfig.rawOutput && btrfsConfig.rawOutput.filesystems) {
+                            html += `<details style="margin-top: 5px;"><summary style="cursor: pointer; font-size: 11px; color: #666;">Raw btrfs filesystem show</summary><pre style="background: var(--code-bg); padding: 6px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 2px;">${btrfsConfig.rawOutput.filesystems}</pre></details>`;
+                        }
+                        html += `</div></details>`;
+                    }
+                    if (btrfsConfig.subvolumes && btrfsConfig.subvolumes.length > 0) {
+                        html += `<details style="margin-top: 3px;"><summary style="cursor: pointer; font-weight: bold; padding: 4px 8px; background: var(--code-bg); border-radius: 4px;">BTRFS Subvolumes (${btrfsConfig.subvolumes.length})</summary><div style="margin-top: 2px; margin-left: 20px;"><table style="border-collapse: collapse; width: 100%; font-size: 12px;"><thead><tr style="background: var(--code-bg); border-bottom: 2px solid var(--code-border);"><th style="padding: 2px 8px; text-align: left;">ID</th><th style="padding: 2px 8px; text-align: left;">Path</th><th style="padding: 2px 8px; text-align: left;">Parent</th><th style="padding: 2px 8px; text-align: left;">Top Level</th></tr></thead><tbody>`;
+                        
+                        btrfsConfig.subvolumes.forEach(sv => {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);"><td style="padding: 2px 8px; font-family: monospace;">${sv.id}</td><td style="padding: 2px 8px; font-family: monospace;">${sv.path}</td><td style="padding: 2px 8px; font-family: monospace;">${sv.parent}</td><td style="padding: 2px 8px; font-family: monospace;">${sv.topLevel}</td></tr>`;
+                        });
+                        
+                        html += `</tbody></table>`;
+                        if (btrfsConfig.rawOutput && btrfsConfig.rawOutput.subvolumes) {
+                            html += `<details style="margin-top: 5px;"><summary style="cursor: pointer; font-size: 11px; color: #666;">Raw btrfs subvolume list</summary><pre style="background: var(--code-bg); padding: 6px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 2px;">${btrfsConfig.rawOutput.subvolumes}</pre></details>`;
+                        }
+                        html += `</div></details>`;
+                    }
+                    html += `</div>`;
+                }
+                
+                // Block Devices section
+                if (blockDevices && blockDevices.found) {
+                    html += `<div style="margin-top: 20px;"><h3>Block Devices</h3>`;
+                    const disks = blockDevices.disks || [];
+                    const parts = blockDevices.partitions || [];
+                    
+                    if (disks.length > 0) {
+                        html += `<details open style="margin-top: 10px;"><summary style="cursor: pointer; font-weight: bold; padding: 4px 8px; background: var(--code-bg); border-radius: 4px;">Disks (${disks.length})</summary>`;
+                        html += `<div style="margin-top: 5px; margin-left: 20px;"><table style="border-collapse: collapse; width: 100%; font-size: 12px;">`;
+                        html += `<thead><tr style="background: var(--code-bg); border-bottom: 2px solid var(--code-border);"><th style="padding: 2px 8px; text-align: left;">Device</th><th style="padding: 2px 8px; text-align: left;">Size</th><th style="padding: 2px 8px; text-align: left;">Model</th></tr></thead><tbody>`;
+                        disks.forEach(d => {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${d.device || d.name || '-'}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${d.size || '-'}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${d.model || '-'}</td>`;
+                            html += `</tr>`;
+                        });
+                        html += `</tbody></table></div></details>`;
+                    }
+                    
+                    if (parts.length > 0) {
+                        html += `<details style="margin-top: 5px;"><summary style="cursor: pointer; font-weight: bold; padding: 4px 8px; background: var(--code-bg); border-radius: 4px;">Partitions (${parts.length})</summary>`;
+                        html += `<div style="margin-top: 5px; margin-left: 20px;"><table style="border-collapse: collapse; width: 100%; font-size: 12px;">`;
+                        html += `<thead><tr style="background: var(--code-bg); border-bottom: 2px solid var(--code-border);"><th style="padding: 2px 8px; text-align: left;">Device</th><th style="padding: 2px 8px; text-align: left;">Size</th><th style="padding: 2px 8px; text-align: left;">Type</th><th style="padding: 2px 8px; text-align: left;">UUID</th><th style="padding: 2px 8px; text-align: left;">Mount</th></tr></thead><tbody>`;
+                        parts.forEach(p => {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${p.device || p.name || '-'}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${p.size || '-'}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${p.fstype || '-'}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace; font-size: 10px;">${p.uuid || '-'}</td>`;
+                            html += `<td style="padding: 2px 8px; font-family: monospace;">${p.mountpoint || '-'}</td>`;
+                            html += `</tr>`;
+                        });
+                        html += `</tbody></table></div></details>`;
+                    }
+                    
+                    html += `</div>`;
+                }
+                
+                // Storage Correlation (fstab vs block devices UUID check)
+                if (storageCorrelation && storageCorrelation.found) {
+                    const errors = storageCorrelation.errors || [];
+                    const warnings = storageCorrelation.warnings || [];
+                    
+                    if (errors.length > 0 || warnings.length > 0) {
+                        html += `<div style="margin-top: 20px;"><h3>Fstab/UUID Correlation</h3>`;
+                        
+                        if (errors.length > 0) {
+                            html += `<div class="danger-block" style="margin-top: 10px; padding: 10px; border-radius: 4px;">`;
+                            html += `<strong style="color: #d9534f;">[X] UUID Errors (${errors.length})</strong>`;
+                            html += `<ul style="margin: 8px 0 0 20px; padding: 0;">`;
+                            errors.forEach(e => {
+                                html += `<li style="margin-bottom: 6px;"><strong>${e.mountpoint}</strong>: UUID <code style="background: var(--code-bg); padding: 2px 4px; border-radius: 3px; font-size: 11px;">${e.uuid}</code> not found on any device`;
+                                if (e.message) html += `<br><small style="color: #666;">${e.message}</small>`;
+                                html += `</li>`;
+                            });
+                            html += `</ul></div>`;
+                        }
+                        
+                        if (warnings.length > 0) {
+                            html += `<div class="warning-box" style="margin-top: 10px; padding: 10px; border-radius: 4px;">`;
+                            html += `<strong style="color: #f0ad4e;">[!] Filesystem Warnings (${warnings.length})</strong>`;
+                            html += `<ul style="margin: 8px 0 0 20px; padding: 0;">`;
+                            warnings.forEach(w => {
+                                html += `<li style="margin-bottom: 6px;"><strong>${w.mountpoint}</strong>: ${w.message}</li>`;
+                            });
+                            html += `</ul></div>`;
+                        }
+                        
+                        html += `</div>`;
+                    }
+                }
+
                 if (fstab && fstab.found && fstab.content) {
                     html += `<details style="margin-top: 15px;">`;
                     html += `<summary style="font-size: 14px; cursor: pointer;">Filesystem Table (/etc/fstab)</summary>`;
@@ -3015,8 +4356,6 @@
                     html += `</div>`;
                     html += `</details>`;
                 }
-
-                // NVMe drives section
                 if (nvmeList && nvmeList.hasNVMe) {
                     html += `<details style="margin-top: 15px;">`;
                     html += `<summary style="font-size: 14px; cursor: pointer;">NVMe Drives <span style="font-size: 12px; font-weight: normal;">(${nvmeList.driveCount} detected)</span></summary>`;
@@ -3068,7 +4407,7 @@
             // Show warning if PAX format was detected (non-GNU tar)
             if (analysis.usedPaxFormat) {
                 html += `<div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 12px; margin: 10px 0;">`;
-                html += `<p style="margin: 0; color: #856404;"><strong>⚠️ Warning:</strong> This file was not packaged by GNU Tar. It is possible this was repackaged before uploading.</p>`;
+                html += `<p style="margin: 0; color: #856404;"><strong>[!] Warning:</strong> This file was not packaged by GNU Tar. It is possible this was repackaged before uploading.</p>`;
                 html += `</div>`;
             }
             
@@ -3116,7 +4455,7 @@
             
             // Corruption warning banner
             html += `<div style="background-color: var(--warning-bg, #fff3cd); border: 2px solid var(--warning-border, #ffc107); border-radius: 4px; padding: 15px; margin-bottom: 20px;">`;
-            html += `<h3 style="margin: 0 0 10px 0; color: var(--warning-text, #856404);">⚠️ Corrupted or Incomplete Archive Detected</h3>`;
+            html += `<h3 style="margin: 0 0 10px 0; color: var(--warning-text, #856404);">[!] Corrupted or Incomplete Archive Detected</h3>`;
             html += `<p style="margin: 0;"><strong>Issue:</strong> ${corruptionMessage || 'File appears to be corrupted or truncated'}</p>`;
             html += `<p style="margin: 10px 0 0 0;"><strong>Partial Analysis:</strong> Successfully extracted and analyzed ${fileCount || 0} files before encountering the corruption.</p>`;
             html += `</div>`;
@@ -3217,7 +4556,7 @@
             // Show warning if PAX format was detected (non-GNU tar)
             if (analysis.usedPaxFormat) {
                 html += `<div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 12px; margin: 10px 0;">`;
-                html += `<p style="margin: 0; color: #856404;"><strong>⚠️ Warning:</strong> This file was not packaged by GNU Tar. It is possible this was repackaged before uploading.</p>`;
+                html += `<p style="margin: 0; color: #856404;"><strong>[!] Warning:</strong> This file was not packaged by GNU Tar. It is possible this was repackaged before uploading.</p>`;
                 html += `</div>`;
             }
             

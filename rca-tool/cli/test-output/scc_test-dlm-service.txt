@@ -1,0 +1,20 @@
+
+Analyzing: /home/fede2/proyectos/azure-support-scripts/rca-tool/cli/../tests/fixtures/scc_test-dlm-service.tar.xz
+
+
+======================================================================
+  RCA Analysis Results
+======================================================================
+
+Files processed: 2
+Directories: 4
+
+----------------------------------------------------------------------
+AZURE VM PROPERTIES
+----------------------------------------------------------------------
+  Operating System:
+    Distribution: Red Hat Enterprise Linux 8.6 (Ootpa)
+    Version: 8.6
+
+======================================================================
+

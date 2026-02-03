@@ -1866,6 +1866,325 @@ const clusterStatusParser = {
         }
 };
 
+// Parser to detect cluster daemon status (corosync, pacemaker, pcsd)
+// Detects if services are enabled/disabled for boot
+const clusterDaemonStatusParser = {
+    // Target file patterns - pcs_status output which contains Daemon Status section
+    filePattern: /\/pcs_status|\/ha\.txt$/,
+    
+    parse: function(content, filename) {
+        debugLog('[clusterDaemonStatus parser] Analyzing daemon status in:', filename);
+        
+        const daemons = {
+            corosync: { active: null, enabled: null },
+            pacemaker: { active: null, enabled: null },
+            pcsd: { active: null, enabled: null }
+        };
+        const warnings = [];
+        let found = false;
+        
+        // Look for Daemon Status section in pcs status output
+        const lines = content.split('\n');
+        let inDaemonSection = false;
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            
+            // Detect Daemon Status section
+            if (line.match(/^Daemon Status:?$/i)) {
+                inDaemonSection = true;
+                debugLog('[clusterDaemonStatus parser] Found Daemon Status section at line', i + 1);
+                continue;
+            }
+            
+            // Exit daemon section on empty line or new section
+            if (inDaemonSection && (line === '' || line.match(/^[A-Z][a-z]+ [A-Z]/))) {
+                if (line === '' || !line.match(/^\s*(corosync|pacemaker|pcsd):/i)) {
+                    // Only exit if it's truly a new section, not another daemon line
+                    if (!line.match(/^\s*(corosync|pacemaker|pcsd):/i)) {
+                        inDaemonSection = false;
+                    }
+                }
+            }
+            
+            if (inDaemonSection) {
+                // Parse daemon status lines: "corosync: active/disabled"
+                // Format: <daemon>: <active_status>/<enabled_status>
+                const daemonMatch = line.match(/^\s*(corosync|pacemaker|pcsd):\s*(\w+)\/(\w+)/i);
+                if (daemonMatch) {
+                    const daemon = daemonMatch[1].toLowerCase();
+                    const activeStatus = daemonMatch[2].toLowerCase();
+                    const enabledStatus = daemonMatch[3].toLowerCase();
+                    
+                    daemons[daemon] = {
+                        active: activeStatus === 'active',
+                        enabled: enabledStatus === 'enabled'
+                    };
+                    found = true;
+                    
+                    debugLog('[clusterDaemonStatus parser] Found', daemon + ':', activeStatus + '/' + enabledStatus);
+                    
+                    // Generate warnings for critical issues
+                    if (daemon === 'corosync' && enabledStatus === 'disabled') {
+                        warnings.push({
+                            severity: 'error',
+                            daemon: 'corosync',
+                            message: 'Corosync is disabled and will not start automatically after reboot. Cluster resources will not start after system restart.',
+                            recommendation: 'Run "pcs cluster enable --all" or "systemctl enable corosync" on all nodes to enable automatic cluster startup.'
+                        });
+                    }
+                    
+                    if (daemon === 'pacemaker' && enabledStatus === 'disabled') {
+                        warnings.push({
+                            severity: 'warning',
+                            daemon: 'pacemaker',
+                            message: 'Pacemaker is disabled and will not start automatically after reboot.',
+                            recommendation: 'Run "pcs cluster enable --all" or "systemctl enable pacemaker" on all nodes.'
+                        });
+                    }
+                    
+                    if (daemon === 'corosync' && activeStatus !== 'active') {
+                        warnings.push({
+                            severity: 'error',
+                            daemon: 'corosync',
+                            message: 'Corosync is not running. The cluster cannot function without corosync.',
+                            recommendation: 'Run "pcs cluster start" or "systemctl start corosync" to start the cluster.'
+                        });
+                    }
+                    
+                    if (daemon === 'pacemaker' && activeStatus !== 'active') {
+                        warnings.push({
+                            severity: 'error',
+                            daemon: 'pacemaker',
+                            message: 'Pacemaker is not running. Cluster resources cannot be managed.',
+                            recommendation: 'Run "pcs cluster start" or "systemctl start pacemaker" to start the resource manager.'
+                        });
+                    }
+                }
+            }
+        }
+        
+        if (!found) {
+            debugLog('[clusterDaemonStatus parser] No daemon status found');
+            return { found: false };
+        }
+        
+        debugLog('[clusterDaemonStatus parser] Daemon status:',
+                'corosync:', daemons.corosync.active ? 'active' : 'inactive', '/', daemons.corosync.enabled ? 'enabled' : 'disabled',
+                'pacemaker:', daemons.pacemaker.active ? 'active' : 'inactive', '/', daemons.pacemaker.enabled ? 'enabled' : 'disabled');
+        
+        return {
+            found: true,
+            daemons: daemons,
+            warnings: warnings,
+            corosyncEnabled: daemons.corosync.enabled,
+            pacemakerEnabled: daemons.pacemaker.enabled,
+            corosyncActive: daemons.corosync.active,
+            pacemakerActive: daemons.pacemaker.active
+        };
+    }
+};
+
+// Parser to detect Azure Scheduled Events (health-azure) configuration
+// This detects when the health-azure-events resource is not configured or misconfigured
+// which can cause resources to not start on nodes
+const azureScheduledEventsParser = {
+    filePattern: /\/pcs_status.*|\/crm_mon.*|cib\.xml$/,
+    
+    parse: function(content, filename) {
+        debugLog('[azureScheduledEvents parser] Analyzing Azure scheduled events config in:', filename);
+        
+        const result = {
+            found: false,
+            healthAzureConfigured: false,
+            healthAzureResource: null,
+            nodeHealthStrategy: null,
+            nodesWithHealthAzure: [],
+            nodesWithoutHealthAzure: [],
+            stoppedResources: [],
+            onlineNodes: [],
+            warnings: []
+        };
+        
+        const lines = content.split('\n');
+        let inNodeAttributes = false;
+        let inResourceList = false;
+        let inNodeList = false;
+        let currentNode = null;
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmed = line.trim();
+            
+            // Detect section headers
+            if (trimmed.match(/^Node Attributes:?$/i) || trimmed.match(/^Node List:?$/i) && trimmed.includes('Attribute')) {
+                inNodeAttributes = true;
+                inResourceList = false;
+                inNodeList = false;
+                continue;
+            }
+            if (trimmed.match(/^Full List of Resources:?$/i) || trimmed.match(/^Active Resources:?$/i) || trimmed.match(/^Resources:?$/i)) {
+                inResourceList = true;
+                inNodeAttributes = false;
+                inNodeList = false;
+                continue;
+            }
+            if (trimmed.match(/^Node List:?$/i) && !trimmed.includes('Attribute')) {
+                inNodeList = true;
+                inNodeAttributes = false;
+                inResourceList = false;
+                continue;
+            }
+            if (trimmed.match(/^Migration Summary:?$/i) || trimmed.match(/^Operations:?$/i) || trimmed.match(/^Fencing History:?$/i)) {
+                inNodeAttributes = false;
+                inResourceList = false;
+                inNodeList = false;
+            }
+            
+            // Parse node list to find online nodes
+            if (inNodeList) {
+                // Pattern: "* Node vmculnxcmntdb1 (1): online, feature set 3.19.6"
+                const nodeMatch = trimmed.match(/^\*?\s*Node\s+(\S+).*:\s*(online|offline)/i);
+                if (nodeMatch && nodeMatch[2].toLowerCase() === 'online') {
+                    result.onlineNodes.push(nodeMatch[1]);
+                }
+            }
+            
+            // Parse node attributes section
+            if (inNodeAttributes) {
+                // Detect node context: "* Node: vmculnxcmntdb1 (1):"
+                const nodeContextMatch = trimmed.match(/^\*?\s*Node:?\s+(\S+)/i);
+                if (nodeContextMatch) {
+                    currentNode = nodeContextMatch[1].replace(/:$/, '');
+                    continue;
+                }
+                
+                // Check for #health-azure attribute
+                // Format: "* #health-azure                  : 0" or "#health-azure: 0"
+                const healthAzureMatch = trimmed.match(/^\*?\s*#health-azure\s*:\s*(-?\d+|undefined)/i);
+                if (healthAzureMatch && currentNode) {
+                    result.healthAzureConfigured = true;
+                    result.nodesWithHealthAzure.push({
+                        node: currentNode,
+                        value: healthAzureMatch[1]
+                    });
+                    debugLog('[azureScheduledEvents parser] Found #health-azure on', currentNode, '=', healthAzureMatch[1]);
+                }
+            }
+            
+            // Parse resource list to find stopped resources
+            if (inResourceList) {
+                // Pattern for stopped resources:
+                // "* SAPHana_QH6_00    (ocf:heartbeat:SAPHana):         Stopped"
+                // "  * rsc_st_azure        (stonith:fence_azure_arm):       Stopped"
+                const stoppedMatch = trimmed.match(/^\*?\s*(\S+)\s+\([^)]+\):\s+Stopped/i);
+                if (stoppedMatch) {
+                    const resourceName = stoppedMatch[1];
+                    // Skip health-azure-events itself from being flagged
+                    if (!resourceName.toLowerCase().includes('health-azure')) {
+                        result.stoppedResources.push(resourceName);
+                    }
+                }
+                
+                // Detect health-azure-events resource
+                // Pattern: "* Clone Set: health-azure-events-clone [health-azure-events]:"
+                // or "* health-azure-events   (ocf:heartbeat:azure-events-az):  Started"
+                if (trimmed.match(/health-azure-events/i)) {
+                    result.healthAzureResource = {
+                        found: true,
+                        line: trimmed
+                    };
+                }
+            }
+            
+            // Check for node-health-strategy in cluster properties
+            // This appears in pcs property or cluster configuration
+            const healthStrategyMatch = trimmed.match(/node-health-strategy\s*[:=]\s*(\S+)/i);
+            if (healthStrategyMatch) {
+                result.nodeHealthStrategy = healthStrategyMatch[1];
+            }
+        }
+        
+        // Also check XML content for CIB format
+        if (content.includes('<cib') || content.includes('<nvpair')) {
+            // Look for health-azure attribute in nvpair elements
+            const healthAzureXmlMatch = content.match(/name=["']#health-azure["']\s+value=["']([^"']+)["']/gi);
+            if (healthAzureXmlMatch) {
+                result.healthAzureConfigured = true;
+            }
+            
+            // Look for node-health-strategy
+            const strategyXmlMatch = content.match(/name=["']node-health-strategy["']\s+value=["']([^"']+)["']/i);
+            if (strategyXmlMatch) {
+                result.nodeHealthStrategy = strategyXmlMatch[1];
+            }
+            
+            // Look for health-azure-events resource
+            if (content.match(/health-azure-events/i)) {
+                result.healthAzureResource = { found: true, source: 'cib.xml' };
+            }
+        }
+        
+        // Determine if we found meaningful data
+        result.found = result.onlineNodes.length > 0 || result.stoppedResources.length > 0 || 
+                       result.healthAzureConfigured || result.healthAzureResource;
+        
+        if (!result.found) {
+            return { found: false };
+        }
+        
+        // Generate warnings
+        // Case 1: Resources are stopped while nodes are online AND health-azure is not configured
+        if (result.stoppedResources.length > 0 && result.onlineNodes.length > 0) {
+            if (!result.healthAzureConfigured && !result.healthAzureResource) {
+                result.warnings.push({
+                    severity: 'error',
+                    type: 'health_azure_not_configured',
+                    message: `${result.stoppedResources.length} cluster resource(s) are stopped while ${result.onlineNodes.length} node(s) are online. Azure Scheduled Events (health-azure) is NOT configured.`,
+                    recommendation: 'Configure Azure Scheduled Events by creating the health-azure-events resource and setting #health-azure attribute on all nodes. See: https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-rhel-pacemaker#configure-pacemaker-for-azure-scheduled-events',
+                    stoppedResources: result.stoppedResources,
+                    onlineNodes: result.onlineNodes
+                });
+            }
+            
+            // Case 2: node-health-strategy is set to custom but health-azure attribute is missing
+            if (result.nodeHealthStrategy === 'custom' && !result.healthAzureConfigured) {
+                result.warnings.push({
+                    severity: 'error',
+                    type: 'health_azure_attribute_missing',
+                    message: 'node-health-strategy is set to "custom" but #health-azure attribute is not configured on nodes. Resources cannot be scheduled.',
+                    recommendation: 'Initialize the #health-azure attribute on all nodes: sudo crm_attribute --node <node-name> --name \'#health-azure\' --update 0',
+                    onlineNodes: result.onlineNodes
+                });
+            }
+        }
+        
+        // Case 3: Some nodes have health-azure configured but not all
+        if (result.nodesWithHealthAzure.length > 0 && result.onlineNodes.length > result.nodesWithHealthAzure.length) {
+            const nodesWithAttr = result.nodesWithHealthAzure.map(n => n.node);
+            const nodesMissing = result.onlineNodes.filter(n => !nodesWithAttr.includes(n));
+            if (nodesMissing.length > 0) {
+                result.nodesWithoutHealthAzure = nodesMissing;
+                result.warnings.push({
+                    severity: 'warning',
+                    type: 'health_azure_partial',
+                    message: `#health-azure attribute is configured on some nodes but missing on: ${nodesMissing.join(', ')}`,
+                    recommendation: 'Set the #health-azure attribute on all cluster nodes for consistent behavior.',
+                    nodesMissing: nodesMissing
+                });
+            }
+        }
+        
+        debugLog('[azureScheduledEvents parser] Results:', 
+                'healthAzureConfigured:', result.healthAzureConfigured,
+                'stoppedResources:', result.stoppedResources.length,
+                'onlineNodes:', result.onlineNodes.length,
+                'warnings:', result.warnings.length);
+        
+        return result;
+    }
+};
+
 const fencingConfigParser = {
         // Target file patterns - match cib.xml anywhere in the archive, pcs_config, pcs_property
         filePattern: /cib\.xml$|\/crm_mon.*\.txt$|\/crm.*config$|stonith|\/ha\.txt$|\/pcs_config$|\/pcs_property/,
@@ -2131,6 +2450,13 @@ const clusterEventsParser = {
         // Includes rotated logs (.log-1, .log.1, etc.) and compressed logs (.gz)
         filePattern: /\/(pacemaker\.log|corosync\.log|cluster\.log|ha-log|messages|journalctl[^\/]*)(?:[.-]\d+)?(?:\.txt)?(?:\.gz)?$/,
         
+        // System services and resources that should NOT be detected as cluster resources
+        // These are common systemd/init services that can appear in logs with similar formatting
+        systemResourceBlacklist: /^(Getty|getty|Login|Console|Session|User|Seat|agetty|mingetty|mgetty|plymouth|systemd-|dbus|polkit|NetworkManager|ModemManager|firewalld|sshd|crond?|rsyslog|auditd|chronyd?|ntpd?)$/i,
+        
+        // Non-cluster node patterns - tty, pts, console identifiers that are not actual cluster nodes
+        nonClusterNodePattern: /^(tty\d*|pts\/?\d*|console|localhost|127\.0\.0\.1|::1|\d+)$/i,
+        
         parse: function(content, filename) {
             debugLog('[clusterEvents parser] Analyzing cluster logs in:', filename, 'lines:', content.split('\n').length);
             
@@ -2219,8 +2545,14 @@ const clusterEventsParser = {
                     const isSystemdService = resource.match(/\.(service|target|socket|mount|swap|path|timer|device|scope|slice)$/i) ||
                                             resource.includes('@');  // systemd template units like service@instance
                     
-                    // Only add if not systemd service and not a duplicate from same line
-                    if (!isSystemdService && 
+                    // Filter out known system resources (Getty, login services, etc.)
+                    const isSystemResource = this.systemResourceBlacklist.test(resource);
+                    
+                    // Filter out non-cluster node names (tty1, pts/0, console, etc.)
+                    const isNonClusterNode = this.nonClusterNodePattern.test(node);
+                    
+                    // Only add if not systemd service, not system resource, valid cluster node, and not a duplicate
+                    if (!isSystemdService && !isSystemResource && !isNonClusterNode &&
                         !resourceMigrations.find(m => m.resource === resource && m.toNode === node && m.sourceLine === lineNum + 1)) {
                         resourceMigrations.push({
                             timestamp: timestamp,
@@ -2254,7 +2586,13 @@ const clusterEventsParser = {
                     const isSystemdService = resource.match(/\.(service|target|socket|mount|swap|path|timer|device|scope|slice)$/i) ||
                                             resource.includes('@');  // systemd template units like service@instance
                     
-                    if (!isSystemdService) {
+                    // Filter out known system resources (Getty, login services, etc.)
+                    const isSystemResource = this.systemResourceBlacklist.test(resource);
+                    
+                    // Filter out non-cluster node names (tty1, pts/0, console, etc.)
+                    const isNonClusterNode = this.nonClusterNodePattern.test(node);
+                    
+                    if (!isSystemdService && !isSystemResource && !isNonClusterNode) {
                         resourceMigrations.push({
                             timestamp: timestamp,
                             resource: resource,
@@ -2652,6 +2990,8 @@ const createClusterParsers = function(SCC_RULES, debugLog, parseXMLSimple, query
         pacemakerResources: pacemakerResourcesParser,
         corosyncStatus: corosyncStatusParser,
         clusterStatus: clusterStatusParser,
+        clusterDaemonStatus: clusterDaemonStatusParser,
+        azureScheduledEvents: azureScheduledEventsParser,
         fencingConfig: fencingConfigParser,
         clusterEvents: clusterEventsParser,
         liveMigration: liveMigrationParser

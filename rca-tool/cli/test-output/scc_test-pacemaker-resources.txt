@@ -1,0 +1,22 @@
+
+Analyzing: /home/fede2/proyectos/azure-support-scripts/rca-tool/cli/../tests/fixtures/scc_test-pacemaker-resources.tar.xz
+
+
+======================================================================
+  RCA Analysis Results
+======================================================================
+
+Files processed: 1
+Directories: 1
+
+----------------------------------------------------------------------
+CLUSTER CONFIGURATION
+----------------------------------------------------------------------
+  Pacemaker Resources (3):
+    - rsc_SAPHana_HDB_HDB00: SAPHana
+    - rsc_ip_HDB_HDB00: IPaddr2
+    - stonith-sbd: sbd
+  Fencing:
+
+======================================================================
+

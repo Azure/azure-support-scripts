@@ -24,6 +24,7 @@ Currently, the tool manages:
 |AV Detection|MS Defender, Cloudstrike Falcon, Illumio, Trend Micro, Guardicore|🗸|n.a.|🗸|🗸||
 |DLM Service Detection|Detects if DLM (Distributed Lock Manager) service is enabled and alerts|🗸|n.a.|🗸|🗸||
 |Kernel parameters and validation|It grabs kernel parameters (sysctl) and displays them raw. If SAP Hana is found, it also validates best practices.|🗸|||🗸||
+|Huge Pages Detection|Detects static huge pages and Transparent Huge Pages (THP) configuration. Shows warnings for unused pages and recommendations for SAP HANA.|🗸|n.a.|🗸|🗸||
 |Raw fstab|It grab the raw fstab.|🗸|n.a.|🗸|🗸||
 |Azure Site Recovery|It detects if the involflt_start service is enabled.|🗸|n.a.|🗸|||
 |XFS corruption|If we see a message about xfs corruption, it is listed as an event.|🗸||🗸|🗸||
@@ -44,17 +45,16 @@ Note: "n.a." in this table, means that some data is not present on all type of d
    ```bash
    cd rca-tool
    sudo apt install -y emscripten
-   ( cd liblzma-wasm && chmod +x build-liblzma-streaming.sh && \
+   ( cd web/liblzma-wasm && chmod +x build-liblzma-streaming.sh && \
    ./build-liblzma-streaming.sh )
    ```
 
 2. **Serve the files:**
    ```bash
-   # Using Python
-   python3 -m http.server 8000
+   cd web
+   npm install
+   npm run dev
    ```
-
-**Important**: No python is used in this application. The http.server module in python is just an easy way to server a web page. It should work with any web server of your choise. The same would apply for the port used.
 
 3. **Open in browser:**
    Navigate to `http://localhost:8000`
@@ -72,7 +72,7 @@ Currently all testing is done with MS Edge via Playwright
 
 It's important that in order to push code to GitHub all of the tests must pass, and you should add testing if you add more rules, or adjust the testing if you modify the current rules or web rendering.
 
-1. Start a rule in ```liblzma-streaming-worker.js```by adding a rule name: ```osRelease```, add a ```filePattern``` to define the files where the data can be found, trying to make the rule work on ```hb_reports```, ```crm_reports```, ```supportconfig``` and ```sosreports```, depending on where the data is available.
+1. Start a rule in ```src/worker.js``` by adding a rule name: ```osRelease```, add a ```filePattern``` to define the files where the data can be found, trying to make the rule work on ```hb_reports```, ```crm_reports```, ```supportconfig``` and ```sosreports```, depending on where the data is available.
 
    ```js
     // Rule: Extract OS release information from /etc/os-release

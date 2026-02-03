@@ -350,8 +350,9 @@ function extractSection(content, filename, sectionMarker, directFilePattern, deb
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         
-        // Check for section end marker
-        if (inSection && line.trim().startsWith('#==[ Configuration File ]===')) {
+        // Check for section end marker - SCC files use various section types
+        // #==[ Configuration File ]===, #==[ Command ]===, #==[ Log File ]===, #==[ Verification ]===
+        if (inSection && line.trim().startsWith('#==[ ')) {
             if (debugLog) debugLog(`[extractSection] Found section end marker at line ${i + 1}`);
             break;
         }

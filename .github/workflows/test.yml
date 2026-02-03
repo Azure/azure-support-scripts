@@ -16,7 +16,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '24'
+        node-version: '22'
         
     - name: Setup Emscripten
       uses: mymindstorm/setup-emsdk@v14
@@ -25,17 +25,25 @@ jobs:
         
     - name: Build WASM module
       run: |
-        cd rca-tool/liblzma-wasm
+        cd rca-tool/web/liblzma-wasm
         chmod +x build-liblzma-streaming.sh
         ./build-liblzma-streaming.sh
     
-    - name: Install project dependencies
+    - name: Install web dependencies
       run: npm ci
-      working-directory: rca-tool
+      working-directory: rca-tool/web
+    
+    - name: Install CLI dependencies
+      run: npm ci
+      working-directory: rca-tool/cli
         
-    - name: Build RCA Tool
+    - name: Build Web Interface
+      run: bash build.sh
+      working-directory: rca-tool/web
+    
+    - name: Build CLI
       run: npm run build
-      working-directory: rca-tool
+      working-directory: rca-tool/cli
         
     - name: Install test dependencies
       run: npm ci
@@ -57,6 +65,33 @@ jobs:
       
     - name: Run accessibility checks
       run: node accessibility-check.js
+      working-directory: rca-tool/tests
+    
+    - name: Test CLI with all fixtures
+      run: |
+        # Test CLI with all fixture files (excluding intentionally corrupted ones)
+        failed=0
+        total=0
+        for fixture in fixtures/*.tar.xz; do
+          # Skip intentionally corrupted test files
+          if [[ "$fixture" == *"corrupted"* ]]; then
+            echo "Skipping: $fixture (intentionally corrupted)"
+            continue
+          fi
+          total=$((total + 1))
+          echo "Testing: $fixture"
+          if node ../cli/dist/rca-cli.cjs "$fixture" > /dev/null 2>&1; then
+            echo "  [OK] $fixture"
+          else
+            echo "  [FAIL] $fixture"
+            failed=$((failed + 1))
+          fi
+        done
+        echo ""
+        echo "CLI tests completed: $((total - failed))/$total passed"
+        if [ $failed -gt 0 ]; then
+          exit 1
+        fi
       working-directory: rca-tool/tests
       
     - name: Upload test results

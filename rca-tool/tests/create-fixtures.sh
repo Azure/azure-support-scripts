@@ -594,6 +594,139 @@ EOF
 create_fixture "test-kernel-tuning-warnings"
 
 ################################################################################
+# Test 18b: Huge Pages Configuration
+# Tests detection and display of huge pages (static and transparent)
+################################################################################
+echo ""
+echo "=== Creating test-huge-pages.tar.xz ==="
+
+# Create proc/meminfo with huge pages information
+mkdir -p test-data/proc
+cat > test-data/proc/meminfo << 'EOF'
+MemTotal:       131941632 kB
+MemFree:        120345678 kB
+MemAvailable:   125678901 kB
+Buffers:          123456 kB
+Cached:          5432109 kB
+SwapCached:            0 kB
+Active:          6543210 kB
+Inactive:        2109876 kB
+Active(anon):    1234567 kB
+Inactive(anon):   234567 kB
+Active(file):    5308643 kB
+Inactive(file):  1875309 kB
+Unevictable:           0 kB
+Mlocked:               0 kB
+SwapTotal:       8388604 kB
+SwapFree:        8388604 kB
+Dirty:              1234 kB
+Writeback:             0 kB
+AnonPages:       1234567 kB
+Mapped:           345678 kB
+Shmem:            234567 kB
+KReclaimable:     456789 kB
+Slab:             789012 kB
+SReclaimable:     456789 kB
+SUnreclaim:       332223 kB
+KernelStack:       12345 kB
+PageTables:        45678 kB
+NFS_Unstable:          0 kB
+Bounce:                0 kB
+WritebackTmp:          0 kB
+CommitLimit:    74359420 kB
+Committed_AS:    3456789 kB
+VmallocTotal:   34359738367 kB
+VmallocUsed:       87654 kB
+VmallocChunk:          0 kB
+Percpu:            45678 kB
+HardwareCorrupted:     0 kB
+AnonHugePages:   2097152 kB
+ShmemHugePages:        0 kB
+ShmemPmdMapped:        0 kB
+FileHugePages:         0 kB
+FilePmdMapped:         0 kB
+HugePages_Total:    2048
+HugePages_Free:      512
+HugePages_Rsvd:      128
+HugePages_Surp:        0
+Hugepagesize:       2048 kB
+Hugetlb:         4194304 kB
+DirectMap4k:      524288 kB
+DirectMap2M:    10485760 kB
+DirectMap1G:   123731968 kB
+EOF
+
+# Create sysctl output with huge pages parameters
+mkdir -p test-data/sos_commands/kernel
+cat > test-data/sos_commands/kernel/sysctl_-a << 'EOF'
+debug.exception-trace = 1
+fs.file-max = 9223372036854775807
+kernel.hostname = test-huge-pages
+kernel.osrelease = 5.14.0-284.11.1.el9_2.x86_64
+kernel.ostype = Linux
+kernel.pid_max = 4194304
+kernel.sem = 32000	1024000000	500	32000
+kernel.shmall = 1152921504606846720
+kernel.shmmax = 18446744073692774399
+kernel.shmmni = 4096
+net.core.rmem_max = 4194304
+net.core.wmem_max = 1048576
+vm.admin_reserve_kbytes = 8192
+vm.dirty_background_bytes = 314572800
+vm.dirty_bytes = 629145600
+vm.hugetlb_shm_group = 0
+vm.max_map_count = 2147483647
+vm.min_free_kbytes = 4096000
+vm.nr_hugepages = 2048
+vm.nr_overcommit_hugepages = 512
+vm.swappiness = 10
+EOF
+
+# Create basic SAP indicator
+mkdir -p test-data/usr/sap
+touch test-data/usr/sap/sapservices
+
+create_fixture "test-huge-pages"
+
+################################################################################
+# Test 18c: Huge Pages - No Configuration
+# Tests detection when no huge pages are configured (should show recommendations for SAP)
+################################################################################
+echo ""
+echo "=== Creating test-huge-pages-none.tar.xz ==="
+
+mkdir -p test-data/proc
+cat > test-data/proc/meminfo << 'EOF'
+MemTotal:       65970816 kB
+MemFree:        60123456 kB
+MemAvailable:   62345678 kB
+HugePages_Total:       0
+HugePages_Free:        0
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+Hugepagesize:       2048 kB
+Hugetlb:               0 kB
+AnonHugePages:         0 kB
+ShmemHugePages:        0 kB
+ShmemPmdMapped:        0 kB
+EOF
+
+mkdir -p test-data/sos_commands/kernel
+cat > test-data/sos_commands/kernel/sysctl_-a << 'EOF'
+kernel.hostname = test-no-hugepages
+kernel.osrelease = 5.14.0-284.11.1.el9_2.x86_64
+vm.nr_hugepages = 0
+vm.nr_overcommit_hugepages = 0
+vm.swappiness = 10
+EOF
+
+# Create SAP indicator
+mkdir -p test-data/usr/sap
+touch test-data/usr/sap/sapservices
+
+create_fixture "test-huge-pages-none"
+
+################################################################################
 # Test 19: fstab Display
 # Tests detection and display of /etc/fstab file
 ################################################################################
@@ -1163,6 +1296,515 @@ All files should be decompressed and analyzed for cluster events.
 EOF
 
 create_fixture "test-nested-gzip"
+
+# 31. Test for LVM configuration
+echo ""
+echo "=== Creating test-lvm.tar.xz ==="
+mkdir -p test-data/lvm
+
+cat > test-data/lvm/pvs.txt << 'EOF'
+  PV         VG        Fmt  Attr PSize   PFree 
+  /dev/sda2  rootvg    lvm2 a--  <19.00g 12.00g
+  /dev/sdb1  datavg    lvm2 a--  100.00g 40.00g
+  /dev/sdc1            lvm2 ---  50.00g  50.00g
+EOF
+
+cat > test-data/lvm/vgs.txt << 'EOF'
+  VG     #PV #LV #SN Attr   VSize    VFree 
+  rootvg   1   2   0 wz--n- <19.00g  12.00g
+  datavg   1   3   0 wz--n- 100.00g  40.00g
+  missingvg 2  1   0 wz-pn-  80.00g  10.00g
+EOF
+
+cat > test-data/lvm/lvs.txt << 'EOF'
+  LV     VG     Attr       LSize  Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  root   rootvg -wi-ao---- 15.00g                                                    
+  swap   rootvg -wi-ao----  2.00g                                                    
+  app    datavg -wi-ao---- 20.00g                                                    
+  data   datavg -wi-ao---- 30.00g                                                    
+  backup datavg -wi-ao---- 10.00g                                                    
+  db     missingvg -wi-a-----  70.00g
+EOF
+
+cat > test-data/lvm/pvdisplay.txt << 'EOF'
+  --- Physical volume ---
+  PV Name               /dev/sda2
+  VG Name               rootvg
+  PV Size               19.00 GiB / not usable 4.00 MiB
+  Allocatable           yes 
+  PE Size               4.00 MiB
+  Total PE              4863
+  Free PE               3072
+  Allocated PE          1791
+  
+  --- Physical volume ---
+  PV Name               /dev/sdb1
+  VG Name               datavg
+  PV Size               100.00 GiB
+  Allocatable           yes 
+  PE Size               4.00 MiB
+  Total PE              25600
+  Free PE               10240
+  Allocated PE          15360
+  
+  "/dev/sdc1" is a new physical volume of "50.00 GiB"
+  --- NEW Physical volume ---
+  PV Name               /dev/sdc1
+  VG Name               
+  PV Size               50.00 GiB
+  Allocatable           NO
+  PE Size               0   
+  Total PE              0
+  Free PE               0
+  Allocated PE          0
+EOF
+
+cat > test-data/lvm/vgdisplay.txt << 'EOF'
+  --- Volume group ---
+  VG Name               rootvg
+  System ID             
+  Format                lvm2
+  Metadata Areas        1
+  Metadata Sequence No  3
+  VG Access             read/write
+  VG Status             resizable
+  MAX LV                0
+  Cur LV                2
+  Open LV               2
+  Max PV                0
+  Cur PV                1
+  Act PV                1
+  VG Size               <19.00 GiB
+  PE Size               4.00 MiB
+  Total PE              4863
+  Alloc PE / Size       1791 / 7.00 GiB
+  Free  PE / Size       3072 / 12.00 GiB
+  
+  --- Volume group ---
+  VG Name               datavg
+  System ID             
+  Format                lvm2
+  Metadata Areas        1
+  Metadata Sequence No  4
+  VG Access             read/write
+  VG Status             resizable
+  MAX LV                0
+  Cur LV                3
+  Open LV               3
+  Max PV                0
+  Cur PV                1
+  Act PV                1
+  VG Size               100.00 GiB
+  PE Size               4.00 MiB
+  Total PE              25600
+  Alloc PE / Size       15360 / 60.00 GiB
+  Free  PE / Size       10240 / 40.00 GiB
+  
+  --- Volume group ---
+  VG Name               missingvg
+  System ID             
+  Format                lvm2
+  Metadata Areas        2
+  Metadata Sequence No  2
+  VG Access             read/write
+  VG Status             resizable/PARTIAL
+  MAX LV                0
+  Cur LV                1
+  Open LV               1
+  Max PV                0
+  Cur PV                2
+  Act PV                1
+  VG Size               80.00 GiB
+  PE Size               4.00 MiB
+  Total PE              20480
+  Alloc PE / Size       17920 / 70.00 GiB
+  Free  PE / Size       2560 / 10.00 GiB
+EOF
+
+cat > test-data/lvm/lvdisplay.txt << 'EOF'
+  --- Logical volume ---
+  LV Path                /dev/rootvg/root
+  LV Name                root
+  VG Name                rootvg
+  LV UUID                abc123-def4-5678-90ab-cdef12345678
+  LV Write Access        read/write
+  LV Creation host, time node01, 2024-01-15 10:30:00 +0000
+  LV Status              available
+  # open                 1
+  LV Size                15.00 GiB
+  Current LE             3840
+  Segments               1
+  Allocation             inherit
+  Read ahead sectors     auto
+  - currently set to     256
+  Block device           253:0
+  
+  --- Logical volume ---
+  LV Path                /dev/datavg/app
+  LV Name                app
+  VG Name                datavg
+  LV UUID                def456-ghi7-8901-23ab-cdef45678901
+  LV Write Access        read/write
+  LV Creation host, time node01, 2024-02-20 14:15:00 +0000
+  LV Status              available
+  # open                 1
+  LV Size                20.00 GiB
+  Current LE             5120
+  Segments               1
+  Allocation             inherit
+  Read ahead sectors     auto
+  - currently set to     256
+  Block device           253:1
+EOF
+
+create_fixture "test-lvm"
+
+# 32. Test for RAID configuration
+echo ""
+echo "=== Creating test-raid.tar.xz ==="
+mkdir -p test-data/proc
+
+cat > test-data/proc/mdstat.txt << 'EOF'
+Personalities : [raid1] [raid5] [raid6] 
+md0 : active raid1 sda1[0] sdb1[1]
+      104320 blocks super 1.2 [2/2] [UU]
+      
+md1 : active raid5 sdc1[0] sdd1[1] sde1[2]
+      209584128 blocks super 1.2 level 5, 512k chunk, algorithm 2 [3/3] [UUU]
+      bitmap: 0/1 pages [0KB], 65536KB chunk
+
+md2 : active (auto-read-only) raid1 sdf1[0] sdg1[1](F)
+      52428800 blocks super 1.2 [2/1] [U_]
+      [>....................]  recovery =  3.5% (1843200/52428800) finish=5.3min speed=157542K/sec
+      
+md3 : inactive sdi1[0](S) sdj1[2](S)
+      209584128 blocks super 1.2
+      
+unused devices: <none>
+EOF
+
+mkdir -p test-data/mdadm
+cat > test-data/mdadm/mdadm-detail-md0.txt << 'EOF'
+/dev/md0:
+           Version : 1.2
+     Creation Time : Mon Jan 15 10:45:32 2024
+        Raid Level : raid1
+        Array Size : 104320 (101.89 MiB 106.82 MB)
+     Used Dev Size : 104320 (101.89 MiB 106.82 MB)
+      Raid Devices : 2
+     Total Devices : 2
+       Persistence : Superblock is persistent
+
+       Update Time : Mon Mar 11 15:23:45 2024
+             State : clean 
+    Active Devices : 2
+   Working Devices : 2
+    Failed Devices : 0
+     Spare Devices : 0
+
+Consistency Policy : resync
+
+              Name : node01:0
+              UUID : 12345678:90abcdef:12345678:90abcdef
+            Events : 125
+
+    Number   Major   Minor   RaidDevice State
+       0       8        1        0      active sync   /dev/sda1
+       1       8       17        1      active sync   /dev/sdb1
+EOF
+
+cat > test-data/mdadm/mdadm-detail-md1.txt << 'EOF'
+/dev/md1:
+           Version : 1.2
+     Creation Time : Mon Jan 15 11:00:00 2024
+        Raid Level : raid5
+        Array Size : 209584128 (199.87 GiB 214.61 GB)
+     Used Dev Size : 104792064 (99.94 GiB 107.30 GB)
+      Raid Devices : 3
+     Total Devices : 3
+       Persistence : Superblock is persistent
+
+     Intent Bitmap : Internal
+
+       Update Time : Mon Mar 11 15:30:12 2024
+             State : clean 
+    Active Devices : 3
+   Working Devices : 3
+    Failed Devices : 0
+     Spare Devices : 0
+
+            Layout : left-symmetric
+        Chunk Size : 512K
+
+Consistency Policy : bitmap
+
+              Name : node01:1
+              UUID : abcdef12:34567890:abcdef12:34567890
+            Events : 2543
+
+    Number   Major   Minor   RaidDevice State
+       0       8       33        0      active sync   /dev/sdc1
+       1       8       49        1      active sync   /dev/sdd1
+       2       8       65        2      active sync   /dev/sde1
+EOF
+
+cat > test-data/mdadm/mdadm-detail-md2.txt << 'EOF'
+/dev/md2:
+           Version : 1.2
+     Creation Time : Mon Feb 01 09:15:22 2024
+        Raid Level : raid1
+        Array Size : 52428800 (50.00 GiB 53.69 GB)
+     Used Dev Size : 52428800 (50.00 GiB 53.69 GB)
+      Raid Devices : 2
+     Total Devices : 2
+       Persistence : Superblock is persistent
+
+       Update Time : Mon Mar 11 15:25:00 2024
+             State : clean, degraded, recovering 
+    Active Devices : 1
+   Working Devices : 1
+    Failed Devices : 1
+     Spare Devices : 0
+
+Consistency Policy : resync
+
+    Rebuild Status : 3% complete
+
+              Name : node01:2
+              UUID : fedcba09:87654321:fedcba09:87654321
+            Events : 89
+
+    Number   Major   Minor   RaidDevice State
+       0       8       81        0      active sync   /dev/sdf1
+       -       0        0        1      removed
+       
+       1       8       97        -      faulty   /dev/sdg1
+EOF
+
+create_fixture "test-raid"
+
+################################################################################
+# Test: BTRFS Configuration
+################################################################################
+echo ""
+echo "=== Creating test-btrfs.tar.xz ==="
+mkdir -p test-data/basic-environment
+
+cat > test-data/basic-environment/btrfs.txt << 'EOF'
+#==[ Command ]======================================#
+# /usr/sbin/btrfs filesystem show
+Label: 'root'  uuid: 550e8400-e29b-41d4-a716-446655440000
+	Total devices 2 FS bytes used 45.23GiB
+	devid    1 size 100.00GiB used 50.00GiB path /dev/sda2
+	devid    2 size 100.00GiB used 50.00GiB path /dev/sdb2
+
+Label: 'data'  uuid: 7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d
+	Total devices 3 FS bytes used 250.75GiB
+	devid    1 size 500.00GiB used 300.00GiB path /dev/sdc1
+	devid    2 size 500.00GiB used 300.00GiB path /dev/sdd1
+	devid    3 size 500.00GiB used 300.00GiB path /dev/sde1
+
+Label: none  uuid: 1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d
+	Total devices 1 FS bytes used 15.89GiB
+	devid    1 size 50.00GiB used 20.00GiB path /dev/sdf1
+
+#==[ Command ]======================================#
+# /usr/sbin/btrfs subvolume list /
+ID 256 gen 123 top level 5 path @rootfs
+ID 257 gen 124 top level 5 path @home
+ID 258 gen 125 top level 5 path @opt
+ID 259 gen 126 top level 5 path @srv
+ID 260 gen 127 top level 5 path @tmp
+ID 261 gen 128 top level 5 path @var
+ID 262 gen 129 parent 261 top level 5 path @var/log
+ID 263 gen 130 parent 261 top level 5 path @var/cache
+ID 264 gen 131 top level 5 path @snapshots
+ID 265 gen 132 parent 264 top level 5 path @snapshots/root-2024-01-15
+EOF
+
+create_fixture "test-btrfs"
+
+################################################################################
+# Test: Block Devices and fstab UUID Correlation
+################################################################################
+echo ""
+echo "=== Creating test-block-devices.tar.xz ==="
+mkdir -p test-data/sos_commands/block
+mkdir -p test-data/etc
+
+# lsblk basic output
+cat > test-data/sos_commands/block/lsblk << 'EOF'
+NAME    MAJ:MIN RM  SIZE RO TYPE MOUNTPOINTS
+sda       8:0    0   64G  0 disk 
+|-sda1    8:1    0  500M  0 part /boot/efi
+|-sda2    8:2    0    1G  0 part /boot
+`-sda3    8:3    0 62.5G  0 part /
+sdb       8:16   0  128G  0 disk 
+`-sdb1    8:17   0  128G  0 part /mnt
+sdc       8:32   0  256G  0 disk 
+`-sdc1    8:33   0  256G  0 part /data
+EOF
+
+# lsblk -f -a -l output with filesystem and UUID info
+cat > 'test-data/sos_commands/block/lsblk_-f_-a_-l' << 'EOF'
+NAME  FSTYPE FSVER LABEL UUID                                 FSAVAIL FSUSE% MOUNTPOINTS
+sda                                                                          
+sda1  vfat   FAT32       ABCD-1234                            450M     10% /boot/efi
+sda2  ext4   1.0         11111111-1111-1111-1111-111111111111  800M    20% /boot
+sda3  ext4   1.0         22222222-2222-2222-2222-222222222222   45G    28% /
+sdb                                                                          
+sdb1  ext4   1.0         33333333-3333-3333-3333-333333333333  120G     6% /mnt
+sdc                                                                          
+sdc1  ext4   1.0         44444444-4444-4444-4444-444444444444  240G     6% /data
+EOF
+
+# blkid output
+cat > 'test-data/sos_commands/block/blkid_-c_.dev.null' << 'EOF'
+/dev/sda1: UUID="ABCD-1234" BLOCK_SIZE="512" TYPE="vfat" PARTUUID="aaaa1111-01"
+/dev/sda2: UUID="11111111-1111-1111-1111-111111111111" BLOCK_SIZE="4096" TYPE="ext4" PARTUUID="aaaa1111-02"
+/dev/sda3: UUID="22222222-2222-2222-2222-222222222222" BLOCK_SIZE="4096" TYPE="ext4" PARTUUID="aaaa1111-03"
+/dev/sdb1: UUID="33333333-3333-3333-3333-333333333333" BLOCK_SIZE="4096" TYPE="ext4" PARTUUID="bbbb2222-01"
+/dev/sdc1: UUID="44444444-4444-4444-4444-444444444444" BLOCK_SIZE="4096" TYPE="ext4" PARTUUID="cccc3333-01"
+EOF
+
+# fstab - matching UUIDs (no issues)
+cat > test-data/etc/fstab << 'EOF'
+# /etc/fstab
+UUID=22222222-2222-2222-2222-222222222222 / ext4 defaults 0 1
+UUID=11111111-1111-1111-1111-111111111111 /boot ext4 defaults 0 2
+UUID=ABCD-1234 /boot/efi vfat defaults 0 2
+UUID=33333333-3333-3333-3333-333333333333 /mnt ext4 defaults,nofail 0 2
+UUID=44444444-4444-4444-4444-444444444444 /data ext4 defaults,nofail 0 2
+EOF
+
+create_fixture "test-block-devices"
+
+################################################################################
+# Test: Block Devices with fstab UUID Mismatch
+################################################################################
+echo ""
+echo "=== Creating test-block-devices-mismatch.tar.xz ==="
+mkdir -p test-data/sos_commands/block
+mkdir -p test-data/etc
+
+# lsblk -f -a -l output
+cat > 'test-data/sos_commands/block/lsblk_-f_-a_-l' << 'EOF'
+NAME  FSTYPE FSVER LABEL UUID                                 FSAVAIL FSUSE% MOUNTPOINTS
+sda                                                                          
+sda1  vfat   FAT32       ABCD-1234                            450M     10% /boot/efi
+sda2  ext4   1.0         11111111-1111-1111-1111-111111111111  800M    20% /boot
+sda3  ext4   1.0         22222222-2222-2222-2222-222222222222   45G    28% /
+sdb                                                                          
+sdb1  ext4   1.0         NEW-UUID-5555-5555-5555-555555555555  120G     6% /mnt
+sdc                                                                          
+sdc1  xfs          data  66666666-6666-6666-6666-666666666666  240G     6% /data
+EOF
+
+# blkid output - note sdb1 has a different UUID than expected in fstab
+cat > 'test-data/sos_commands/block/blkid_-c_.dev.null' << 'EOF'
+/dev/sda1: UUID="ABCD-1234" BLOCK_SIZE="512" TYPE="vfat" PARTUUID="aaaa1111-01"
+/dev/sda2: UUID="11111111-1111-1111-1111-111111111111" BLOCK_SIZE="4096" TYPE="ext4" PARTUUID="aaaa1111-02"
+/dev/sda3: UUID="22222222-2222-2222-2222-222222222222" BLOCK_SIZE="4096" TYPE="ext4" PARTUUID="aaaa1111-03"
+/dev/sdb1: UUID="NEW-UUID-5555-5555-5555-555555555555" BLOCK_SIZE="4096" TYPE="ext4" PARTUUID="bbbb2222-01"
+/dev/sdc1: UUID="66666666-6666-6666-6666-666666666666" BLOCK_SIZE="4096" TYPE="xfs" PARTUUID="cccc3333-01"
+EOF
+
+# fstab - has UUID mismatches and filesystem type mismatch
+cat > test-data/etc/fstab << 'EOF'
+# /etc/fstab - with intentional issues for testing
+UUID=22222222-2222-2222-2222-222222222222 / ext4 defaults 0 1
+UUID=11111111-1111-1111-1111-111111111111 /boot ext4 defaults 0 2
+UUID=ABCD-1234 /boot/efi vfat defaults 0 2
+# This UUID no longer exists - disk was replaced
+UUID=OLD-UUID-3333-3333-3333-333333333333 /mnt ext4 defaults,nofail 0 2
+# This has wrong filesystem type (fstab says ext4 but disk has xfs)
+UUID=66666666-6666-6666-6666-666666666666 /data ext4 defaults,nofail 0 2
+# This UUID doesn't exist at all
+UUID=MISSING-UUID-9999-9999-9999-999999 /opt ext4 defaults,nofail 0 2
+EOF
+
+create_fixture "test-block-devices-mismatch"
+
+################################################################################
+# Test: EOL Distribution - SLES 12 (End of Life)
+################################################################################
+echo ""
+echo "=== Creating test-eol-sles12.tar.xz ==="
+mkdir -p test-data
+
+# basic-environment.txt for SLES 12 SP5 (EOL distribution)
+cat > test-data/basic-environment.txt << 'EOF'
+#==[ Configuration File ]===========================#
+# /etc/os-release
+NAME="SLES"
+VERSION="12-SP5"
+VERSION_ID="12.5"
+PRETTY_NAME="SUSE Linux Enterprise Server 12 SP5"
+ID="sles"
+ID_LIKE="suse"
+ANSI_COLOR="0;32"
+CPE_NAME="cpe:/o:suse:sles:12:sp5"
+
+#==[ Command ]======================================#
+# uname -a
+Linux sles12-test 4.12.14-122.162-default #1 SMP Thu May 30 08:00:36 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux
+EOF
+
+create_fixture "test-eol-sles12"
+
+################################################################################
+# Test: EOL Distribution - RHEL 7 (End of Life)
+################################################################################
+echo ""
+echo "=== Creating test-eol-rhel7.tar.xz ==="
+mkdir -p test-data/usr/lib
+
+# os-release for RHEL 7.9 (EOL distribution)
+cat > test-data/usr/lib/os-release << 'EOF'
+NAME="Red Hat Enterprise Linux Server"
+VERSION="7.9 (Maipo)"
+ID="rhel"
+ID_LIKE="fedora"
+VARIANT="Server"
+VARIANT_ID="server"
+VERSION_ID="7.9"
+PRETTY_NAME="Red Hat Enterprise Linux Server 7.9 (Maipo)"
+ANSI_COLOR="0;31"
+CPE_NAME="cpe:/o:redhat:enterprise_linux:7.9:GA:server"
+HOME_URL="https://www.redhat.com/"
+BUG_REPORT_URL="https://bugzilla.redhat.com/"
+REDHAT_BUGZILLA_PRODUCT="Red Hat Enterprise Linux 7"
+REDHAT_BUGZILLA_PRODUCT_VERSION=7.9
+REDHAT_SUPPORT_PRODUCT="Red Hat Enterprise Linux"
+REDHAT_SUPPORT_PRODUCT_VERSION="7.9"
+EOF
+
+create_fixture "test-eol-rhel7"
+
+################################################################################
+# Test: EOL Distribution - CentOS 7 (End of Life)
+################################################################################
+echo ""
+echo "=== Creating test-eol-centos7.tar.xz ==="
+mkdir -p test-data/usr/lib
+
+# os-release for CentOS 7.9 (EOL distribution)
+cat > test-data/usr/lib/os-release << 'EOF'
+NAME="CentOS Linux"
+VERSION="7 (Core)"
+ID="centos"
+ID_LIKE="rhel fedora"
+VERSION_ID="7"
+PRETTY_NAME="CentOS Linux 7 (Core)"
+ANSI_COLOR="0;31"
+CPE_NAME="cpe:/o:centos:centos:7"
+HOME_URL="https://www.centos.org/"
+BUG_REPORT_URL="https://bugs.centos.org/"
+CENTOS_MANTISBT_PROJECT="CentOS-7"
+CENTOS_MANTISBT_PROJECT_VERSION="7"
+EOF
+
+create_fixture "test-eol-centos7"
 
 echo ""
 echo "========================================="

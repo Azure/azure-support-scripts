@@ -1,0 +1,22 @@
+
+Analyzing: /home/fede2/proyectos/azure-support-scripts/rca-tool/cli/../tests/fixtures/scc_test-azure-vm-sles-payg.tar.xz
+
+
+======================================================================
+  RCA Analysis Results
+======================================================================
+
+Files processed: 1
+Directories: 1
+
+----------------------------------------------------------------------
+AZURE VM PROPERTIES
+----------------------------------------------------------------------
+  VM Size: Standard_M32ts
+  Publisher: SUSE
+  Offer: sles-sap-15-sp3
+  SKU: gen2
+  Billing Model: PAYG
+
+======================================================================
+

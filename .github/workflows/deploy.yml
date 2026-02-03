@@ -25,6 +25,11 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
       
     - name: Setup Emscripten
       uses: mymindstorm/setup-emsdk@v14
@@ -37,24 +42,24 @@ jobs:
         
     - name: Build WASM module
       run: |
-        cd rca-tool/liblzma-wasm
+        cd rca-tool/web/liblzma-wasm
         chmod +x build-liblzma-streaming.sh
         ./build-liblzma-streaming.sh
     
     - name: Install Node.js dependencies
       run: npm ci
-      working-directory: rca-tool
+      working-directory: rca-tool/web
         
     - name: Build with Vite
       run: bash build.sh
-      working-directory: rca-tool
+      working-directory: rca-tool/web
         
     - name: Prepare deployment directory
       run: |
         cd rca-tool/
         mkdir -p _site
-        # Copy Vite build output
-        cp -r dist/* _site/
+        # Copy Vite build output from web/dist
+        cp -r web/dist/* _site/
         cp README.md _site/ || true
         
     - name: List deployment files
@@ -93,7 +98,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '24'
+        node-version: '22'
         
     - name: Install dependencies
       run: npm ci

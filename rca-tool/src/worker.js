@@ -41,6 +41,7 @@ if (typeof importScripts === 'function') {
     importScripts('parsers/events.js');
     importScripts('parsers/azure.js');
     importScripts('parsers/cluster.js');
+    importScripts('parsers/storage.js');
     console.log('[Worker] Running in Web Worker context');
     console.log('[Worker] Browser:', typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown');
 }
@@ -713,6 +714,30 @@ if (typeof fstabParser !== 'undefined') {
 if (typeof kernelTuningParser !== 'undefined') {
     SCC_RULES.kernelTuning = kernelTuningParser;
 }
+if (typeof hugePagesParser !== 'undefined') {
+    SCC_RULES.hugePages = hugePagesParser;
+}
+if (typeof timeSyncParser !== 'undefined') {
+    SCC_RULES.timeSync = timeSyncParser;
+}
+if (typeof ptpClockSourceParser !== 'undefined') {
+    SCC_RULES.ptpClockSource = ptpClockSourceParser;
+}
+if (typeof timeSyncServiceParser !== 'undefined') {
+    SCC_RULES.timeSyncService = timeSyncServiceParser;
+}
+if (typeof timedatectlParser !== 'undefined') {
+    SCC_RULES.timedatectl = timedatectlParser;
+}
+if (typeof ptpDeviceParser !== 'undefined') {
+    SCC_RULES.ptpDevice = ptpDeviceParser;
+}
+if (typeof chronyTrackingParser !== 'undefined') {
+    SCC_RULES.chronyTracking = chronyTrackingParser;
+}
+if (typeof chronyMakestepParser !== 'undefined') {
+    SCC_RULES.chronyMakestep = chronyMakestepParser;
+}
 
 // From parsers/services.js
 if (typeof sshServiceParser !== 'undefined') {
@@ -784,9 +809,51 @@ if (typeof createClusterParsers !== 'undefined') {
     SCC_RULES.pacemakerResources = clusterParsers.pacemakerResources;
     SCC_RULES.corosyncStatus = clusterParsers.corosyncStatus;
     SCC_RULES.clusterStatus = clusterParsers.clusterStatus;
+    SCC_RULES.clusterDaemonStatus = clusterParsers.clusterDaemonStatus;
+    SCC_RULES.azureScheduledEvents = clusterParsers.azureScheduledEvents;
     SCC_RULES.fencingConfig = clusterParsers.fencingConfig;
     SCC_RULES.clusterEvents = clusterParsers.clusterEvents;
     SCC_RULES.liveMigration = clusterParsers.liveMigration;
+}
+
+// From parsers/storage.js
+if (typeof lvmConfigParser !== 'undefined') {
+    SCC_RULES.lvmConfig = lvmConfigParser;
+}
+if (typeof raidConfigParser !== 'undefined') {
+    SCC_RULES.raidConfig = raidConfigParser;
+}
+if (typeof btrfsConfigParser !== 'undefined') {
+    SCC_RULES.btrfsConfig = btrfsConfigParser;
+}
+if (typeof blockDevicesParser !== 'undefined') {
+    SCC_RULES.blockDevices = blockDevicesParser;
+}
+if (typeof fstabAnalysisParser !== 'undefined') {
+    SCC_RULES.fstabAnalysis = fstabAnalysisParser;
+}
+
+// From parsers/unix.js - RHUI/EUS parsers
+if (typeof rhuiConfigParser !== 'undefined') {
+    SCC_RULES.rhuiConfig = rhuiConfigParser;
+}
+if (typeof eusVersionLockParser !== 'undefined') {
+    SCC_RULES.eusVersionLock = eusVersionLockParser;
+}
+if (typeof rhelRhuiCheckParser !== 'undefined') {
+    SCC_RULES.rhelRhuiCheck = rhelRhuiCheckParser;
+}
+if (typeof cryptoPoliciesParser !== 'undefined') {
+    SCC_RULES.cryptoPolicies = cryptoPoliciesParser;
+}
+if (typeof rhuiErrorsParser !== 'undefined') {
+    SCC_RULES.rhuiErrors = rhuiErrorsParser;
+}
+if (typeof leappReportParser !== 'undefined') {
+    SCC_RULES.leappReport = leappReportParser;
+}
+if (typeof leappLogParser !== 'undefined') {
+    SCC_RULES.leappLog = leappLogParser;
 }
 // ============================================================================
 
@@ -1137,13 +1204,18 @@ class IncrementalTARParser {
             if (ruleName === 'detection' || !rule.filePattern) continue;
             
             // Debug: Log pattern testing for key files
-            if (filename.includes('os-release') || filename.includes('dpkg') || filename.includes('installed-rpms') || filename.includes('package-data')) {
+            if (filename.includes('os-release') || filename.includes('dpkg') || filename.includes('installed-rpms') || filename.includes('package-data') || filename.includes('dnf.log') || filename.includes('/block/') || filename.includes('/fstab')) {
                 debugLog(`[TAR Parser] Testing rule '${ruleName}' pattern ${rule.filePattern} against:`, filename);
             }
             
             // Check if filename matches rule pattern
             if (rule.filePattern.test(filename)) {
                 debugLog(`[TAR Parser] Matched rule '${ruleName}' for file:`, filename);
+                
+                // Special debug for storage-related rules
+                if (ruleName === 'blockDevices' || ruleName === 'fstabAnalysis') {
+                    console.log(`[Worker] STORAGE: Matched ${ruleName} for file:`, filename);
+                }
                 
                 // Extract file content
                 const dataOffset = offset + 512;
@@ -1159,9 +1231,9 @@ class IncrementalTARParser {
                 if (this.buffer.length >= dataOffset + extractSize) {
                     const content = this.extractFileContent(dataOffset, extractSize, filename);
                     if (content) {
-                        // For rules that process multiple files (like liveMigration, kernelReboots, oomKiller, xfsErrors, emergencyMode, sshService, automation, and clusterEvents)
+                        // For rules that process multiple files (like liveMigration, kernelReboots, oomKiller, xfsErrors, emergencyMode, sshService, automation, clusterEvents, rhuiErrors, and blockDevices)
                         // we need to accumulate results instead of replacing
-                        const isMultiFileRule = ruleName === 'liveMigration' || ruleName === 'kernelReboots' || ruleName === 'oomKiller' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation' || ruleName === 'clusterEvents';
+                        const isMultiFileRule = ruleName === 'liveMigration' || ruleName === 'kernelReboots' || ruleName === 'oomKiller' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation' || ruleName === 'clusterEvents' || ruleName === 'rhuiErrors' || ruleName === 'blockDevices';
                         
                         // NOTE: We don't store file content in extractedFiles anymore to save memory
                         // Content is parsed immediately and discarded
@@ -1172,15 +1244,26 @@ class IncrementalTARParser {
                             
                             if (isMultiFileRule) {
                                 // Accumulate results for multi-file rules
-                                if (!this.analysisResults[ruleName]) {
+                                // rhuiErrors and blockDevices have different structures, so initialize separately
+                                if (!this.analysisResults[ruleName] && ruleName !== 'rhuiErrors' && ruleName !== 'blockDevices') {
                                     this.analysisResults[ruleName] = {
                                         count: 0,
                                         events: []
                                     };
                                 }
                                 
-                                // For kernelReboots, xfsErrors, emergencyMode, sshService, automation, and clusterEvents, deduplicate events based on timestamp and relevant fields
-                                if (ruleName === 'kernelReboots' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation' || ruleName === 'clusterEvents') {
+                                // Handle blockDevices accumulation - merges disks, partitions, and UUID maps
+                                if (ruleName === 'blockDevices') {
+                                    if (!this.analysisResults[ruleName]) {
+                                        this.analysisResults[ruleName] = result;
+                                    } else {
+                                        // Merge result into existing
+                                        this.mergeBlockDevicesResult(this.analysisResults[ruleName], result);
+                                    }
+                                    debugLog(`[TAR Parser] Rule 'blockDevices' accumulated from ${filename} (disks: ${this.analysisResults[ruleName].disks?.length || 0}, partitions: ${this.analysisResults[ruleName].partitions?.length || 0})`);
+                                }
+                                // For kernelReboots, xfsErrors, emergencyMode, sshService, automation, clusterEvents, and rhuiErrors, deduplicate events based on timestamp and relevant fields
+                                else if (ruleName === 'kernelReboots' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation' || ruleName === 'clusterEvents' || ruleName === 'rhuiErrors') {
                                     // Define comparison fields for each rule type
                                     const comparisonFields = ruleName === 'kernelReboots' 
                                         ? ['timestamp', 'type', 'kernelVersion']
@@ -1224,6 +1307,52 @@ class IncrementalTARParser {
                                         this.analysisResults[ruleName].count = this.analysisResults[ruleName].resourceMigrations.length + this.analysisResults[ruleName].fencingEvents.length;
                                         
                                         debugLog(`[TAR Parser] Rule 'clusterEvents' accumulated ${migrationResult.addedEvents.length} migrations, ${fencingResult.addedEvents.length} fencing events (${migrationResult.duplicateCount + fencingResult.duplicateCount} duplicates skipped, total: ${this.analysisResults[ruleName].count})`);
+                                    } else if (ruleName === 'rhuiErrors') {
+                                        // RHUI errors rule has special structure - merge boolean flags and arrays
+                                        if (!this.analysisResults[ruleName]) {
+                                            this.analysisResults[ruleName] = {
+                                                found: false,
+                                                hasCertExpiration: false,
+                                                hasHttp403: false,
+                                                hasHttp400: false,
+                                                hasConnectionError: false,
+                                                errors: [],
+                                                affectedRepos: [],
+                                                warnings: [],
+                                                recommendations: []
+                                            };
+                                        }
+                                        
+                                        // Merge boolean flags (OR them together)
+                                        this.analysisResults[ruleName].found = this.analysisResults[ruleName].found || result.found;
+                                        this.analysisResults[ruleName].hasCertExpiration = this.analysisResults[ruleName].hasCertExpiration || result.hasCertExpiration;
+                                        this.analysisResults[ruleName].hasHttp403 = this.analysisResults[ruleName].hasHttp403 || result.hasHttp403;
+                                        this.analysisResults[ruleName].hasHttp400 = this.analysisResults[ruleName].hasHttp400 || result.hasHttp400;
+                                        this.analysisResults[ruleName].hasConnectionError = this.analysisResults[ruleName].hasConnectionError || result.hasConnectionError;
+                                        
+                                        // Add errors (with source file)
+                                        result.errors.forEach(err => {
+                                            this.analysisResults[ruleName].errors.push({
+                                                ...err,
+                                                sourceFile: filename
+                                            });
+                                        });
+                                        
+                                        // Add unique affected repos
+                                        result.affectedRepos.forEach(repo => {
+                                            if (!this.analysisResults[ruleName].affectedRepos.includes(repo)) {
+                                                this.analysisResults[ruleName].affectedRepos.push(repo);
+                                            }
+                                        });
+                                        
+                                        // Add unique warnings (by type)
+                                        result.warnings.forEach(warning => {
+                                            if (!this.analysisResults[ruleName].warnings.find(w => w.type === warning.type)) {
+                                                this.analysisResults[ruleName].warnings.push(warning);
+                                            }
+                                        });
+                                        
+                                        debugLog(`[TAR Parser] Rule 'rhuiErrors' accumulated from ${filename} (found: ${result.found}, errors: ${result.errors.length}, total errors: ${this.analysisResults[ruleName].errors.length})`);
                                     } else {
                                         // Add sourceFile to new events
                                         const newEventsWithSource = result.events.map(event => ({
@@ -1378,6 +1507,51 @@ class IncrementalTARParser {
                                         // Already have a positive result - keep it
                                         debugLog(`[TAR Parser] Rule '${ruleName}' already found, keeping existing result`);
                                     }
+                                } else if (ruleName === 'azureScheduledEvents') {
+                                    // azureScheduledEvents: merge results from multiple files (pcs_status, crm_mon, cib.xml)
+                                    const existing = this.analysisResults[ruleName];
+                                    
+                                    if (!existing || !existing.found) {
+                                        this.analysisResults[ruleName] = result;
+                                        debugLog(`[TAR Parser] Rule '${ruleName}' parsed successfully (first):`, result);
+                                    } else if (result.found) {
+                                        // Merge results: accumulate nodes, resources, and warnings
+                                        // Keep healthAzureConfigured if either found it
+                                        existing.healthAzureConfigured = existing.healthAzureConfigured || result.healthAzureConfigured;
+                                        
+                                        // Keep healthAzureResource if either found it
+                                        if (result.healthAzureResource && !existing.healthAzureResource) {
+                                            existing.healthAzureResource = result.healthAzureResource;
+                                        }
+                                        
+                                        // Keep nodeHealthStrategy if either found it
+                                        if (result.nodeHealthStrategy && !existing.nodeHealthStrategy) {
+                                            existing.nodeHealthStrategy = result.nodeHealthStrategy;
+                                        }
+                                        
+                                        // Merge nodesWithHealthAzure (dedupe by node name)
+                                        result.nodesWithHealthAzure.forEach(newNode => {
+                                            if (!existing.nodesWithHealthAzure.find(n => n.node === newNode.node)) {
+                                                existing.nodesWithHealthAzure.push(newNode);
+                                            }
+                                        });
+                                        
+                                        // Merge onlineNodes (dedupe)
+                                        result.onlineNodes.forEach(node => {
+                                            if (!existing.onlineNodes.includes(node)) {
+                                                existing.onlineNodes.push(node);
+                                            }
+                                        });
+                                        
+                                        // Merge stoppedResources (dedupe)
+                                        result.stoppedResources.forEach(res => {
+                                            if (!existing.stoppedResources.includes(res)) {
+                                                existing.stoppedResources.push(res);
+                                            }
+                                        });
+                                        
+                                        debugLog(`[TAR Parser] Rule '${ruleName}' merged (onlineNodes: ${existing.onlineNodes.length}, stoppedResources: ${existing.stoppedResources.length})`);
+                                    }
                                 } else {
                                     // Other single file rules - replace result
                                     this.analysisResults[ruleName] = result;
@@ -1515,6 +1689,149 @@ class IncrementalTARParser {
         }
         
         return merged;
+    }
+
+    /**
+     * Merge results from blockDevices parser (multi-file parser)
+     * Accumulates disk, partition, and UUID data across multiple files
+     */
+    mergeBlockDevicesResult(existing, newResult) {
+        // Merge found flag
+        existing.found = existing.found || newResult.found;
+        
+        // Merge arrays (disks, partitions, warnings) avoiding duplicates
+        for (const key of ['disks', 'partitions', 'warnings']) {
+            if (Array.isArray(newResult[key])) {
+                if (!existing[key]) existing[key] = [];
+                for (const item of newResult[key]) {
+                    // Avoid duplicates by checking for unique identifier
+                    const isDupe = existing[key].some(e => 
+                        (e.name && e.name === item.name) || 
+                        (e.device && e.device === item.device)
+                    );
+                    if (!isDupe) {
+                        existing[key].push(item);
+                    }
+                }
+            }
+        }
+        
+        // Merge maps (uuidMap, deviceMap, mountPoints)
+        for (const key of ['uuidMap', 'deviceMap', 'mountPoints']) {
+            if (newResult[key] && typeof newResult[key] === 'object') {
+                if (!existing[key]) existing[key] = {};
+                Object.assign(existing[key], newResult[key]);
+            }
+        }
+        
+        // Merge raw output
+        if (newResult.rawOutput && typeof newResult.rawOutput === 'object') {
+            if (!existing.rawOutput) existing.rawOutput = {};
+            Object.assign(existing.rawOutput, newResult.rawOutput);
+        }
+    }
+
+    /**
+     * Correlate fstab entries with block device information
+     * Detects UUID mismatches, missing UUIDs, and filesystem type mismatches
+     */
+    correlateFstabWithBlockDevices() {
+        const fstab = this.analysisResults.fstabAnalysis;
+        const blockDevices = this.analysisResults.blockDevices;
+        
+        if (!fstab?.found || !blockDevices?.found) {
+            debugLog('[Storage] Cannot correlate: fstab or blockDevices not found');
+            return null;
+        }
+        
+        // Create a storage correlation result
+        const correlation = {
+            found: true,
+            mountedVolumes: [],
+            warnings: [],
+            errors: []
+        };
+        
+        for (const entry of (fstab.entries || [])) {
+            const mountInfo = {
+                mountpoint: entry.mountpoint,
+                source: entry.source,
+                fstabFstype: entry.fstype,
+                actualDevice: null,
+                actualUuid: null,
+                actualFstype: null,
+                status: 'unknown',
+                issues: []
+            };
+            
+            if (entry.sourceType === 'uuid' && entry.uuid) {
+                // Look up UUID in block devices
+                const device = blockDevices.uuidMap?.[entry.uuid] || 
+                              blockDevices.uuidMap?.[entry.uuid.toLowerCase()] ||
+                              blockDevices.uuidMap?.[entry.uuid.toUpperCase()];
+                
+                if (device) {
+                    const deviceInfo = blockDevices.deviceMap?.[device];
+                    mountInfo.actualDevice = device;
+                    mountInfo.actualUuid = deviceInfo?.uuid;
+                    mountInfo.actualFstype = deviceInfo?.fstype;
+                    mountInfo.status = 'found';
+                    
+                    // Check for filesystem type mismatch
+                    if (entry.fstype !== 'auto' && deviceInfo?.fstype && 
+                        entry.fstype.toLowerCase() !== deviceInfo.fstype.toLowerCase()) {
+                        mountInfo.status = 'warning';
+                        mountInfo.issues.push({
+                            type: 'fstype_mismatch',
+                            message: `Filesystem type mismatch: fstab expects '${entry.fstype}' but device has '${deviceInfo.fstype}'`,
+                            severity: 'warning'
+                        });
+                        correlation.warnings.push({
+                            mountpoint: entry.mountpoint,
+                            message: `Filesystem type mismatch for ${entry.mountpoint}: fstab='${entry.fstype}', actual='${deviceInfo.fstype}'`
+                        });
+                    }
+                } else {
+                    // UUID not found - this is a problem
+                    mountInfo.status = 'error';
+                    mountInfo.issues.push({
+                        type: 'uuid_not_found',
+                        message: `UUID '${entry.uuid}' referenced in fstab not found on any block device`,
+                        severity: 'error'
+                    });
+                    correlation.errors.push({
+                        mountpoint: entry.mountpoint,
+                        uuid: entry.uuid,
+                        message: `UUID ${entry.uuid} for ${entry.mountpoint} not found on any device. The disk may have been replaced or reformatted.`
+                    });
+                }
+            } else if (entry.sourceType === 'device' && entry.device) {
+                // Direct device reference
+                const deviceInfo = blockDevices.deviceMap?.[entry.device];
+                if (deviceInfo) {
+                    mountInfo.actualDevice = entry.device;
+                    mountInfo.actualUuid = deviceInfo.uuid;
+                    mountInfo.actualFstype = deviceInfo.fstype;
+                    mountInfo.status = 'found';
+                } else {
+                    // Might be a symlink path
+                    mountInfo.status = 'symlink';
+                }
+            }
+            
+            correlation.mountedVolumes.push(mountInfo);
+        }
+        
+        // Add summary
+        correlation.summary = {
+            totalEntries: fstab.entries?.length || 0,
+            foundDevices: correlation.mountedVolumes.filter(m => m.status === 'found').length,
+            warnings: correlation.warnings.length,
+            errors: correlation.errors.length
+        };
+        
+        debugLog('[Storage] Correlation complete:', correlation.summary);
+        return correlation;
     }
 
     getAnalysis() {
@@ -1728,7 +2045,7 @@ class IncrementalTARParser {
             debugLog('[TAR Parser] Nodes missing from hosts file:', nodesMissingFromHosts);
         }
         
-        return {
+        const analysisData = {
             fileCount: this.files.length,
             directories: Array.from(this.directories).sort(),
             fileTypes: this.fileTypes,
@@ -1756,6 +2073,8 @@ class IncrementalTARParser {
             corosyncConfig: corosyncData,
             corosyncStatus: this.analysisResults.corosyncStatus || null,
             clusterStatus: this.analysisResults.clusterStatus || null,
+            clusterDaemonStatus: this.analysisResults.clusterDaemonStatus || null,
+            azureScheduledEvents: this.analysisResults.azureScheduledEvents || null,
             distroPackages: distroPackagesData,
             pacemakerResources: pacemakerResourcesData,
             fencingConfig: fencingConfigData,
@@ -1763,18 +2082,127 @@ class IncrementalTARParser {
             antivirus: antivirusResults,
             clusterServices: clusterServicesResults,
             kernelTuning: this.analysisResults.kernelTuning || null,
+            hugePages: this.analysisResults.hugePages || null,
+            timeSync: this.analysisResults.timeSync || null,
+            ptpClockSource: this.analysisResults.ptpClockSource || null,
+            timeSyncService: this.analysisResults.timeSyncService || null,
+            timedatectl: this.analysisResults.timedatectl || null,
+            ptpDevice: this.analysisResults.ptpDevice || null,
+            chronyTracking: this.analysisResults.chronyTracking || null,
+            chronyMakestep: this.analysisResults.chronyMakestep || null,
+            lvmConfig: this.analysisResults.lvmConfig || null,
+            raidConfig: this.analysisResults.raidConfig || null,
+            btrfsConfig: this.analysisResults.btrfsConfig || null,
             fstab: this.analysisResults.fstab || null,
+            blockDevices: this.analysisResults.blockDevices || null,
+            fstabAnalysis: this.analysisResults.fstabAnalysis || null,
+            storageCorrelation: this.correlateFstabWithBlockDevices(),
             nvmeList: this.analysisResults.nvmeList || null,
             involfltVersion: this.analysisResults.involfltVersion || null,
             involfltKernelVersion: this.analysisResults.involfltKernelVersion || null,
             emergencyMode: this.analysisResults.emergencyMode || null,
             sshService: this.analysisResults.sshService || null,
             automation: this.analysisResults.automation || null,
+            rhuiConfig: this.analysisResults.rhuiConfig || null,
+            eusVersionLock: this.analysisResults.eusVersionLock || null,
+            rhelRhuiCheck: this.analysisResults.rhelRhuiCheck || null,
+            cryptoPolicies: this.analysisResults.cryptoPolicies || null,
+            rhuiErrors: this.analysisResults.rhuiErrors || null,
+            leappReport: this.analysisResults.leappReport || null,
+            leappLog: this.analysisResults.leappLog || null,
             usedPaxFormat: this.usedPaxFormat || false,  // Flag if PAX format was detected
             // Cross-validation results
             nodesInHosts: nodesInHosts,
             nodesMissingFromHosts: nodesMissingFromHosts
         };
+        
+        // Enrich huge pages data with sysctl parameters from kernelTuning if available
+        // This avoids duplicate parsing of sysctl output
+        if (analysisData.hugePages && analysisData.kernelTuning && analysisData.kernelTuning.parameters) {
+            const params = analysisData.kernelTuning.parameters;
+            const hp = analysisData.hugePages;
+            // Extract huge pages sysctl parameters from already-parsed kernel tuning data
+            if (params['vm.nr_hugepages'] !== undefined && hp.sysctlParams.nr_hugepages === undefined) {
+                hp.sysctlParams.nr_hugepages = parseInt(params['vm.nr_hugepages'], 10);
+                hp.found = true;
+            }
+            if (params['vm.nr_overcommit_hugepages'] !== undefined && hp.sysctlParams.nr_overcommit_hugepages === undefined) {
+                hp.sysctlParams.nr_overcommit_hugepages = parseInt(params['vm.nr_overcommit_hugepages'], 10);
+                hp.found = true;
+            }
+            if (params['vm.hugetlb_shm_group'] !== undefined && hp.sysctlParams.hugetlb_shm_group === undefined) {
+                hp.sysctlParams.hugetlb_shm_group = parseInt(params['vm.hugetlb_shm_group'], 10);
+                hp.found = true;
+            }
+        }
+        // Add SAP HANA huge pages recommendation if huge pages are not configured
+        if (analysisData.hugePages && analysisData.hugePages.found) {
+            const hp = analysisData.hugePages;
+            // Check if static huge pages are configured (from sysctl or meminfo)
+            const nrHugepages = hp.sysctlParams.nr_hugepages !== undefined ? hp.sysctlParams.nr_hugepages : 
+                               (hp.staticHugePages.total !== undefined ? hp.staticHugePages.total : 0);
+            // For SAP HANA workloads, check if huge pages are configured
+            if (nrHugepages === 0 && !hp.recommendations.some(r => r.type === 'sap_hugepages')) {
+                hp.recommendations.push({
+                    type: 'sap_hugepages',
+                    message: 'No static huge pages configured. For SAP HANA workloads, huge pages should be configured to improve performance and prevent memory fragmentation.',
+                    documentationUrl: 'https://learn.microsoft.com/en-us/azure/sap/workloads/dbms-guide-general#linux-kernel-settings'
+                });
+                hp.hasRecommendations = true;
+            }
+        }
+        
+        // Post-processing: Regenerate azureScheduledEvents warnings after merging data from multiple files
+        if (analysisData.azureScheduledEvents && analysisData.azureScheduledEvents.found) {
+            const ase = analysisData.azureScheduledEvents;
+            // Clear existing warnings and regenerate based on merged data
+            ase.warnings = [];
+            
+            // Case 1: Resources are stopped while nodes are online AND health-azure is not configured
+            if (ase.stoppedResources.length > 0 && ase.onlineNodes.length > 0) {
+                if (!ase.healthAzureConfigured && !ase.healthAzureResource) {
+                    ase.warnings.push({
+                        severity: 'error',
+                        type: 'health_azure_not_configured',
+                        message: `${ase.stoppedResources.length} cluster resource(s) are stopped while ${ase.onlineNodes.length} node(s) are online. Azure Scheduled Events (health-azure) is NOT configured.`,
+                        recommendation: 'Configure Azure Scheduled Events by creating the health-azure-events resource and setting #health-azure attribute on all nodes. See: https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-rhel-pacemaker#configure-pacemaker-for-azure-scheduled-events',
+                        stoppedResources: ase.stoppedResources,
+                        onlineNodes: ase.onlineNodes
+                    });
+                }
+                
+                // Case 2: node-health-strategy is set to custom but health-azure attribute is missing
+                if (ase.nodeHealthStrategy === 'custom' && !ase.healthAzureConfigured) {
+                    ase.warnings.push({
+                        severity: 'error',
+                        type: 'health_azure_attribute_missing',
+                        message: 'node-health-strategy is set to "custom" but #health-azure attribute is not configured on nodes. Resources cannot be scheduled.',
+                        recommendation: 'Initialize the #health-azure attribute on all nodes: sudo crm_attribute --node <node-name> --name \'#health-azure\' --update 0',
+                        onlineNodes: ase.onlineNodes
+                    });
+                }
+            }
+            
+            // Case 3: Some nodes have health-azure configured but not all
+            if (ase.nodesWithHealthAzure && ase.nodesWithHealthAzure.length > 0 && ase.onlineNodes.length > ase.nodesWithHealthAzure.length) {
+                const nodesWithAttr = ase.nodesWithHealthAzure.map(n => n.node);
+                const nodesMissing = ase.onlineNodes.filter(n => !nodesWithAttr.includes(n));
+                if (nodesMissing.length > 0) {
+                    ase.nodesWithoutHealthAzure = nodesMissing;
+                    ase.warnings.push({
+                        severity: 'warning',
+                        type: 'health_azure_partial',
+                        message: `#health-azure attribute is configured on some nodes but missing on: ${nodesMissing.join(', ')}`,
+                        recommendation: 'Set the #health-azure attribute on all cluster nodes for consistent behavior.',
+                        nodesMissing: nodesMissing
+                    });
+                }
+            }
+            
+            debugLog('[TAR Parser] azureScheduledEvents post-processing: warnings regenerated:', ase.warnings.length);
+        }
+        
+        return analysisData;
     }
 
     finish() {

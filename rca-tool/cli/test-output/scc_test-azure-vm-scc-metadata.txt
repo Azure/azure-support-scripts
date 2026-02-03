@@ -1,0 +1,22 @@
+
+Analyzing: /home/fede2/proyectos/azure-support-scripts/rca-tool/cli/../tests/fixtures/scc_test-azure-vm-scc-metadata.tar.xz
+
+
+======================================================================
+  RCA Analysis Results
+======================================================================
+
+Files processed: 1
+Directories: 2
+
+----------------------------------------------------------------------
+AZURE VM PROPERTIES
+----------------------------------------------------------------------
+  VM Size: Standard_M64ds_v2
+  Publisher: SUSE
+  Offer: sles-sap-15-sp5
+  SKU: gen2
+  Billing Model: PAYG
+
+======================================================================
+

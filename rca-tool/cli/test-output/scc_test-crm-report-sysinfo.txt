@@ -1,0 +1,19 @@
+
+Analyzing: /home/fede2/proyectos/azure-support-scripts/rca-tool/cli/../tests/fixtures/scc_test-crm-report-sysinfo.tar.xz
+
+
+======================================================================
+  RCA Analysis Results
+======================================================================
+
+Files processed: 1
+Directories: 1
+
+----------------------------------------------------------------------
+AZURE VM PROPERTIES
+----------------------------------------------------------------------
+  Operating System:
+    Distribution: SUSE Linux Enterprise Server 15 SP5
+
+======================================================================
+
