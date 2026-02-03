@@ -1806,6 +1806,35 @@ EOF
 
 create_fixture "test-eol-centos7"
 
+################################################################################
+# Test: Time Sync Service - chronyd enabled and running
+################################################################################
+echo ""
+echo "=== Creating test-timesync-chrony.tar.xz ==="
+mkdir -p test-data/sos_commands/systemd
+
+# systemd-status.txt with chronyd service status (SCC format)
+cat > test-data/sos_commands/systemd/systemd-status.txt << 'EOF'
+# /bin/systemctl status 'chronyd.service'
+● chronyd.service - NTP client/server
+     Loaded: loaded (/usr/lib/systemd/system/chronyd.service; enabled; vendor preset: enabled)
+     Active: active (running) since Mon 2026-01-27 10:00:00 UTC; 1 week 2 days ago
+       Docs: man:chronyd(8)
+             man:chrony.conf(5)
+   Main PID: 1234 (chronyd)
+      Tasks: 1 (limit: 49152)
+     Memory: 1.5M
+        CPU: 123ms
+     CGroup: /system.slice/chronyd.service
+             └─1234 /usr/sbin/chronyd
+
+Jan 27 10:00:00 test-host systemd[1]: Starting NTP client/server...
+Jan 27 10:00:00 test-host chronyd[1234]: chronyd version 4.1 starting (+CMDMON +NTP +REFCLOCK +RTC +PRIVDROP +SCFILTER +SIGND +ASYNCDNS +NTS +SECHASH +IPV6 +DEBUG)
+Jan 27 10:00:00 test-host systemd[1]: Started NTP client/server.
+EOF
+
+create_fixture "test-timesync-chrony"
+
 echo ""
 echo "========================================="
 echo "✓ All test fixtures created successfully!"

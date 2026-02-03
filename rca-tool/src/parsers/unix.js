@@ -1133,11 +1133,12 @@ const timeSyncServiceParser = {
         
         if (isSCCSystemd) {
             // Extract chronyd service status
+            // In SCC systemd-status.txt, sections are marked like "# /bin/systemctl status 'chronyd.service'"
             const chronydSection = SCC_RULES.extractSection(
                 content,
-                'systemd-status.txt',
-                null,
-                "/bin/systemctl status 'chronyd.service'"
+                filename,
+                "/bin/systemctl status 'chronyd.service'",
+                null
             );
             
             if (chronydSection.found) {
@@ -1166,9 +1167,9 @@ const timeSyncServiceParser = {
             // Extract ntpd service status
             const ntpdSection = SCC_RULES.extractSection(
                 content,
-                'systemd-status.txt',
-                null,
-                "/bin/systemctl status 'ntpd.service'"
+                filename,
+                "/bin/systemctl status 'ntpd.service'",
+                null
             );
             
             if (ntpdSection.found) {
@@ -1197,9 +1198,9 @@ const timeSyncServiceParser = {
             // Extract systemd-timesyncd service status
             const timesyncdSection = SCC_RULES.extractSection(
                 content,
-                'systemd-status.txt',
-                null,
-                "/bin/systemctl status 'systemd-timesyncd.service'"
+                filename,
+                "/bin/systemctl status 'systemd-timesyncd.service'",
+                null
             );
             
             if (timesyncdSection.found) {

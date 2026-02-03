@@ -57,7 +57,16 @@ test('sysinfo parser extracts Distribution line from worker', async () => {
   if (bodyEnd === -1) throw new Error('Could not locate end of parseSysinfo function body');
 
   const fnBody = code.substring(bodyStart + 1, bodyEnd);
-  // Create a function with debugLog stub in scope
+  
+  // Create a mock context with checkEolDistribution method
+  const mockContext = {
+    checkEolDistribution: function(name, majorVersion, prettyName) {
+      // Return empty warnings for testing
+      return [];
+    }
+  };
+  
+  // Create function that binds to our mock context
   const parseFn = new Function('content', 'filename', 'debugLog', fnBody);
 
   const sample = `#####Cluster info:
@@ -69,7 +78,7 @@ Kernel release: 5.14.21-150500.55.83-default
 Architecture: x86_64
 Distribution: SUSE Linux Enterprise Server 15 SP5`;
   
-  const result = parseFn(sample, 'sysinfo.txt', function(){});
+  const result = parseFn.call(mockContext, sample, 'sysinfo.txt', function(){});
 
   expect(result).toBeTruthy();
   expect(result.found).toBe(true);

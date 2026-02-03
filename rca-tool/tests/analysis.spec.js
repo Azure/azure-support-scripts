@@ -1253,7 +1253,7 @@ test.describe('SAP HANA Cluster Analyzer', () => {
   });
 
   test('detects chronyd service status from SCC systemd-status.txt', async ({ page }) => {
-    const resultHTML = await uploadAndWaitForAnalysis(page, 'scc_test-azure-network-tuned.tar.xz');
+    const resultHTML = await uploadAndWaitForAnalysis(page, 'scc_test-timesync-chrony.tar.xz');
     
     // Should detect time sync service information
     expect(resultHTML).toMatch(/Time.*Sync.*Service|timeSyncService/i);
