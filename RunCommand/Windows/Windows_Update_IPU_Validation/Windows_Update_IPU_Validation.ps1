@@ -1,3 +1,44 @@
+<# 
+Disclaimer:
+    The sample scripts are not supported under any Microsoft standard support program or service.
+    The sample scripts are provided AS IS without warranty of any kind.
+    Microsoft further disclaims all implied warranties including, without limitation, any implied warranties of merchantability
+    or of fitness for a particular purpose.
+    The entire risk arising out of the use or performance of the sample scripts and documentation remains with you.
+    In no event shall Microsoft, its authors, or anyone else involved in the creation, production,
+    or delivery of the scripts be liable for any damages whatsoever (including, without limitation,
+    damages for loss of business profits, business interruption, loss of business information, or other pecuniary loss)
+    arising out of the use of or inability to use the sample scripts or documentation,
+    even if Microsoft has been advised of the possibility of such damages.
+
+    For more details, see: https://aka.ms/AzVmIPUValidation
+
+.SYNOPSIS
+    Scans CBS logs for Windows servicing errors that may require an In-Place Upgrade (IPU).
+
+.DESCRIPTION
+    This script performs the following checks:
+    - Scans CBS logs for known Windows servicing error codes
+    - Categorizes errors by severity (Critical, High, Medium, Low)
+    - Counts occurrences of each error code
+    - Provides remediation guidance via Microsoft documentation
+
+.PARAMETER StartDays
+    Number of days to look back in CBS logs. Default is 30 days.
+
+.NOTES
+    Requires administrator privileges.
+    Tested on Windows Server 2016+.
+
+.EXAMPLE
+    Run as administrator:
+    PS> .\Windows_Update_IPU_Validation.ps1
+
+.EXAMPLE
+    Scan last 7 days:
+    PS> .\Windows_Update_IPU_Validation.ps1 -StartDays 7
+#>
+
 param(
     [Parameter(Mandatory = $false)]
     [int]$StartDays = 30  # Default is 30 days if not provided
@@ -12,16 +53,6 @@ Write-Host "summary at the end. If any errors are found, a remediation" -Foregro
 Write-Host "link to Microsoft documentation is displayed." -ForegroundColor Cyan
 Write-Host "Reference: https://aka.ms/AzVmIPUValidation" -ForegroundColor Cyan
 Write-Host "------------------------------------------------------------`n" -ForegroundColor Cyan
-
-<#
-    Reset Windows Update Components with Logging & Summary
-    ------------------------------------------------------
-    - Stops: wuauserv, cryptsvc, bits
-    - Renames: %SystemRoot%\SoftwareDistribution, %SystemRoot%\System32\catroot2 (timestamped)
-    - Re-registers core update-related DLLs (skips any not present)
-    - Restarts services
-    - Summary at the end
-#>
 
 # ---- Safety checks -----------------------------------------------------------
 function Assert-Admin {

@@ -1,11 +1,36 @@
-<#
-    Reset Windows Update Components with Logging & Summary
-    ------------------------------------------------------
-    - Stops: wuauserv, cryptsvc, bits
-    - Renames: %SystemRoot%\SoftwareDistribution, %SystemRoot%\System32\catroot2 (timestamped)
-    - Re-registers core update-related DLLs (skips any not present)
+<# 
+Disclaimer:
+    The sample scripts are not supported under any Microsoft standard support program or service.
+    The sample scripts are provided AS IS without warranty of any kind.
+    Microsoft further disclaims all implied warranties including, without limitation, any implied warranties of merchantability
+    or of fitness for a particular purpose.
+    The entire risk arising out of the use or performance of the sample scripts and documentation remains with you.
+    In no event shall Microsoft, its authors, or anyone else involved in the creation, production,
+    or delivery of the scripts be liable for any damages whatsoever (including, without limitation,
+    damages for loss of business profits, business interruption, loss of business information, or other pecuniary loss)
+    arising out of the use of or inability to use the sample scripts or documentation,
+    even if Microsoft has been advised of the possibility of such damages.
+
+    For more details, see: https://aka.ms/AzVMWindowsUpdateReset
+
+.SYNOPSIS
+    Resets Windows Update components on Azure VMs.
+
+.DESCRIPTION
+    This script performs the following actions:
+    - Stops Windows Update related services (wuauserv, cryptsvc, bits)
+    - Renames SoftwareDistribution and catroot2 folders with timestamp
+    - Re-registers core update-related DLLs
     - Restarts services
-    - Summary at the end
+    - Provides a summary of all actions taken
+
+.NOTES
+    Requires administrator privileges.
+    Tested on Windows Server 2016+.
+
+.EXAMPLE
+    Run as administrator:
+    PS> .\Windows_WUA_Update_Reset.ps1
 #>
 
 # ---- Safety checks -----------------------------------------------------------

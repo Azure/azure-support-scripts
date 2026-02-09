@@ -1,7 +1,37 @@
-# Windows In-Place Upgrade Assessment Script
-# Last Updated: 2025-08-07
-# Description: Checks Windows version, server upgrade paths, and Azure VM security features for upgrade readiness.
+<# 
+Disclaimer:
+    The sample scripts are not supported under any Microsoft standard support program or service.
+    The sample scripts are provided AS IS without warranty of any kind.
+    Microsoft further disclaims all implied warranties including, without limitation, any implied warranties of merchantability
+    or of fitness for a particular purpose.
+    The entire risk arising out of the use or performance of the sample scripts and documentation remains with you.
+    In no event shall Microsoft, its authors, or anyone else involved in the creation, production,
+    or delivery of the scripts be liable for any damages whatsoever (including, without limitation,
+    damages for loss of business profits, business interruption, loss of business information, or other pecuniary loss)
+    arising out of the use of or inability to use the sample scripts or documentation,
+    even if Microsoft has been advised of the possibility of such damages.
 
+    For more details, see: https://aka.ms/AzVmOSUpgradeAssessment
+
+.SYNOPSIS
+    Assesses Windows in-place upgrade readiness on Azure VMs.
+
+.DESCRIPTION
+    This script performs the following checks:
+    - Detects current Windows version and edition
+    - Checks disk space and memory requirements
+    - For Windows Server, displays supported upgrade paths
+    - For Windows 10/11, validates VM generation, Trusted Launch, Secure Boot, and TPM status
+    - Provides guidance for Azure Virtual Desktop environments
+
+.NOTES
+    Requires administrator privileges.
+    Tested on Windows Server 2012+ and Windows 10/11.
+
+.EXAMPLE
+    Run as administrator:
+    PS> .\Windows_OSUpgrade_Assessment_Validation.ps1
+#>
 
 # ---- Safety checks -----------------------------------------------------------
 function Assert-Admin {
