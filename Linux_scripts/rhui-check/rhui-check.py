@@ -219,7 +219,7 @@ def get_pkg_info(package_name):
     logger.debug('Entering pkg_info function')
     try:
         result = subprocess.Popen(['rpm', '-q', '--list', package_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        info = result.stdout.read().decode('utf-8').strip().split('\n')
+        info = result.stdout.read().decode('utf-8').strip().splitlines()
         
         hash_info = {}
         for key in pattern.keys():
@@ -318,7 +318,7 @@ def read_yum_dnf_conf():
     try:
         file = '/etc/yum.conf'
         with open(file) as stream:
-            yumdnfdotconf.read_string('[default]\n' + stream.read())
+            yumdnfdotconf.read_string('[default]' + chr(10) + stream.read())
     except AttributeError:
         yumdnfdotconf.add_section('[default]')
         yumdnfdotconf.read(file)
@@ -400,7 +400,7 @@ def check_rhui_repo_file(path):
         reposconfig = localParser()
         try:
             with open(path) as stream:
-                reposconfig.read_string('[default]\n' + stream.read())
+                reposconfig.read_string('[default]' + chr(10) + stream.read())
         except AttributeError:
             reposconfig.add_section('[default]')
             reposconfig.read(path)
@@ -530,7 +530,7 @@ def connect_to_repos(reposconfig, check_repos, issues):
               continue
 
         try:
-            baseurl_info = reposconfig.get(repo_name, 'baseurl').strip().split('\n')
+            baseurl_info = reposconfig.get(repo_name, 'baseurl').strip().splitlines()
         except configparser.NoOptionError:
             reinstall_link = 'https://aka.ms/tsrhuicert?source=recommendations&tabs=rhel7-eus%2Crhel7-noneus%2Crhel7-rhel-sap-apps%2Crhel8-rhel-sap-apps%2Crhel9-rhel-sap-apps#solution-2-reinstall-the-eus-non-eus-or-sap-rhui-package'
             logger.critical('The baseurl is a critical component of the repository stanza, and it is not found for repo {}'.format(repo_name))
