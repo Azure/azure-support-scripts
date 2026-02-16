@@ -8,7 +8,7 @@
  * optimisation (correct, warnings, optional, complete, whitespace),
  * and chronyd time-sync service detection.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from './coverage-fixture.js';
 import { uploadAndWaitForAnalysis, getResultText, navigateToApp, fixturePath } from './test-helpers.js';
 
 test.describe('Unix Parsers', () => {

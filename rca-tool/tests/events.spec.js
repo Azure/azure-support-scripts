@@ -7,7 +7,7 @@
  * rotated log files, timestamp normalisation, correct counts after
  * dedup, and duplicate-UUID detection.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from './coverage-fixture.js';
 import { uploadAndWaitForAnalysis, getResultText, navigateToApp } from './test-helpers.js';
 
 test.describe('Events Parsers', () => {

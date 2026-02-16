@@ -6,7 +6,7 @@
  * firewalld active) and SCC archives (no active firewall, nftables
  * in `network.txt`).
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from './coverage-fixture.js';
 import { uploadAndWaitForAnalysis, getResultText, navigateToApp } from './test-helpers.js';
 
 test.describe('Networking Parser', () => {

@@ -8,7 +8,7 @@
  * configuration and error reporting, live-migration events, nested
  * gzip decompression, and Getty message filtering.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from './coverage-fixture.js';
 import { uploadAndWaitForAnalysis, getResultText, isSapDetectedFromResult, navigateToApp } from './test-helpers.js';
 
 test.describe('Cluster Parsers', () => {

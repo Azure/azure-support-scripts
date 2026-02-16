@@ -6,7 +6,7 @@
  * graceful handling of invalid file uploads, and resilience against
  * corrupted or truncated `tar.xz` archives.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from './coverage-fixture.js';
 import { uploadAndWaitForAnalysis, navigateToApp, fixturePath } from './test-helpers.js';
 
 test.describe('UI and Error Handling', () => {

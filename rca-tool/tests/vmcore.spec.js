@@ -7,7 +7,7 @@
  * kernel versions, call-trace frames, vmcore sizes and disk usage,
  * kdump configuration, and documentation links.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from './coverage-fixture.js';
 import { uploadAndWaitForAnalysis, navigateToApp } from './test-helpers.js';
 
 test.describe('Vmcore Parser', () => {

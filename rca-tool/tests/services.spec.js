@@ -7,7 +7,7 @@
  * Recovery (`involflt`) module and runtime version parsing, and DLM
  * service-enabled detection with documentation links.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from './coverage-fixture.js';
 import { uploadAndWaitForAnalysis, navigateToApp } from './test-helpers.js';
 
 test.describe('Services Parsers', () => {

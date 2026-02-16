@@ -6,7 +6,7 @@
  * devices.  Also contains commented-out tests for LVM, RAID, BTRFS,
  * and PV-validation that are pending a storage.js loading fix.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from './coverage-fixture.js';
 import { uploadAndWaitForAnalysis, getResultText, navigateToApp } from './test-helpers.js';
 
 test.describe('Storage Parsers', () => {

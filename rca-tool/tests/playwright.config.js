@@ -9,7 +9,37 @@ export default defineConfig({
   reporter: [
     ['html', { outputFolder: 'test-results', open: 'never' }],
     ['junit', { outputFile: 'test-results/junit.xml' }],
-    ['list']
+    ['list'],
+    ['monocart-reporter', {
+      name: 'RCA Tool Coverage Report',
+      outputFile: './coverage-report/index.html',
+      coverage: {
+        reports: [
+          // V8 native report with per-byte detail
+          ['v8', { outputFile: 'coverage-report/v8/index.html' }],
+          // Console summary printed after each run
+          ['console-details'],
+        ],
+        // Include app files served from /web/dist/ AND worker source files (file://)
+        entryFilter: (entry) => {
+          // Main-thread Vite bundle
+          if (entry.url.includes('/web/dist/')
+              && !entry.url.includes('/web/dist/docs/')
+              && !entry.url.includes('node_modules')) {
+            return true;
+          }
+          // Istanbul-converted worker/parser source files
+          if (entry.url.startsWith('file://') && entry.url.includes('/src/')) {
+            return true;
+          }
+          return false;
+        },
+        sourceFilter: (sourcePath) => {
+          return !sourcePath.includes('node_modules')
+            && !sourcePath.includes('docs/');
+        },
+      }
+    }]
   ],
   use: {
     baseURL: process.env.BASE_URL || 'http://localhost:8080',

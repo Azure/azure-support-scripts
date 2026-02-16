@@ -8,11 +8,15 @@
     "test:debug": "playwright test --debug",
     "test:ui": "playwright test --ui",
     "test:headed": "playwright test --headed",
+    "test:coverage": "bash instrument-coverage.sh && playwright test --project=local && echo '\nOpen coverage-report/v8/index.html for detailed report'",
+    "coverage:view": "npx monocart show-report coverage-report/index.html",
     "serve": "http-server -p 8080"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.0",
     "@playwright/test": "^1.48.0",
-    "http-server": "^14.1.1"
+    "http-server": "^14.1.1",
+    "monocart-reporter": "^2.10.0",
+    "nyc": "^17.1.0"
   }
 }

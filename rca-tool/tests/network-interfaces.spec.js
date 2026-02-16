@@ -6,7 +6,7 @@
  * (eth0/eth1, DHCP vs static, mlx5_core accelerated networking) and
  * SOS reports (MANA driver, DHCP configuration).
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from './coverage-fixture.js';
 import { uploadAndWaitForAnalysis, getResultText, navigateToApp } from './test-helpers.js';
 
 test.describe('Network Interfaces Parser', () => {

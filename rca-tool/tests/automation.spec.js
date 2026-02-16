@@ -5,7 +5,7 @@
  * Verifies detection of Ansible executions including command patterns,
  * execution counts, and `yum install` invocations from SCC archives.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from './coverage-fixture.js';
 import { uploadAndWaitForAnalysis, navigateToApp } from './test-helpers.js';
 
 test.describe('Automation Parser', () => {

@@ -7,7 +7,7 @@
  * `metadata.txt` format parsing, and Azure storage-type display
  * (Ultra Disk, Premium SSD v2).
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from './coverage-fixture.js';
 import { uploadAndWaitForAnalysis, getResultText, navigateToApp, fixturePath } from './test-helpers.js';
 
 test.describe('Azure Parser', () => {

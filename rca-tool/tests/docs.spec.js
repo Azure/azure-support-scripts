@@ -7,7 +7,7 @@
  * (e.g. `parsers/automation` → Ansible, `parsers/cluster` →
  * Pacemaker/Corosync/STONITH).
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from './coverage-fixture.js';
 
 test.describe('API Documentation', () => {
 
