@@ -46,13 +46,17 @@ jobs:
         chmod +x build-liblzma-streaming.sh
         ./build-liblzma-streaming.sh
     
+    - name: Install root dependencies (JSDoc)
+      run: npm ci
+      working-directory: rca-tool
+
     - name: Install Node.js dependencies
       run: npm ci
       working-directory: rca-tool/web
         
-    - name: Build with Vite
+    - name: Build with Vite and JSDoc
       run: bash build.sh
-      working-directory: rca-tool/web
+      working-directory: rca-tool
         
     - name: Prepare deployment directory
       run: |

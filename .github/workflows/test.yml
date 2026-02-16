@@ -29,6 +29,10 @@ jobs:
         chmod +x build-liblzma-streaming.sh
         ./build-liblzma-streaming.sh
     
+    - name: Install root dependencies (JSDoc)
+      run: npm ci
+      working-directory: rca-tool
+
     - name: Install web dependencies
       run: npm ci
       working-directory: rca-tool/web
@@ -37,9 +41,9 @@ jobs:
       run: npm ci
       working-directory: rca-tool/cli
         
-    - name: Build Web Interface
+    - name: Build Web Interface (with JSDoc)
       run: bash build.sh
-      working-directory: rca-tool/web
+      working-directory: rca-tool
     
     - name: Build CLI
       run: npm run build
