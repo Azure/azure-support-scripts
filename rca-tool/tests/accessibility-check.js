@@ -6,8 +6,8 @@
  * 2. Run: node accessibility-check.js
  */
 
-const { chromium } = require('@playwright/test');
-const AxeBuilder = require('@axe-core/playwright').default;
+import { chromium } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 
 async function runAccessibilityTest() {
   console.log('Starting accessibility scan...\n');
