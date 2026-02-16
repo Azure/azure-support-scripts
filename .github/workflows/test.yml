@@ -62,6 +62,10 @@ jobs:
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps msedge
       working-directory: rca-tool/tests
+
+    - name: Instrument source files for coverage
+      run: bash instrument-coverage.sh
+      working-directory: rca-tool/tests
       
     - name: Run tests
       run: npx playwright test --project=local
@@ -104,4 +108,12 @@ jobs:
       with:
         name: test-results
         path: rca-tool/tests/test-results/
+        retention-days: 30
+
+    - name: Upload coverage report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: rca-tool/tests/coverage-report/
         retention-days: 30

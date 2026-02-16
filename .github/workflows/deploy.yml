@@ -136,3 +136,11 @@ jobs:
         name: post-deploy-test-results
         path: rca-tool/tests/test-results/
         retention-days: 30
+
+    - name: Upload post-deployment coverage report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: post-deploy-coverage-report
+        path: rca-tool/tests/coverage-report/
+        retention-days: 30

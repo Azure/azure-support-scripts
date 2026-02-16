@@ -6,7 +6,7 @@
  * (`dnf_list_installed`, `yum_list_installed`) and Debian-based
  * distributions (`dpkg_-l`).
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from './coverage-fixture.js';
 import { uploadAndWaitForAnalysis, navigateToApp } from './test-helpers.js';
 
 test.describe('Packages Parser', () => {
