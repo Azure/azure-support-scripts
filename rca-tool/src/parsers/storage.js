@@ -1,7 +1,70 @@
 /**
- * Storage parser: LVM and RAID configuration
- * Parses LVM (Physical Volumes, Volume Groups, Logical Volumes) and RAID arrays
- * File patterns: lvm.txt, pvs.txt, vgs.txt, lvs.txt, mdstat, md-arrays.txt
+ * @module parsers/storage
+ * @description Storage Parsers for RCA Tool
+ *
+ * Provides six independent parsers covering LVM, RAID, BTRFS, block devices,
+ * fstab analysis, and disk usage.  Each parser targets a specific set of
+ * files from SCC (supportconfig) or SOS (sosreport) archives.
+ *
+ * ### Parser Inventory
+ *
+ * | Parser | File Patterns | Purpose |
+ * |--------|---------------|---------|
+ * | `lvmConfigParser` | `lvm.txt`, `pvs.txt`, `vgs.txt`, `lvs.txt`, `pvdisplay`, `vgdisplay`, `lvdisplay` | Parses Physical Volumes, Volume Groups, and Logical Volumes; validates PV-to-VG membership |
+ * | `raidConfigParser` | `mdstat`, `md-arrays.txt`, `mdadm.txt`, `proc/mdstat` | Parses `/proc/mdstat` RAID arrays; detects degraded state, faulty devices, rebuild progress |
+ * | `btrfsConfigParser` | `btrfs.txt`, `fs-btrfs.txt`, `btrfs-filesystem-show.txt`, `btrfs-subvolume-list.txt` | Extracts BTRFS filesystem inventory (label, UUID, devices) and subvolume list |
+ * | `blockDevicesParser` | `lsblk`, `lsblk_-f_-a_-l`, `blkid_-c_.dev.null` | Builds disk/partition inventory with UUID, filesystem type, and mount point maps (multi-file) |
+ * | `fstabAnalysisParser` | `/etc/fstab`, `fs-diskio.txt` | Parses fstab entries; classifies source type (UUID/device/label/network); flags missing `nofail` on non-OS mounts |
+ * | `dfOutputParser` | `df`, `df_-aliT`, `df_-al_`, `fs-diskio.txt` | Parses `df` output for filesystem usage; builds mountpoint-to-usage lookup |
+ *
+ * ### Return Shapes
+ *
+ * **lvmConfigParser:**
+ * ```
+ * { found, pvs[], vgs[], lvs[], warnings[], rawOutput }
+ * ```
+ * Warnings include "Missing VG" (PV references unknown VG) and "PV Count
+ * Mismatch" (VG expects more PVs than found).
+ *
+ * **raidConfigParser:**
+ * ```
+ * { found, arrays[{ device, state, level, devices[], syncStatus }], warnings[], rawOutput }
+ * ```
+ * Warnings include "Faulty Device" and "Degraded Array".
+ *
+ * **btrfsConfigParser:**
+ * ```
+ * { found, filesystems[{ label, uuid, devices[], totalSize }], subvolumes[], warnings[], rawOutput }
+ * ```
+ *
+ * **blockDevicesParser (multi-file):**
+ * ```
+ * { found, disks[], partitions[], uuidMap, deviceMap, mountPoints, warnings[], rawOutput }
+ * ```
+ *
+ * **fstabAnalysisParser:**
+ * ```
+ * { found, entries[], uuidEntries[], deviceEntries[], labelEntries[], warnings[] }
+ * ```
+ * Each entry carries `sourceType` (uuid/device/label/network), `hasNofail`,
+ * `isOsPartition`, `isVirtualFs`, and `needsNofail` flags.
+ * Missing-nofail warnings link to the Azure fstab best-practices doc.
+ *
+ * **dfOutputParser:**
+ * ```
+ * { found, filesystems[], mountToUsage }
+ * ```
+ *
+ * ### Key Helper Methods
+ *
+ * | Parser | Method | Purpose |
+ * |--------|--------|---------|
+ * | lvmConfig | `parsePVs`, `parseVGs`, `parseLVs` | Column-based parsing of pvs/vgs/lvs command output |
+ * | lvmConfig | `validatePVsInVGs` | Cross-validates PV VG references against the VG list |
+ * | btrfsConfig | `parseFilesystems`, `parseSubvolumes` | Parses `btrfs filesystem show` and `btrfs subvolume list` output |
+ * | blockDevices | `parseLsblkBasic`, `parseLsblkFull`, `parseBlkid` | Three lsblk/blkid output formats into a unified device map |
+ * | fstabAnalysis | `extractFstabFromSCC` | Extracts the fstab section from the aggregated `fs-diskio.txt` |
+ * | dfOutput | `extractDfFromSCC` | Extracts the df section from the aggregated `fs-diskio.txt` |
  */
 
 const storageDebugLog = console.log.bind(console, '[STORAGE]');
@@ -687,10 +750,20 @@ const blockDevicesParser = {
  * to detect UUID mismatches and mount issues
  */
 const fstabAnalysisParser = {
-    filePattern: /\/etc\/fstab$/,
+    filePattern: /\/etc\/fstab$|\/fs-diskio\.txt$/,
     
     parse: function(content, filename) {
         storageDebugLog('[fstabAnalysis parser] Analyzing:', filename);
+        
+        // If this is SCC's fs-diskio.txt, extract just the fstab section
+        let fstabContent = content;
+        if (filename.includes('fs-diskio.txt')) {
+            fstabContent = this.extractFstabFromSCC(content);
+            if (!fstabContent) {
+                storageDebugLog('[fstabAnalysis parser] No fstab section found in fs-diskio.txt');
+                return { found: false, entries: [], warnings: [] };
+            }
+        }
         
         const result = {
             found: false,
@@ -699,10 +772,18 @@ const fstabAnalysisParser = {
             deviceEntries: [],    // Entries using /dev/
             labelEntries: [],     // Entries using LABEL=
             warnings: [],
-            rawContent: content
+            rawContent: fstabContent
         };
         
-        const lines = content.split('\n');
+        const lines = fstabContent.split('\n');
+        
+        // OS-critical mount points that don't need nofail (exact match only)
+        // Subdirectories like /var/crash or /home/user should still get nofail
+        const osMountPoints = ['/', '/boot', '/boot/efi', '/usr', '/var', '/tmp', '/home', '/opt'];
+        // Virtual/pseudo filesystems that don't need nofail
+        const virtualFsTypes = ['tmpfs', 'devtmpfs', 'sysfs', 'proc', 'cgroup', 'cgroup2', 'securityfs', 
+                                'devpts', 'hugetlbfs', 'mqueue', 'debugfs', 'tracefs', 'fusectl', 
+                                'configfs', 'pstore', 'efivarfs', 'bpf', 'binfmt_misc', 'autofs', 'sunrpc'];
         
         for (const line of lines) {
             const trimmed = line.trim();
@@ -725,7 +806,12 @@ const fstabAnalysisParser = {
                 sourceType: 'unknown',
                 uuid: null,
                 label: null,
-                device: null
+                device: null,
+                hasNofail: options.includes('nofail'),
+                // Only exact matches are considered OS partitions
+                isOsPartition: osMountPoints.includes(mountpoint),
+                isVirtualFs: virtualFsTypes.includes(fstype) || fstype === 'none',
+                needsNofail: false  // Will be set below
             };
             
             // Determine source type and extract identifier
@@ -746,6 +832,22 @@ const fstabAnalysisParser = {
                 entry.sourceType = 'network';
             }
             
+            // Check if this non-OS partition needs nofail
+            // Network mounts and non-OS local mounts should have nofail
+            if (!entry.isOsPartition && !entry.isVirtualFs && !entry.hasNofail) {
+                entry.needsNofail = true;
+                result.warnings.push({
+                    type: 'missing_nofail',
+                    severity: 'warning',
+                    mountpoint: mountpoint,
+                    source: source,
+                    fstype: fstype,
+                    message: `Mount point "${mountpoint}" is missing the 'nofail' option`,
+                    recommendation: 'Add nofail option to prevent boot failures if this mount becomes unavailable',
+                    documentationUrl: 'https://learn.microsoft.com/en-us/azure/virtual-machines/linux/fstab-device-names'
+                });
+            }
+            
             result.entries.push(entry);
         }
         
@@ -753,7 +855,157 @@ const fstabAnalysisParser = {
             result.found = true;
         }
         
-        storageDebugLog('[fstabAnalysis parser] Found:', result.entries.length, 'entries');
+        storageDebugLog('[fstabAnalysis parser] Found:', result.entries.length, 'entries,', result.warnings.length, 'warnings');
         return result;
+    },
+    
+    extractFstabFromSCC: function(content) {
+        // Extract fstab section from SCC's fs-diskio.txt
+        // Look for "# /etc/fstab" marker
+        const lines = content.split('\n');
+        const fstabLines = [];
+        let inFstabSection = false;
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
+            // Start of fstab section
+            if (line.includes('# /etc/fstab') || line.match(/^#\s*\/etc\/fstab\s*$/)) {
+                inFstabSection = true;
+                continue;
+            }
+            
+            // End of fstab section (next command section marker)
+            if (inFstabSection && (line.startsWith('#==') || line.match(/^#\s*\//))) {
+                break;
+            }
+            
+            // Collect fstab lines
+            if (inFstabSection) {
+                fstabLines.push(line);
+            }
+        }
+        
+        return fstabLines.length > 0 ? fstabLines.join('\n') : null;
+    }
+};
+
+/**
+ * Parser: dfOutput
+ * Parses df command output to get disk usage information
+ * File patterns: 
+ *   - /df (sosreport - symlink to actual file)
+ *   - sos_commands/filesys/df_* (actual df output in sosreport)
+ *   - fs-diskio.txt (SCC)
+ */
+const dfOutputParser = {
+    filePattern: /\/df$|\/df_-aliT|\/df_-al_|\/fs-diskio\.txt$/,
+    
+    parse: function(content, filename) {
+        storageDebugLog('[dfOutput parser] Analyzing:', filename);
+        
+        const result = {
+            found: false,
+            filesystems: [],
+            mountToUsage: {}  // Map mountpoint -> usage info for quick lookup
+        };
+        
+        let dfContent = content;
+        
+        // If this is SCC's fs-diskio.txt, extract the df section
+        if (filename.includes('fs-diskio.txt')) {
+            dfContent = this.extractDfFromSCC(content);
+            if (!dfContent) {
+                storageDebugLog('[dfOutput parser] No df section found in fs-diskio.txt');
+                return result;
+            }
+        }
+        
+        const lines = dfContent.split('\n');
+        
+        for (const line of lines) {
+            const trimmed = line.trim();
+            // Skip header lines and empty lines
+            if (!trimmed || trimmed.startsWith('Filesystem') || trimmed.startsWith('#')) continue;
+            
+            // Parse df output - handle both formats:
+            // Standard df: Filesystem 1K-blocks Used Available Use% Mounted on
+            // df -Th:      Filesystem Type Size Used Avail Use% Mounted on
+            
+            // Check if this line has a Type column (df -Th format)
+            const parts = trimmed.split(/\s+/);
+            if (parts.length < 5) continue;
+            
+            let filesystem, fstype, size, used, avail, usePercent, mountpoint;
+            
+            // Detect format by checking if second column looks like a filesystem type
+            const possibleType = parts[1];
+            const isTypedFormat = /^(xfs|ext[234]|vfat|btrfs|nfs[34]?|cifs|tmpfs|devtmpfs|sysfs|proc|overlay|zfs|swap)$/i.test(possibleType);
+            
+            if (isTypedFormat && parts.length >= 7) {
+                // df -Th format: Filesystem Type Size Used Avail Use% Mounted
+                [filesystem, fstype, size, used, avail, usePercent, mountpoint] = parts;
+            } else if (parts.length >= 6) {
+                // Standard df format: Filesystem 1K-blocks Used Available Use% Mounted
+                [filesystem, size, used, avail, usePercent, mountpoint] = parts;
+                fstype = null;
+            } else {
+                continue;
+            }
+            
+            // Clean up use percentage
+            const usePct = parseInt(usePercent?.replace('%', '') || '0', 10);
+            
+            const entry = {
+                filesystem: filesystem,
+                fstype: fstype,
+                size: size,
+                used: used,
+                available: avail,
+                usePercent: usePct,
+                usePercentStr: usePercent,
+                mountpoint: mountpoint
+            };
+            
+            result.filesystems.push(entry);
+            result.mountToUsage[mountpoint] = entry;
+        }
+        
+        if (result.filesystems.length > 0) {
+            result.found = true;
+        }
+        
+        storageDebugLog('[dfOutput parser] Found:', result.filesystems.length, 'filesystems');
+        return result;
+    },
+    
+    extractDfFromSCC: function(content) {
+        // Extract df section from SCC's fs-diskio.txt
+        // Look for "# /bin/df" marker
+        const lines = content.split('\n');
+        const dfLines = [];
+        let inDfSection = false;
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
+            // Start of df section
+            if (line.includes('# /bin/df') || line.includes('# df ')) {
+                inDfSection = true;
+                continue;
+            }
+            
+            // End of df section (next command section marker)
+            if (inDfSection && (line.startsWith('#==') || (line.startsWith('# /') && !line.includes('df')))) {
+                break;
+            }
+            
+            // Collect df lines
+            if (inDfSection && line.trim()) {
+                dfLines.push(line);
+            }
+        }
+        
+        return dfLines.length > 0 ? dfLines.join('\n') : null;
     }
 };

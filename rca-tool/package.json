@@ -9,7 +9,8 @@
     "build:web": "cd web && bash build.sh",
     "build:cli": "cd cli && npm run build",
     "build:all": "npm run build:web && npm run build:cli",
-    "preview": "cd web && npm run preview"
+    "preview": "cd web && npm run preview",
+    "docs": "rm -rf docs && npx jsdoc -c jsdoc.json"
   },
   "keywords": [
     "sap",
@@ -20,5 +21,8 @@
     "sosreport"
   ],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "jsdoc": "^4.0.5"
+  }
 }

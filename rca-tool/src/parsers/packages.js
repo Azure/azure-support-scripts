@@ -1,5 +1,37 @@
-// Package detection parser (RPM/DEB/DNF/YUM)
-// This file is loaded by liblzma-streaming-worker.js via importScripts()
+/**
+ * @module parsers/packages
+ * @description Installed-package detection and Azure package version validation.
+ *
+ * ### distroPackagesParser
+ *
+ * Parses package listings from RPM, DEB, DNF, and YUM output files.
+ * Handles three distinct format families:
+ *
+ * | Format | Source files | Behaviour |
+ * |--------|-------------|-----------|
+ * | dpkg   | `dpkg_-l` | Returns raw content with header lines stripped. |
+ * | dnf/yum | `dnf_list_installed`, `yum_list_installed` | Returns filtered raw content. |
+ * | rpm    | `rpm.txt` (SCC), `installed-rpms`, `package-data` (SOS) | Validates Azure-required packages against minimum version rules. |
+ *
+ * For RPM listings the parser checks these Azure-critical packages:
+ *
+ * | Package | Requirement |
+ * |---------|-------------|
+ * | fence-agents | >= 4.4 |
+ * | python3-azure-mgmt-compute | >= 17.0 |
+ * | python3-azure-identity | >= 1.0 |
+ * | cloud-netconfig-azure | >= 1.3 |
+ * | resource-agents | >= 4.3 |
+ * | python3-azure-core | < 1.9 or > 1.22 (problematic range) |
+ *
+ * Returns:
+ * - RPM validated: `{ found, packages, warnings }`
+ * - Raw listings: `{ found, isDpkg|isRpmRaw, rawContent, filename, packageCount }`
+ *
+ * Loaded by the Web Worker via `importScripts()`.
+ *
+ * @see {@link module:worker} for registration in SCC_RULES
+ */
 
 // Debug logging - checks global DEBUG_CONFIG from worker.js
 function debugLog(...args) {

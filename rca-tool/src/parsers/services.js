@@ -1,18 +1,42 @@
 /**
- * Services Parsers for RCA Tool
- * 
- * Contains service and security software detection parsers:
- * - sshService: SSH service issues detection
- * - dlmService: Distributed Lock Manager service detection
- * - azureSiteRecovery: Azure Site Recovery (involflt) detection
- * - guardicoreAgent: Guardicore security agent detection
- * - illumio: Illumio security software detection
- * - trendMicro: Trend Micro Deep Security detection
- * - falconSensor: CrowdStrike Falcon Sensor detection
- * - msDefender: Microsoft Defender detection
- * 
- * These parsers are exported for use in the main worker file.
- * They will be manually assigned to SCC_RULES after SCC_RULES is defined.
+ * @module parsers/services
+ * @description Service status and security software detection parsers.
+ *
+ * These parsers detect system services and third-party security software
+ * from systemd unit files, RPM/process listings, and kernel module output.
+ *
+ * ### System service parsers
+ *
+ * | Parser | Detects | Severity |
+ * |--------|---------|----------|
+ * | **sshServiceParser** | SSH daemon start failures and `/var/empty/sshd` permission errors | error |
+ * | **dlmServiceParser** | DLM (Distributed Lock Manager) enabled in systemd -- conflicts with Pacemaker | error |
+ * | **azureSiteRecoveryParser** | Azure Site Recovery `involflt_start` service enabled | info |
+ *
+ * ### Security software parsers
+ *
+ * | Parser | Software | Detection method |
+ * |--------|----------|------------------|
+ * | **guardicoreAgentParser** | Guardicore micro-segmentation agent | systemd unit `gc-agent` |
+ * | **illumioParser** | Illumio security platform | systemd unit list (`illumio`) |
+ * | **trendMicroParser** | Trend Micro Deep Security | systemd unit `ds_agent.service` |
+ * | **falconSensorParser** | CrowdStrike Falcon Sensor | RPM `falcon-sensor` + process `/opt/CrowdStrike` |
+ * | **falconSensorConfigParser** | CrowdStrike config SAP exclusions | config files under `CrowdStrike`/`falcon` |
+ * | **msDefenderParser** | Microsoft Defender for Endpoint | RPM `mdatp` + process `wdavdaemon` |
+ * | **msDefenderConfigParser** | Defender config SAP exclusions | config files under `mdatp`/`defender` |
+ *
+ * ### Azure Site Recovery version parsers
+ *
+ * | Parser | Source | Returns |
+ * |--------|--------|---------|
+ * | **involfltVersionParser** | `modules.txt` (modinfo section) | `{ version, buildDate, loaded, filename }` |
+ * | **involfltKernelVersionParser** | `messages*.txt`, `boot.txt` | `{ version, source: 'kernel_log' }` |
+ *
+ * Security parsers check for SAP workload exclusion configuration and
+ * return warnings when exclusions are not found.
+ *
+ * @see {@link module:utils} detectSystemdService, detectSecuritySoftware, checkSAPExclusions
+ * @see {@link module:worker} for registration in SCC_RULES
  */
 
 // Debug logging - checks global DEBUG_CONFIG from worker.js

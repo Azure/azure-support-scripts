@@ -1,16 +1,73 @@
 /**
- * Cluster Parsers for RCA Tool
- * 
- * Contains Pacemaker, Corosync, and fencing/STONITH analysis parsers:
- * - corosyncConfig: Corosync configuration validation
- * - pacemakerResources: Pacemaker resource detection
- * - corosyncStatus: Corosync runtime status
- * - clusterStatus: Overall cluster health/status
- * - fencingConfig: STONITH/fencing configuration
- * - clusterEvents: Resource migrations and fencing events
- * 
- * These parsers are exported for use in the main worker file.
- * They will be manually assigned to SCC_RULES after SCC_RULES is defined.
+ * @module parsers/cluster
+ * @description Cluster Parsers for RCA Tool
+ *
+ * Provides 17 parsers for analysing Linux HA cluster configurations
+ * collected in SCC (supportconfig) and SOS (sosreport) archives.
+ * Coverage spans Corosync transport and quorum, Pacemaker resources and
+ * constraints, STONITH/SBD fencing, iSCSI targets, SAP Instance resources,
+ * Azure fence agent authentication, and cluster event timelines.
+ *
+ * ### Parser Inventory
+ *
+ * #### Core Cluster
+ *
+ * | Parser | File Patterns | Purpose |
+ * |--------|---------------|---------|
+ * | `corosyncConfigParser` | `ha.txt`, `corosync.conf` | Validates totem token/transport and quorum settings (two_node, expected_votes) |
+ * | `clusterNodesParser` | `ha.txt`, `pacemaker.log`, `corosync.conf`, `cib.xml`, `crm_mon*.txt` | Discovers node names and node-to-IP mappings from CIB, corosync nodelist, or crm_mon |
+ * | `hostsFileParser` | `network.txt`, `etc/hosts` | Extracts IP-to-hostname mappings from `/etc/hosts` |
+ * | `corosyncStatusParser` | `corosync-cfgtool*-s` | Parses runtime ring/link health, local node ID, and transport type |
+ * | `clusterStatusParser` | `cib.xml`, `crm_mon*.txt`, `ha.txt`, `pcs_status` | DC node, quorum, node count, per-node online/offline status |
+ * | `clusterDaemonStatusParser` | `pcs_status`, `ha.txt` | Checks corosync, pacemaker, pcsd daemon active/enabled status |
+ * | `clusterMaintenanceModeParser` | `cib.xml`, `crm_mon*.txt`, `ha.txt` | Detects cluster-wide or per-resource maintenance mode |
+ *
+ * #### Resources and Constraints
+ *
+ * | Parser | File Patterns | Purpose |
+ * |--------|---------------|---------|
+ * | `pacemakerResourcesParser` | `cib.xml`, `crm_mon*.txt`, `crm*config`, `pcs_config`, `pcs_status`, `ha.txt` | Resource definitions, clone/group membership, location/colocation/order constraints |
+ * | `azureScheduledEventsParser` | `pcs_status`, `crm_mon*`, `cib.xml` | Detects `health-azure` resource and per-node health monitoring attribute |
+ *
+ * #### Fencing and SBD
+ *
+ * | Parser | File Patterns | Purpose |
+ * |--------|---------------|---------|
+ * | `fencingConfigParser` | `cib.xml`, `crm_mon*.txt`, `crm*config`, `stonith`, `ha.txt`, `pcs_config`, `pcs_property` | STONITH device list, fence agent parameters, stonith-enabled property |
+ * | `sbdConfigParser` | `sbd`, `sysconfig/sbd`, `ha.txt` | SBD device paths, watchdog settings, pacemaker integration, timeout action |
+ * | `azureFenceAuthParser` | `cib.xml`, `ha.txt`, `crm*config` | `fence_azure_arm` auth method (MSI vs service principal), subscription/tenant, pcmk delays |
+ *
+ * #### Events and Live Migration
+ *
+ * | Parser | File Patterns | Purpose |
+ * |--------|---------------|---------|
+ * | `clusterEventsParser` | `pacemaker.log`, `corosync.log`, `messages`, `journalctl*` | **Multi-file**: accumulates node join/leave, resource failover, fencing actions across rotated logs |
+ * | `liveMigrationParser` | `pacemaker.log`, `corosync.log`, `messages`, `localmessages` | Detects Hyper-V Live Migration by matching hv_utils/hv_balloon/hv_netvsc sequence within 100 lines |
+ *
+ * #### SAP
+ *
+ * | Parser | File Patterns | Purpose |
+ * |--------|---------------|---------|
+ * | `sapInstanceConfigParser` | `pcs_config`, `cib.xml` | SAP Instance resource definitions: instance name, start profile, ERS flag, auto-recover |
+ * | `sapInstanceErrorsParser` | `analysis.txt`, `cluster-log.txt`, `messages` | START_PROFILE failures, gray/undefined resource states, filesystem errors |
+ *
+ * #### iSCSI
+ *
+ * | Parser | File Patterns | Purpose |
+ * |--------|---------------|---------|
+ * | `iscsiConfigParser` | `fs-iscsi.txt`, `iscsi/`, `iscsiadm`, `ha.txt`, `initiatorname.iscsi` | Initiator name, targets, sessions, hosts, startup mode, iscsid.conf settings |
+ *
+ * ### Multi-File Handling
+ *
+ * Only `clusterEventsParser` sets `multiFile: true` with `processAllRotations`
+ * to accumulate events across rotated log files. All other parsers process
+ * individual files independently.
+ *
+ * ### Common Dependencies
+ *
+ * Most parsers rely on `SCC_RULES.extractSection(content, filename, marker,
+ * fallbackFilename)` from worker.js to locate command output sections within
+ * aggregated SCC files like `ha.txt`.
  */
 
 // Debug logging - checks global DEBUG_CONFIG from worker.js
@@ -2448,7 +2505,8 @@ const clusterEventsParser = {
         // Target file patterns - pacemaker.log, corosync.log, cluster.log, ha-log, messages
         // Also includes journalctl output and crm_report archives
         // Includes rotated logs (.log-1, .log.1, etc.) and compressed logs (.gz)
-        filePattern: /\/(pacemaker\.log|corosync\.log|cluster\.log|ha-log|messages|journalctl[^\/]*)(?:[.-]\d+)?(?:\.txt)?(?:\.gz)?$/,
+        // Also includes ha.txt (supportconfig) which embeds pacemaker/corosync log sections
+        filePattern: /\/(pacemaker\.log|corosync\.log|cluster\.log|ha-log|messages|journalctl[^\/]*)(?:[.-]\d+)?(?:\.txt)?(?:\.gz)?$|\/ha\.txt$/,
         
         // System services and resources that should NOT be detected as cluster resources
         // These are common systemd/init services that can appear in logs with similar formatting
@@ -2457,8 +2515,98 @@ const clusterEventsParser = {
         // Non-cluster node patterns - tty, pts, console identifiers that are not actual cluster nodes
         nonClusterNodePattern: /^(tty\d*|pts\/?\d*|console|localhost|127\.0\.0\.1|::1|\d+)$/i,
         
+        /**
+         * Extract log sections from supportconfig ha.txt
+         * ha.txt embeds pacemaker/corosync logs under #==[ Log File ]====# markers
+         * Returns concatenated content from all matching log sections
+         */
+        extractLogSectionsFromHaTxt: function(content) {
+            const sectionParts = content.split(/^(#==\[.*?\]====.*$)/m);
+            const logSections = [];
+            
+            for (let i = 0; i < sectionParts.length; i++) {
+                const part = sectionParts[i];
+                
+                // Check if this is a Log File section marker containing pacemaker or corosync logs
+                if (part.match(/^#==\[\s*Log File\s*\]====/)) {
+                    // Check if the marker references cluster log files
+                    if (part.match(/pacemaker|corosync|cluster\.log|ha-log/i)) {
+                        // Next part is the section content
+                        if (i + 1 < sectionParts.length) {
+                            const sectionContent = sectionParts[i + 1];
+                            if (sectionContent && sectionContent.trim()) {
+                                logSections.push(sectionContent);
+                                debugLog('[clusterEvents parser] Extracted log section from ha.txt:', part.trim().substring(0, 120));
+                            }
+                        }
+                    }
+                }
+                
+                // Also check Command sections that contain cluster log output
+                // e.g., journalctl commands filtering pacemaker/corosync
+                if (part.match(/^#==\[\s*Command\s*\]====/)) {
+                    if (part.match(/journalctl.*(?:pacemaker|corosync)|pacemaker.*log|corosync.*log/i)) {
+                        if (i + 1 < sectionParts.length) {
+                            const sectionContent = sectionParts[i + 1];
+                            if (sectionContent && sectionContent.trim()) {
+                                logSections.push(sectionContent);
+                                debugLog('[clusterEvents parser] Extracted command log section from ha.txt:', part.trim().substring(0, 120));
+                            }
+                        }
+                    }
+                }
+            }
+            
+            debugLog('[clusterEvents parser] Extracted', logSections.length, 'log sections from ha.txt');
+            return logSections;
+        },
+        
         parse: function(content, filename) {
             debugLog('[clusterEvents parser] Analyzing cluster logs in:', filename, 'lines:', content.split('\n').length);
+            
+            // For supportconfig ha.txt, extract embedded log sections
+            if (filename.includes('ha.txt')) {
+                debugLog('[clusterEvents parser] Detected ha.txt (supportconfig), extracting embedded log sections');
+                const logSections = this.extractLogSectionsFromHaTxt(content);
+                
+                if (logSections.length === 0) {
+                    debugLog('[clusterEvents parser] No log sections found in ha.txt');
+                    return { found: false };
+                }
+                
+                // Parse each extracted log section and merge results
+                const allResourceMigrations = [];
+                const allFencingEvents = [];
+                
+                for (const section of logSections) {
+                    const result = this.parseLogContent(section, filename);
+                    if (result.found) {
+                        allResourceMigrations.push(...(result.resourceMigrations || []));
+                        allFencingEvents.push(...(result.fencingEvents || []));
+                    }
+                }
+                
+                debugLog('[clusterEvents parser] ha.txt total:', allResourceMigrations.length, 'resource events,', allFencingEvents.length, 'fencing events');
+                
+                if (allResourceMigrations.length === 0 && allFencingEvents.length === 0) {
+                    return { found: false };
+                }
+                
+                return {
+                    found: true,
+                    resourceMigrations: allResourceMigrations,
+                    fencingEvents: allFencingEvents,
+                    totalEvents: allResourceMigrations.length + allFencingEvents.length,
+                    count: allResourceMigrations.length + allFencingEvents.length
+                };
+            }
+            
+            // For direct log files, parse content directly
+            return this.parseLogContent(content, filename);
+        },
+        
+        parseLogContent: function(content, filename) {
+            debugLog('[clusterEvents parser] Parsing log content from:', filename, 'lines:', content.split('\n').length);
             
             const resourceMigrations = [];
             const fencingEvents = [];
@@ -2651,10 +2799,11 @@ const clusterEventsParser = {
                 // - "Fencing <node>: success"
                 // - "stonith: Succeeded: st_delete_device_0 on <node>"
                 // - "Requesting fencing ([on|reboot|off]) of node <node>"
+                // - "Requesting fencing (reboot) targeting node <node>" (RHEL/sosreport format)
                 // - "fence_azure_arm: Called fence_azure_arm for <node>"
                 // - "Node <node> will be fenced"
                 
-                const fenceRequestMatch = trimmed.match(/Requesting\s+fencing\s+\((\w+)\)\s+(?:of\s+)?(?:node\s+)?(\S+)/i);
+                const fenceRequestMatch = trimmed.match(/Requesting\s+fencing\s+\((\w+)\)\s+(?:of\s+|targeting\s+)?(?:node\s+)?(\S+)/i);
                 if (fenceRequestMatch) {
                     const [, action, node] = fenceRequestMatch;
                     fencingEvents.push({
@@ -2726,6 +2875,25 @@ const clusterEventsParser = {
                     continue;
                 }
                 
+                // "Peer <node> was not terminated (reboot)" — fencing failure
+                const peerNotTerminated = messageText.match(/(?:Peer|peer)\s+(\S+)\s+was\s+not\s+terminated\s+\((\w+)\)/i);
+                if (peerNotTerminated) {
+                    const [, node, action] = peerNotTerminated;
+                    if (!fencingEvents.find(e => e.targetNode === node && e.sourceLine === lineNum + 1)) {
+                        fencingEvents.push({
+                            timestamp: timestamp,
+                            targetNode: node,
+                            action: action,
+                            status: 'failed',
+                            sourceFile: filename,
+                            sourceLine: lineNum + 1,
+                            logLine: trimmed.substring(0, 200)
+                        });
+                        debugLog('[clusterEvents parser] Found peer termination FAILURE:', node, action);
+                    }
+                    continue;
+                }
+                
                 // "stonith_api_time: <node> was fenced successfully"
                 const apiSuccess = messageText.match(/stonith.*?(\S+)\s+was\s+fenced\s+successfully/i);
                 if (apiSuccess) {
@@ -2761,8 +2929,8 @@ const clusterEventsParser = {
                     continue;
                 }
                 
-                // "Node <node> will be fenced"
-                const fenceWillMatch = messageText.match(/(?:Node|peer)\s+(\S+)\s+will\s+be\s+fenced/i);
+                // "Node <node> will be fenced" / "Cluster node <node> will be fenced"
+                const fenceWillMatch = messageText.match(/(?:Cluster\s+node|Node|peer)\s+(\S+)\s+will\s+be\s+fenced/i);
                 if (fenceWillMatch) {
                     const node = fenceWillMatch[1];
                     if (!fencingEvents.find(e => e.targetNode === node && e.sourceLine === lineNum + 1)) {
@@ -2879,7 +3047,8 @@ const clusterEventsParser = {
                 found: true,
                 resourceMigrations: resourceMigrations,
                 fencingEvents: fencingEvents,
-                totalEvents: resourceMigrations.length + fencingEvents.length
+                totalEvents: resourceMigrations.length + fencingEvents.length,
+                count: resourceMigrations.length + fencingEvents.length
             };
         }
 };
@@ -2979,6 +3148,969 @@ const liveMigrationParser = {
         }
 };
 
+// Parser to detect SAP SAPInstance resource configuration issues
+// Detects START_PROFILE mismatches, InstanceName issues, and validates configuration
+// Reference: https://docs.redhat.com/en/documentation/red_hat_enterprise_linux_for_sap_solutions/8/html/configuring_ha_clusters_to_manage_sap_netweaver_or_sap_s4hana_application_server_instances_using_the_rhel_ha_add-on
+const sapInstanceConfigParser = {
+    // Target file patterns - pcs_config, crm_mon, and cib.xml
+    filePattern: /\/pcs_config|\/cib\.xml$/,
+    
+    parse: function(content, filename) {
+        debugLog('[sapInstanceConfig parser] Analyzing SAP instance configuration in:', filename);
+        
+        const instances = [];
+        const warnings = [];
+        let found = false;
+        
+        const lines = content.split('\n');
+        let currentResource = null;
+        let inSAPInstanceResource = false;
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmed = line.trim();
+            
+            // Detect SAPInstance resource definition
+            // Format: "Resource: rsc_sap_PJU_SCS01 (class=ocf provider=heartbeat type=SAPInstance)"
+            const resourceMatch = trimmed.match(/Resource:\s+(\S+)\s+\(.*type=SAPInstance\)/i);
+            if (resourceMatch) {
+                if (currentResource) {
+                    instances.push(currentResource);
+                }
+                currentResource = {
+                    resourceName: resourceMatch[1],
+                    instanceName: null,
+                    startProfile: null,
+                    isERS: false,
+                    automaticRecover: null,
+                    warnings: [],
+                    lineNumber: i + 1
+                };
+                inSAPInstanceResource = true;
+                found = true;
+                debugLog('[sapInstanceConfig parser] Found SAPInstance resource:', resourceMatch[1]);
+                continue;
+            }
+            
+            // Also check for XML format in cib.xml
+            // <primitive id="rsc_sap_PJU_SCS01" class="ocf" provider="heartbeat" type="SAPInstance">
+            const xmlResourceMatch = trimmed.match(/<primitive\s+id="([^"]+)"[^>]*type="SAPInstance"/i);
+            if (xmlResourceMatch) {
+                if (currentResource) {
+                    instances.push(currentResource);
+                }
+                currentResource = {
+                    resourceName: xmlResourceMatch[1],
+                    instanceName: null,
+                    startProfile: null,
+                    isERS: false,
+                    automaticRecover: null,
+                    warnings: [],
+                    lineNumber: i + 1
+                };
+                inSAPInstanceResource = true;
+                found = true;
+                debugLog('[sapInstanceConfig parser] Found SAPInstance resource (XML):', xmlResourceMatch[1]);
+                continue;
+            }
+            
+            // Exit resource section on next resource or group definition
+            if (inSAPInstanceResource && (trimmed.match(/^Resource:/) || trimmed.match(/^Group:/))) {
+                if (currentResource && !trimmed.includes('SAPInstance')) {
+                    instances.push(currentResource);
+                    currentResource = null;
+                    inSAPInstanceResource = false;
+                }
+            }
+            
+            // Parse attributes within SAPInstance resource
+            if (currentResource) {
+                // Attributes line: "Attributes: AUTOMATIC_RECOVER=false InstanceName=PJU_SCS01_ppu-scs START_PROFILE=/sapmnt/PJU/profile/..."
+                const attrMatch = trimmed.match(/Attributes:\s+(.*)/i);
+                if (attrMatch) {
+                    const attrString = attrMatch[1];
+                    
+                    // Extract InstanceName
+                    const instanceNameMatch = attrString.match(/InstanceName=(\S+)/);
+                    if (instanceNameMatch) {
+                        currentResource.instanceName = instanceNameMatch[1];
+                    }
+                    
+                    // Extract START_PROFILE
+                    const startProfileMatch = attrString.match(/START_PROFILE=(\S+)/);
+                    if (startProfileMatch) {
+                        currentResource.startProfile = startProfileMatch[1];
+                    }
+                    
+                    // Extract IS_ERS
+                    const isErsMatch = attrString.match(/IS_ERS=(\S+)/i);
+                    if (isErsMatch) {
+                        currentResource.isERS = isErsMatch[1].toLowerCase() === 'true';
+                    }
+                    
+                    // Extract AUTOMATIC_RECOVER
+                    const autoRecoverMatch = attrString.match(/AUTOMATIC_RECOVER=(\S+)/i);
+                    if (autoRecoverMatch) {
+                        currentResource.automaticRecover = autoRecoverMatch[1].toLowerCase() === 'true';
+                    }
+                }
+                
+                // Also parse XML format nvpair elements
+                // <nvpair id="..." name="InstanceName" value="PJU_SCS01_ppu-scs"/>
+                const xmlNvpairMatch = trimmed.match(/<nvpair[^>]*name="([^"]+)"[^>]*value="([^"]+)"/i);
+                if (xmlNvpairMatch) {
+                    const name = xmlNvpairMatch[1];
+                    const value = xmlNvpairMatch[2];
+                    
+                    if (name === 'InstanceName') {
+                        currentResource.instanceName = value;
+                    } else if (name === 'START_PROFILE') {
+                        currentResource.startProfile = value;
+                    } else if (name === 'IS_ERS') {
+                        currentResource.isERS = value.toLowerCase() === 'true';
+                    } else if (name === 'AUTOMATIC_RECOVER') {
+                        currentResource.automaticRecover = value.toLowerCase() === 'true';
+                    }
+                }
+            }
+        }
+        
+        // Don't forget the last resource
+        if (currentResource) {
+            instances.push(currentResource);
+        }
+        
+        // Validate each instance and generate warnings
+        instances.forEach(instance => {
+            // Validate START_PROFILE
+            if (instance.startProfile) {
+                // Extract expected format: /sapmnt/<SID>/profile/<SID>_<INSTANCE>_<hostname>
+                const profileMatch = instance.startProfile.match(/\/sapmnt\/([^\/]+)\/profile\/([^\/]+)$/);
+                if (profileMatch) {
+                    const profileFilename = profileMatch[2];
+                    // Profile should match pattern: <SID>_<INSTANCE>_<hostname>
+                    // e.g., PJU_SCS01_sapascs or PJU_ERS11_sapers
+                    
+                    // Check if InstanceName hostname matches START_PROFILE hostname
+                    if (instance.instanceName) {
+                        const instanceParts = instance.instanceName.split('_');
+                        const profileParts = profileFilename.split('_');
+                        
+                        if (instanceParts.length >= 3 && profileParts.length >= 3) {
+                            const instanceHostname = instanceParts.slice(2).join('_');
+                            const profileHostname = profileParts.slice(2).join('_');
+                            
+                            if (instanceHostname !== profileHostname) {
+                                const warning = {
+                                    severity: 'warning',
+                                    type: 'hostname_mismatch',
+                                    message: `InstanceName hostname "${instanceHostname}" does not match START_PROFILE hostname "${profileHostname}"`,
+                                    recommendation: 'Verify that InstanceName and START_PROFILE reference the same virtual hostname for the SAP instance.',
+                                    resourceName: instance.resourceName,
+                                    instanceName: instance.instanceName,
+                                    startProfile: instance.startProfile
+                                };
+                                instance.warnings.push(warning);
+                                warnings.push(warning);
+                                debugLog('[sapInstanceConfig parser] Hostname mismatch detected:', instance.resourceName);
+                            }
+                        }
+                    }
+                }
+            } else {
+                // START_PROFILE is required
+                const warning = {
+                    severity: 'error',
+                    type: 'missing_start_profile',
+                    message: 'START_PROFILE attribute is missing',
+                    recommendation: 'Add START_PROFILE parameter pointing to the SAP instance profile file at /sapmnt/<SID>/profile/<SID>_<INSTANCE>_<virtual_hostname>',
+                    resourceName: instance.resourceName
+                };
+                instance.warnings.push(warning);
+                warnings.push(warning);
+            }
+            
+            // Check InstanceName format
+            if (instance.instanceName) {
+                // Expected format: <SID>_<INSTANCE>_<hostname> e.g., PJU_SCS01_sapascs
+                const instanceMatch = instance.instanceName.match(/^([A-Z0-9]{3})_(ASCS|SCS|ERS|D|J)(\d{2})_(.+)$/i);
+                if (!instanceMatch) {
+                    const warning = {
+                        severity: 'warning',
+                        type: 'invalid_instance_format',
+                        message: `InstanceName "${instance.instanceName}" does not follow expected format <SID>_<INSTANCE>_<hostname>`,
+                        recommendation: 'InstanceName should be in format <SID>_<InstanceType><InstanceNumber>_<virtual_hostname>, e.g., PJU_SCS01_sapascs',
+                        resourceName: instance.resourceName
+                    };
+                    instance.warnings.push(warning);
+                    warnings.push(warning);
+                }
+            } else {
+                // InstanceName is required
+                const warning = {
+                    severity: 'error',
+                    type: 'missing_instance_name',
+                    message: 'InstanceName attribute is missing',
+                    recommendation: 'Add InstanceName parameter in format <SID>_<InstanceType><InstanceNumber>_<virtual_hostname>',
+                    resourceName: instance.resourceName
+                };
+                instance.warnings.push(warning);
+                warnings.push(warning);
+            }
+            
+            debugLog('[sapInstanceConfig parser] Validated resource:', instance.resourceName,
+                    'InstanceName:', instance.instanceName,
+                    'START_PROFILE:', instance.startProfile,
+                    'Warnings:', instance.warnings.length);
+        });
+        
+        if (!found) {
+            debugLog('[sapInstanceConfig parser] No SAPInstance resources found');
+            return { found: false };
+        }
+        
+        debugLog('[sapInstanceConfig parser] Found', instances.length, 'SAPInstance resources with', warnings.length, 'warnings');
+        
+        return {
+            found: true,
+            instances: instances,
+            warnings: warnings,
+            instanceCount: instances.length,
+            warningCount: warnings.length
+        };
+    }
+};
+
+// Parser to detect SAP instance service errors from cluster logs
+// Detects START_PROFILE not found errors and GRAY status service errors
+// Reference: https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-rhel-nfs-azure-files
+const sapInstanceErrorsParser = {
+    // Target file patterns - crm_report logs, messages, syslog
+    filePattern: /\/analysis\.txt$|\/cluster-log\.txt$|\/messages|\/var\/log\/messages/,
+    
+    parse: function(content, filename) {
+        debugLog('[sapInstanceErrors parser] Analyzing SAP instance errors in:', filename);
+        
+        const errors = [];
+        const startProfileErrors = [];
+        const grayStatusErrors = [];
+        const filesystemErrors = [];
+        let found = false;
+        
+        const lines = content.split('\n');
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
+            // Detect START_PROFILE errors
+            // Pattern: "SAPInstance(rsc_sap_PJU_ERS11)[16872]: ERROR: Expected /sapmnt/PJU/profile/PJU_ERS11_awenwjeusscs to be the instance START profile"
+            const startProfileMatch = line.match(/SAPInstance\(([^)]+)\)\[\d+\]:\s*ERROR:\s*Expected\s+(\S+)\s+to be the instance START profile/i);
+            if (startProfileMatch) {
+                const resourceName = startProfileMatch[1];
+                const profilePath = startProfileMatch[2];
+                
+                // Extract timestamp if present
+                const timestampMatch = line.match(/^(\w+\s+\d+\s+\d+:\d+:\d+)/);
+                const timestamp = timestampMatch ? timestampMatch[1] : null;
+                
+                // Avoid duplicates
+                const existingError = startProfileErrors.find(e => 
+                    e.resourceName === resourceName && e.profilePath === profilePath);
+                
+                if (!existingError) {
+                    const error = {
+                        type: 'start_profile_not_found',
+                        severity: 'error',
+                        resourceName: resourceName,
+                        profilePath: profilePath,
+                        timestamp: timestamp,
+                        lineNumber: i + 1,
+                        message: `SAP profile file "${profilePath}" not found for resource ${resourceName}`,
+                        recommendation: 'Verify that the START_PROFILE path points to an existing SAP profile file. The profile filename should match the virtual hostname configured for the SAP instance. Check /sapmnt/<SID>/profile/ for available profiles.',
+                        rawLine: line.trim()
+                    };
+                    startProfileErrors.push(error);
+                    errors.push(error);
+                    found = true;
+                    debugLog('[sapInstanceErrors parser] Found START_PROFILE error:', resourceName, profilePath);
+                }
+            }
+            
+            // Detect GRAY status errors
+            // Pattern: "SAPInstance(rsc_sap_PJU_SCS01)[37447]: ERROR: SAP instance service msg_server is not running with status GRAY !"
+            const grayStatusMatch = line.match(/SAPInstance\(([^)]+)\)\[\d+\]:\s*ERROR:\s*SAP instance service\s+(\S+)\s+is not running with status GRAY/i);
+            if (grayStatusMatch) {
+                const resourceName = grayStatusMatch[1];
+                const serviceName = grayStatusMatch[2];
+                
+                // Extract timestamp if present
+                const timestampMatch = line.match(/^(\w+\s+\d+\s+\d+:\d+:\d+)/);
+                const timestamp = timestampMatch ? timestampMatch[1] : null;
+                
+                // Avoid duplicates
+                const existingError = grayStatusErrors.find(e => 
+                    e.resourceName === resourceName && e.serviceName === serviceName);
+                
+                if (!existingError) {
+                    const error = {
+                        type: 'sap_service_gray_status',
+                        severity: 'error',
+                        resourceName: resourceName,
+                        serviceName: serviceName,
+                        timestamp: timestamp,
+                        lineNumber: i + 1,
+                        message: `SAP service "${serviceName}" is not running (status GRAY) for resource ${resourceName}`,
+                        recommendation: 'GRAY status indicates the SAP service failed to start or crashed. Check SAP instance logs under /usr/sap/<SID>/<INSTANCE>/work/ for startup errors. Verify NFS mounts are available and SAP profile is correct.',
+                        rawLine: line.trim()
+                    };
+                    grayStatusErrors.push(error);
+                    errors.push(error);
+                    found = true;
+                    debugLog('[sapInstanceErrors parser] Found GRAY status error:', resourceName, serviceName);
+                }
+            }
+            
+            // Detect filesystem unmount errors (related to SAP)
+            // Pattern: "Filesystem(fs_PJU_SCS)[38065]: ERROR: Couldn't unmount /usr/sap/PJU/SCS01"
+            const fsErrorMatch = line.match(/Filesystem\(([^)]+)\)\[\d+\]:\s*ERROR:\s*Couldn't unmount\s+(\S+)/i);
+            if (fsErrorMatch) {
+                const resourceName = fsErrorMatch[1];
+                const mountPoint = fsErrorMatch[2];
+                
+                // Extract timestamp if present
+                const timestampMatch = line.match(/^(\w+\s+\d+\s+\d+:\d+:\d+)/);
+                const timestamp = timestampMatch ? timestampMatch[1] : null;
+                
+                // Avoid duplicates
+                const existingError = filesystemErrors.find(e => 
+                    e.resourceName === resourceName && e.mountPoint === mountPoint);
+                
+                if (!existingError) {
+                    const error = {
+                        type: 'filesystem_unmount_error',
+                        severity: 'warning',
+                        resourceName: resourceName,
+                        mountPoint: mountPoint,
+                        timestamp: timestamp,
+                        lineNumber: i + 1,
+                        message: `Failed to unmount filesystem "${mountPoint}" for resource ${resourceName}`,
+                        recommendation: 'Check for processes still using the filesystem with "lsof" or "fuser". This may indicate SAP processes did not stop cleanly before failover.',
+                        rawLine: line.trim()
+                    };
+                    filesystemErrors.push(error);
+                    errors.push(error);
+                    found = true;
+                    debugLog('[sapInstanceErrors parser] Found filesystem error:', resourceName, mountPoint);
+                }
+            }
+        }
+        
+        if (!found) {
+            debugLog('[sapInstanceErrors parser] No SAP instance errors found');
+            return { found: false };
+        }
+        
+        debugLog('[sapInstanceErrors parser] Found', errors.length, 'SAP errors:',
+                'START_PROFILE:', startProfileErrors.length,
+                'GRAY status:', grayStatusErrors.length,
+                'Filesystem:', filesystemErrors.length);
+        
+        return {
+            found: true,
+            errors: errors,
+            startProfileErrors: startProfileErrors,
+            grayStatusErrors: grayStatusErrors,
+            filesystemErrors: filesystemErrors,
+            errorCount: errors.length,
+            summary: {
+                startProfileErrorCount: startProfileErrors.length,
+                grayStatusErrorCount: grayStatusErrors.length,
+                filesystemErrorCount: filesystemErrors.length
+            }
+        };
+    }
+};
+
+/**
+ * Parser: clusterMaintenanceMode
+ * Detects if cluster is in maintenance mode
+ * Checks for maintenance-mode property in CIB or crm_mon output
+ */
+const clusterMaintenanceModeParser = {
+    filePattern: /cib\.xml$|\/crm_mon.*\.txt$|\/ha\.txt$/,
+    
+    parse: function(content, filename) {
+        debugLog('[clusterMaintenanceMode parser] Analyzing:', filename);
+        
+        const result = {
+            found: false,
+            maintenanceMode: null,
+            resourcesInMaintenance: [],
+            warnings: [],
+            sourceFile: null
+        };
+        
+        // Check for cluster-wide maintenance mode
+        // CIB format: <nvpair name="maintenance-mode" value="true"/>
+        const maintenanceModeMatch = content.match(/name=["']maintenance-mode["']\s+value=["'](true|false)["']/i);
+        if (maintenanceModeMatch) {
+            result.found = true;
+            result.maintenanceMode = maintenanceModeMatch[1].toLowerCase() === 'true';
+            result.sourceFile = filename;
+            
+            if (result.maintenanceMode) {
+                result.warnings.push({
+                    type: 'cluster_in_maintenance',
+                    severity: 'warning',
+                    message: 'Cluster is in maintenance mode - resources will not be managed',
+                    recommendation: 'Run "crm configure property maintenance-mode=false" to exit maintenance mode when ready'
+                });
+            }
+            debugLog('[clusterMaintenanceMode parser] Found maintenance-mode:', result.maintenanceMode);
+        }
+        
+        // Also check crm_mon output for "Resource management is DISABLED"
+        if (content.includes('Resource management is DISABLED')) {
+            result.found = true;
+            result.maintenanceMode = true;
+            result.sourceFile = filename;
+            if (!result.warnings.find(w => w.type === 'cluster_in_maintenance')) {
+                result.warnings.push({
+                    type: 'cluster_in_maintenance',
+                    severity: 'warning',
+                    message: 'Cluster resource management is DISABLED',
+                    recommendation: 'Check if cluster is in maintenance mode or stonith is disabled'
+                });
+            }
+        }
+        
+        // Check for individual resources in maintenance
+        // crm_mon format: (maintenance) or [maintenance]
+        const maintenanceResourceMatches = content.matchAll(/(?:Resource|Clone Set|Primary\/Secondary Set|Resource Group):\s+([^\s(]+).*?\(.*?maintenance.*?\)/gi);
+        for (const match of maintenanceResourceMatches) {
+            result.resourcesInMaintenance.push(match[1]);
+        }
+        
+        if (result.resourcesInMaintenance.length > 0) {
+            result.found = true;
+            result.warnings.push({
+                type: 'resources_in_maintenance',
+                severity: 'info',
+                message: `${result.resourcesInMaintenance.length} resource(s) in maintenance mode`,
+                resources: result.resourcesInMaintenance
+            });
+        }
+        
+        return result;
+    }
+};
+
+/**
+ * Parser: sbdConfig
+ * Parses SBD (STONITH Block Device) configuration
+ * File patterns: /etc/sysconfig/sbd, sbd (crm_report), ha.txt (supportconfig)
+ */
+const sbdConfigParser = {
+    filePattern: /\/sbd$|\/sysconfig\/sbd|\/ha\.txt$/,
+    
+    parse: function(content, filename) {
+        debugLog('[sbdConfig parser] Analyzing:', filename);
+        
+        const result = {
+            found: false,
+            sbdDevice: null,
+            sbdDevices: [],
+            sbdPacemaker: null,
+            sbdStartmode: null,
+            sbdDelayStart: null,
+            sbdWatchdogDev: null,
+            sbdWatchdogTimeout: null,
+            sbdTimeoutAction: null,
+            warnings: [],
+            recommendations: [],
+            sourceFile: null
+        };
+        
+        // Extract SBD config section if from ha.txt
+        let sbdContent = content;
+        if (filename.includes('ha.txt')) {
+            const section = SCC_RULES.extractSection(content, filename, '# /etc/sysconfig/sbd', 'sbd');
+            if (section.found) {
+                sbdContent = section.content;
+            } else {
+                return result;
+            }
+        }
+        
+        // Skip if this looks like sbd.txt (dump output) not config
+        if (sbdContent.includes('sbd dump') || sbdContent.includes('==[ Command ]')) {
+            return result;
+        }
+        
+        const lines = sbdContent.split('\n');
+        
+        for (const line of lines) {
+            const trimmed = line.trim();
+            // Skip comments
+            if (trimmed.startsWith('#') || !trimmed) continue;
+            
+            // Parse SBD_DEVICE
+            const deviceMatch = trimmed.match(/^SBD_DEVICE=["']?([^"'\n]+)["']?/);
+            if (deviceMatch) {
+                result.found = true;
+                result.sbdDevice = deviceMatch[1];
+                // Split by semicolon for multiple devices
+                result.sbdDevices = deviceMatch[1].split(';').filter(d => d.trim());
+                result.sourceFile = filename;
+                debugLog('[sbdConfig parser] Found SBD_DEVICE:', result.sbdDevice);
+            }
+            
+            // Parse SBD_PACEMAKER
+            const pacemakerMatch = trimmed.match(/^SBD_PACEMAKER=["']?(\w+)["']?/);
+            if (pacemakerMatch) {
+                result.found = true;
+                result.sbdPacemaker = pacemakerMatch[1].toLowerCase();
+                if (result.sbdPacemaker !== 'yes') {
+                    result.warnings.push({
+                        type: 'sbd_pacemaker_disabled',
+                        severity: 'warning',
+                        message: `SBD_PACEMAKER is not set to "yes" (current: ${result.sbdPacemaker})`,
+                        recommendation: 'Set SBD_PACEMAKER=yes for proper Pacemaker integration'
+                    });
+                }
+            }
+            
+            // Parse SBD_STARTMODE
+            const startmodeMatch = trimmed.match(/^SBD_STARTMODE=["']?(\w+)["']?/);
+            if (startmodeMatch) {
+                result.found = true;
+                result.sbdStartmode = startmodeMatch[1].toLowerCase();
+                if (result.sbdStartmode !== 'always') {
+                    result.warnings.push({
+                        type: 'sbd_startmode_not_always',
+                        severity: 'info',
+                        message: `SBD_STARTMODE is "${result.sbdStartmode}" (recommended: "always")`,
+                        recommendation: 'Consider setting SBD_STARTMODE=always for Azure deployments'
+                    });
+                }
+            }
+            
+            // Parse SBD_DELAY_START
+            const delayMatch = trimmed.match(/^SBD_DELAY_START=["']?([^"'\n]+)["']?/);
+            if (delayMatch) {
+                result.found = true;
+                result.sbdDelayStart = delayMatch[1].toLowerCase();
+                // Azure recommendation: use numeric value (e.g., 216) not "no" or "yes"
+                if (result.sbdDelayStart === 'no' || result.sbdDelayStart === 'yes') {
+                    result.warnings.push({
+                        type: 'sbd_delay_start_not_numeric',
+                        severity: 'warning',
+                        message: `SBD_DELAY_START is "${result.sbdDelayStart}" but should be a numeric value`,
+                        recommendation: 'Set SBD_DELAY_START to a specific delay value in seconds (e.g., 216) per Azure best practices',
+                        documentationUrl: 'https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-suse-pacemaker'
+                    });
+                }
+            }
+            
+            // Parse SBD_WATCHDOG_DEV
+            const watchdogDevMatch = trimmed.match(/^SBD_WATCHDOG_DEV=["']?([^"'\n]+)["']?/);
+            if (watchdogDevMatch) {
+                result.found = true;
+                result.sbdWatchdogDev = watchdogDevMatch[1];
+            }
+            
+            // Parse SBD_WATCHDOG_TIMEOUT
+            const watchdogTimeoutMatch = trimmed.match(/^SBD_WATCHDOG_TIMEOUT=["']?(\d+)["']?/);
+            if (watchdogTimeoutMatch) {
+                result.found = true;
+                result.sbdWatchdogTimeout = parseInt(watchdogTimeoutMatch[1], 10);
+            }
+            
+            // Parse SBD_TIMEOUT_ACTION
+            const timeoutActionMatch = trimmed.match(/^SBD_TIMEOUT_ACTION=["']?([^"'\n]+)["']?/);
+            if (timeoutActionMatch) {
+                result.found = true;
+                result.sbdTimeoutAction = timeoutActionMatch[1];
+            }
+        }
+        
+        // Add recommendation for SBD device count
+        if (result.sbdDevices.length === 2) {
+            result.warnings.push({
+                type: 'sbd_two_devices',
+                severity: 'warning',
+                message: 'Only 2 SBD devices configured - this is not recommended',
+                recommendation: 'Use 1 or 3 SBD devices. With 2 devices, Pacemaker cannot automatically fence if one becomes unavailable.',
+                documentationUrl: 'https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-suse-pacemaker'
+            });
+        } else if (result.sbdDevices.length > 0) {
+            result.recommendations.push({
+                type: 'sbd_device_count',
+                severity: 'info',
+                message: `${result.sbdDevices.length} SBD device(s) configured`,
+                detail: result.sbdDevices.length === 3 ? 'Optimal configuration for high availability' : 
+                        result.sbdDevices.length === 1 ? 'Single device configuration' : `${result.sbdDevices.length} devices configured`
+            });
+        }
+        
+        return result;
+    }
+};
+
+/**
+ * Parser: azureFenceAuth
+ * Detects if Azure fence agent uses managed identity (MSI) or service principal
+ * Parses fence_azure_arm configuration from CIB
+ */
+const azureFenceAuthParser = {
+    filePattern: /cib\.xml$|\/ha\.txt$|\/crm.*config$/,
+    
+    parse: function(content, filename) {
+        debugLog('[azureFenceAuth parser] Analyzing:', filename);
+        
+        const result = {
+            found: false,
+            authMethod: null,  // 'msi' or 'service_principal'
+            subscriptionId: null,
+            resourceGroup: null,
+            tenantId: null,
+            hasLogin: false,
+            hasPassword: false,
+            pcmkMonitorRetries: null,
+            pcmkActionLimit: null,
+            powerTimeout: null,
+            pcmkRebootTimeout: null,
+            pcmkDelayMax: null,
+            pcmkHostMap: null,
+            warnings: [],
+            recommendations: [],
+            sourceFile: null
+        };
+        
+        // Check for fence_azure_arm primitive
+        if (!content.includes('fence_azure_arm')) {
+            return result;
+        }
+        
+        result.found = true;
+        result.sourceFile = filename;
+        
+        // Check for MSI configuration
+        const msiMatch = content.match(/name=["']msi["']\s+value=["'](true|false)["']/i);
+        if (msiMatch && msiMatch[1].toLowerCase() === 'true') {
+            result.authMethod = 'msi';
+            result.recommendations.push({
+                type: 'using_msi',
+                severity: 'info',
+                message: 'Azure fence agent is using Managed Identity (MSI) - recommended configuration'
+            });
+        }
+        
+        // Check for service principal indicators (login/passwd)
+        const loginMatch = content.match(/name=["']login["']\s+value=["']([^"']+)["']/i);
+        if (loginMatch) {
+            result.hasLogin = true;
+            if (!result.authMethod) {
+                result.authMethod = 'service_principal';
+            }
+        }
+        
+        const passwdMatch = content.match(/name=["'](?:passwd|password)["']\s+value=/i);
+        if (passwdMatch) {
+            result.hasPassword = true;
+            if (!result.authMethod) {
+                result.authMethod = 'service_principal';
+            }
+        }
+        
+        // If using service principal, add recommendation to migrate to MSI
+        if (result.authMethod === 'service_principal') {
+            result.warnings.push({
+                type: 'using_service_principal',
+                severity: 'warning',
+                message: 'Azure fence agent is using Service Principal authentication',
+                recommendation: 'Consider migrating to Managed Identity (MSI) for improved security and easier credential management',
+                documentationUrl: 'https://techcommunity.microsoft.com/t5/running-sap-applications-on-the/sap-on-azure-high-availability-change-from-spn-to-msi-for/ba-p/3609278'
+            });
+        }
+        
+        // Extract subscriptionId
+        const subIdMatch = content.match(/name=["']subscriptionId["']\s+value=["']([^"']+)["']/i);
+        if (subIdMatch) {
+            result.subscriptionId = subIdMatch[1];
+        }
+        
+        // Extract resourceGroup
+        const rgMatch = content.match(/name=["']resourceGroup["']\s+value=["']([^"']+)["']/i);
+        if (rgMatch) {
+            result.resourceGroup = rgMatch[1];
+        }
+        
+        // Extract tenantId
+        const tenantMatch = content.match(/name=["']tenantId["']\s+value=["']([^"']+)["']/i);
+        if (tenantMatch) {
+            result.tenantId = tenantMatch[1];
+        }
+        
+        // Extract pcmk parameters
+        const pcmkMonitorRetriesMatch = content.match(/name=["']pcmk_monitor_retries["']\s+value=["'](\d+)["']/i);
+        if (pcmkMonitorRetriesMatch) {
+            result.pcmkMonitorRetries = parseInt(pcmkMonitorRetriesMatch[1], 10);
+        }
+        
+        const pcmkActionLimitMatch = content.match(/name=["']pcmk_action_limit["']\s+value=["'](\d+)["']/i);
+        if (pcmkActionLimitMatch) {
+            result.pcmkActionLimit = parseInt(pcmkActionLimitMatch[1], 10);
+        }
+        
+        const powerTimeoutMatch = content.match(/name=["']power_timeout["']\s+value=["'](\d+)["']/i);
+        if (powerTimeoutMatch) {
+            result.powerTimeout = parseInt(powerTimeoutMatch[1], 10);
+        }
+        
+        const pcmkRebootTimeoutMatch = content.match(/name=["']pcmk_reboot_timeout["']\s+value=["'](\d+)["']/i);
+        if (pcmkRebootTimeoutMatch) {
+            result.pcmkRebootTimeout = parseInt(pcmkRebootTimeoutMatch[1], 10);
+        }
+        
+        const pcmkDelayMaxMatch = content.match(/name=["']pcmk_delay_max["']\s+value=["'](\d+)["']/i);
+        if (pcmkDelayMaxMatch) {
+            result.pcmkDelayMax = parseInt(pcmkDelayMaxMatch[1], 10);
+        }
+        
+        const pcmkHostMapMatch = content.match(/name=["']pcmk_host_map["']\s+value=["']([^"']+)["']/i);
+        if (pcmkHostMapMatch) {
+            result.pcmkHostMap = pcmkHostMapMatch[1];
+        }
+        
+        return result;
+    }
+};
+
+/**
+ * Parser: iscsiConfig
+ * Parses iSCSI configuration for SBD devices
+ * File patterns: /etc/iscsi/*, iscsiadm output, ha.txt
+ */
+const iscsiConfigParser = {
+    // Match SCC fs-iscsi.txt, sosreport iscsi/ folder, ha.txt, initiatorname.iscsi
+    filePattern: /fs-iscsi\.txt$|\/iscsi\/|\/iscsiadm|\/ha\.txt$|initiatorname\.iscsi$/,
+    
+    parse: function(content, filename) {
+        debugLog('[iscsiConfig parser] Analyzing:', filename);
+        
+        const result = {
+            found: false,
+            initiatorName: null,
+            targets: [],          // Known nodes from iscsiadm -m node
+            discoveryServers: [], // Discovery addresses
+            sessions: [],         // Active sessions
+            hosts: [],            // iSCSI hosts
+            nodeStartup: null,
+            iscsidConfig: {},     // Key iscsid.conf settings
+            serviceStatus: {},
+            warnings: [],
+            sourceFile: null
+        };
+        
+        // Extract iSCSI section if from ha.txt
+        let iscsiContent = content;
+        if (filename.includes('ha.txt')) {
+            // Look for iSCSI related sections
+            const initiatorSection = SCC_RULES.extractSection(content, filename, '# /etc/iscsi/initiatorname.iscsi', 'initiatorname');
+            if (initiatorSection.found) {
+                iscsiContent = initiatorSection.content;
+            }
+        }
+        
+        // Parse InitiatorName
+        const initiatorMatch = content.match(/InitiatorName=([^\s\n]+)/i);
+        if (initiatorMatch) {
+            result.found = true;
+            result.initiatorName = initiatorMatch[1];
+            result.sourceFile = filename;
+            debugLog('[iscsiConfig parser] Found InitiatorName:', result.initiatorName);
+        }
+        
+        // Parse iscsid.conf key settings
+        const configSettings = [
+            'node.startup',
+            'node.session.timeo.replacement_timeout',
+            'node.conn[0].timeo.login_timeout',
+            'node.conn[0].timeo.logout_timeout',
+            'node.session.initial_login_retry_max',
+            'node.session.iscsi.FirstBurstLength',
+            'node.session.iscsi.MaxBurstLength',
+            'discovery.sendtargets.iscsi.MaxRecvDataSegmentLength'
+        ];
+        
+        for (const setting of configSettings) {
+            const escapedSetting = setting.replace(/[[\]]/g, '\\$&');
+            const regex = new RegExp(escapedSetting + '\\s*=\\s*([^\\n]+)', 'i');
+            const match = content.match(regex);
+            if (match) {
+                result.found = true;
+                result.iscsidConfig[setting] = match[1].trim();
+            }
+        }
+        
+        // Check node.startup
+        if (result.iscsidConfig['node.startup']) {
+            result.nodeStartup = result.iscsidConfig['node.startup'].toLowerCase();
+            // Note: For SBD with iSCSI, manual is often preferred as pacemaker manages startup
+            // automatic can cause issues during boot if target not available
+        }
+        
+        // Parse discovery servers from iscsiadm -m discovery output
+        // Format: 10.227.48.28:3260 via sendtargets
+        const discoveryMatches = content.matchAll(/(\d+\.\d+\.\d+\.\d+):(\d+)\s+via\s+(\w+)/g);
+        const discoverySet = new Set();
+        for (const match of discoveryMatches) {
+            const key = `${match[1]}:${match[2]}`;
+            if (!discoverySet.has(key)) {
+                discoverySet.add(key);
+                result.found = true;
+                result.discoveryServers.push({
+                    ip: match[1],
+                    port: parseInt(match[2], 10),
+                    method: match[3]
+                });
+            }
+        }
+        
+        // Parse iSCSI targets from iscsiadm -m node output
+        // Format: 10.0.0.17:3260,1 iqn.2006-04.nfs.local:nfs
+        const targetSet = new Map();
+        const targetMatches = content.matchAll(/(\d+\.\d+\.\d+\.\d+):(\d+),\d+\s+(iqn\.[^\s\n(]+)/g);
+        for (const match of targetMatches) {
+            const iqn = match[3].trim();
+            if (!targetSet.has(iqn)) {
+                targetSet.set(iqn, {
+                    iqn: iqn,
+                    portals: []
+                });
+            }
+            const target = targetSet.get(iqn);
+            const portalKey = `${match[1]}:${match[2]}`;
+            if (!target.portals.find(p => `${p.ip}:${p.port}` === portalKey)) {
+                target.portals.push({
+                    ip: match[1],
+                    port: parseInt(match[2], 10)
+                });
+            }
+        }
+        for (const target of targetSet.values()) {
+            result.found = true;
+            result.targets.push(target);
+        }
+        
+        // Parse active iSCSI sessions from iscsiadm -m session output
+        // Format: tcp: [1] 10.0.0.17:3260,1 iqn.2006-04.nfs.local:nfs (non-flash)
+        const sessionSet = new Map();
+        const sessionMatches = content.matchAll(/tcp:\s+\[(\d+)\]\s+(\d+\.\d+\.\d+\.\d+):(\d+),\d+\s+(iqn\.[^\s\n(]+)(?:\s+\(([^)]+)\))?/g);
+        for (const match of sessionMatches) {
+            const sessionId = match[1];
+            if (!sessionSet.has(sessionId)) {
+                result.found = true;
+                sessionSet.set(sessionId, {
+                    sessionId: parseInt(sessionId, 10),
+                    ip: match[2],
+                    port: parseInt(match[3], 10),
+                    iqn: match[4].trim(),
+                    type: match[5] || 'unknown'
+                });
+            }
+        }
+        result.sessions = Array.from(sessionSet.values());
+        
+        // Parse session details for connection state
+        // Look for: iSCSI Connection State: LOGGED IN
+        const sessionStateMatches = content.matchAll(/Current Portal:\s+(\d+\.\d+\.\d+\.\d+):(\d+)[^]*?iSCSI Connection State:\s*([^\n]+)[^]*?iSCSI Session State:\s*([^\n]+)/g);
+        for (const match of sessionStateMatches) {
+            const ip = match[1];
+            const port = parseInt(match[2], 10);
+            const connState = match[3].trim();
+            const sessState = match[4].trim();
+            
+            // Find and update the session
+            const session = result.sessions.find(s => s.ip === ip && s.port === port);
+            if (session) {
+                session.connectionState = connState;
+                session.sessionState = sessState;
+            }
+        }
+        
+        // Parse iSCSI hosts from iscsiadm -m host output
+        // Format: tcp: [2] 10.227.48.95,[<empty>],<empty> <empty>
+        const hostMatches = content.matchAll(/Host Number:\s*(\d+)[^]*?State:\s*(\w+)[^]*?Transport:\s*(\w+)[^]*?IPaddress:\s*([^\n]+)/g);
+        for (const match of hostMatches) {
+            result.found = true;
+            result.hosts.push({
+                hostNumber: parseInt(match[1], 10),
+                state: match[2].trim(),
+                transport: match[3].trim(),
+                ip: match[4].trim()
+            });
+        }
+        
+        // Parse service status
+        const iscsiServiceMatch = content.match(/iscsi\.service[^]*?Active:\s*([^\n]+)/);
+        if (iscsiServiceMatch) {
+            result.serviceStatus.iscsiService = iscsiServiceMatch[1].trim();
+        }
+        const iscsidServiceMatch = content.match(/iscsid\.service[^]*?Active:\s*([^\n]+)/);
+        if (iscsidServiceMatch) {
+            result.serviceStatus.iscsidService = iscsidServiceMatch[1].trim();
+        }
+        
+        // Generate warnings
+        if (result.sessions.length === 0 && result.targets.length > 0) {
+            result.warnings.push({
+                type: 'iscsi_no_active_sessions',
+                severity: 'warning',
+                message: 'iSCSI targets configured but no active sessions',
+                recommendation: 'Check iSCSI connectivity and login status'
+            });
+        }
+        
+        // Check for session states
+        for (const session of result.sessions) {
+            if (session.connectionState && session.connectionState !== 'LOGGED IN') {
+                result.warnings.push({
+                    type: 'iscsi_session_not_logged_in',
+                    severity: 'error',
+                    message: `iSCSI session to ${session.ip} is not logged in (${session.connectionState})`,
+                    recommendation: 'Check iSCSI target availability and network connectivity'
+                });
+            }
+        }
+        
+        // Check for multipath - expect at least 3 paths per target for Azure iSCSI SBD
+        if (result.sessions.length > 0) {
+            const sessionsByIqn = new Map();
+            for (const session of result.sessions) {
+                if (!sessionsByIqn.has(session.iqn)) {
+                    sessionsByIqn.set(session.iqn, []);
+                }
+                sessionsByIqn.get(session.iqn).push(session);
+            }
+            
+            for (const [iqn, sessions] of sessionsByIqn) {
+                if (sessions.length < 3) {
+                    result.warnings.push({
+                        type: 'iscsi_insufficient_paths',
+                        severity: 'info',
+                        message: `iSCSI target ${iqn} has only ${sessions.length} path(s)`,
+                        recommendation: 'Azure iSCSI SBD typically requires 3 paths for high availability'
+                    });
+                }
+            }
+        }
+        
+        return result;
+    }
+};
+
 // Factory function that creates all cluster parsers
 // This function receives SCC_RULES and debugLog from the main worker context
 // Assigned to global scope for importScripts() compatibility
@@ -2994,7 +4126,12 @@ const createClusterParsers = function(SCC_RULES, debugLog, parseXMLSimple, query
         azureScheduledEvents: azureScheduledEventsParser,
         fencingConfig: fencingConfigParser,
         clusterEvents: clusterEventsParser,
-        liveMigration: liveMigrationParser
+        liveMigration: liveMigrationParser,
+        sapInstanceConfig: sapInstanceConfigParser,
+        sapInstanceErrors: sapInstanceErrorsParser,
+        clusterMaintenanceMode: clusterMaintenanceModeParser,
+        sbdConfig: sbdConfigParser,
+        azureFenceAuth: azureFenceAuthParser,
+        iscsiConfig: iscsiConfigParser
     };
 };
-

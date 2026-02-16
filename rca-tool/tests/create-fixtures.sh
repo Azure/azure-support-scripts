@@ -1835,9 +1835,828 @@ EOF
 
 create_fixture "test-timesync-chrony"
 
+################################################################################
+# Test: SAP Instance Configuration - START_PROFILE and InstanceName issues
+# Tests for sapInstanceConfigParser and sapInstanceErrorsParser
+# Reference: https://docs.redhat.com/en/documentation/red_hat_enterprise_linux_for_sap_solutions/8/html/configuring_ha_clusters_to_manage_sap_netweaver_or_sap_s4hana_application_server_instances_using_the_rhel_ha_add-on
+################################################################################
+echo ""
+echo "=== Creating test-sap-instance-config.tar.xz ==="
+mkdir -p test-data/sos_commands/pacemaker
+mkdir -p test-data/sos_commands/pacemaker/crm_report
+# SAP indicator directories for SAP detection in UI
+mkdir -p test-data/usr/sap/PJU
+mkdir -p test-data/sapmnt/PJU/profile
+touch test-data/usr/sap/PJU/sapservices
+
+# pcs_config with SAP SAPInstance resources - note hostname mismatch
+cat > test-data/sos_commands/pacemaker/pcs_config << 'EOF'
+Cluster Name: pju-prod-cluster
+Corosync Nodes:
+ awenwjeupcs01 awenwjeupcs02
+Pacemaker Nodes:
+ awenwjeupcs01 awenwjeupcs02
+
+Resources:
+ Group: g-PJU_SCS
+  Meta Attrs: resource-stickiness=3000
+  Resource: fs_PJU_SCS (class=ocf provider=heartbeat type=Filesystem)
+   Attributes: device=eufusionsapwesteuprodst.file.core.windows.net:/eufusionsapwesteuprodst/sap-core-pju-scs01 directory=/usr/sap/PJU/SCS01 force_unmount=safe fstype=nfs options=sec=sys,vers=4.1
+   Operations: monitor interval=200 timeout=40 (fs_PJU_SCS-monitor-interval-200)
+               start interval=0 timeout=60 (fs_PJU_SCS-start-interval-0)
+               stop interval=0 timeout=120 (fs_PJU_SCS-stop-interval-0)
+  Resource: vip_PJU_SCS (class=ocf provider=heartbeat type=IPaddr2)
+   Attributes: ip=10.82.8.23
+   Operations: monitor interval=10s timeout=20s (vip_PJU_SCS-monitor-interval-10s)
+               start interval=0s timeout=20s (vip_PJU_SCS-start-interval-0s)
+               stop interval=0s timeout=20s (vip_PJU_SCS-stop-interval-0s)
+  Resource: nc_PJU_SCS (class=ocf provider=heartbeat type=azure-lb)
+   Attributes: port=62000
+   Operations: monitor interval=10s timeout=20s (nc_PJU_SCS-monitor-interval-10s)
+               start interval=0s timeout=20s (nc_PJU_SCS-start-interval-0s)
+               stop interval=0s timeout=20s (nc_PJU_SCS-stop-interval-0s)
+  Resource: rsc_sap_PJU_SCS01 (class=ocf provider=heartbeat type=SAPInstance)
+   Attributes: AUTOMATIC_RECOVER=false InstanceName=PJU_SCS01_ppu-scs START_PROFILE=/sapmnt/PJU/profile/PJU_SCS01_awenwjeusscs
+   Meta Attrs: failure-timeout=60 migration-threshold=1 resource-stickiness=5000
+   Operations: demote interval=0s timeout=320s (rsc_sap_PJU_SCS01-demote-interval-0s)
+               methods interval=0s timeout=5s (rsc_sap_PJU_SCS01-methods-interval-0s)
+               monitor interval=20 on-fail=restart timeout=60 (rsc_sap_PJU_SCS01-monitor-interval-20)
+               promote interval=0s timeout=320s (rsc_sap_PJU_SCS01-promote-interval-0s)
+               reload interval=0s timeout=320s (rsc_sap_PJU_SCS01-reload-interval-0s)
+               start interval=0 timeout=600 (rsc_sap_PJU_SCS01-start-interval-0)
+               stop interval=0 timeout=600 (rsc_sap_PJU_SCS01-stop-interval-0)
+ Group: g-PJU_ERS
+  Resource: fs_PJU_ERS (class=ocf provider=heartbeat type=Filesystem)
+   Attributes: device=eufusionsapwesteuprodst.file.core.windows.net:/eufusionsapwesteuprodst/sap-core-pju-ers11 directory=/usr/sap/PJU/ERS11 force_unmount=safe fstype=nfs options=sec=sys,vers=4.1
+   Operations: monitor interval=200 timeout=40 (fs_PJU_ERS-monitor-interval-200)
+               start interval=0 timeout=60 (fs_PJU_ERS-start-interval-0)
+               stop interval=0 timeout=120 (fs_PJU_ERS-stop-interval-0)
+  Resource: vip_PJU_AERS (class=ocf provider=heartbeat type=IPaddr2)
+   Attributes: ip=10.82.8.24
+   Operations: monitor interval=10s timeout=20s (vip_PJU_AERS-monitor-interval-10s)
+               start interval=0s timeout=20s (vip_PJU_AERS-start-interval-0s)
+               stop interval=0s timeout=20s (vip_PJU_AERS-stop-interval-0s)
+  Resource: nc_PJU_AERS (class=ocf provider=heartbeat type=azure-lb)
+   Attributes: port=62111
+   Operations: monitor interval=10s timeout=20s (nc_PJU_AERS-monitor-interval-10s)
+               start interval=0s timeout=20s (nc_PJU_AERS-start-interval-0s)
+               stop interval=0s timeout=20s (nc_PJU_AERS-stop-interval-0s)
+  Resource: rsc_sap_PJU_ERS11 (class=ocf provider=heartbeat type=SAPInstance)
+   Attributes: AUTOMATIC_RECOVER=false IS_ERS=true InstanceName=PJU_ERS11_ppu-ers START_PROFILE=/sapmnt/PJU/profile/PJU_ERS11_awenwjeusscs
+   Operations: demote interval=0s timeout=320s (rsc_sap_PJU_ERS11-demote-interval-0s)
+               methods interval=0s timeout=5s (rsc_sap_PJU_ERS11-methods-interval-0s)
+               monitor interval=20 on-fail=restart timeout=60 (rsc_sap_PJU_ERS11-monitor-interval-20)
+               promote interval=0s timeout=320s (rsc_sap_PJU_ERS11-promote-interval-0s)
+               reload interval=0s timeout=320s (rsc_sap_PJU_ERS11-reload-interval-0s)
+               start interval=0 timeout=600 (rsc_sap_PJU_ERS11-start-interval-0)
+               stop interval=0 timeout=600 (rsc_sap_PJU_ERS11-stop-interval-0)
+
+Stonith Devices:
+  Resource: rsc_st_azure (class=stonith type=fence_azure_arm)
+    Attributes: msi=true resourceGroup=myRG subscriptionId=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    Operations:
+      monitor: rsc_st_azure-monitor-interval-3600
+        interval=3600
+
+Cluster Properties:
+ cluster-infrastructure: corosync
+ cluster-name: pju-prod-cluster
+ stonith-enabled: true
+ stonith-timeout: 900
+EOF
+
+# crm_report analysis.txt with SAP errors (START_PROFILE and GRAY status)
+cat > test-data/sos_commands/pacemaker/crm_report/analysis.txt << 'EOF'
+Diff members.txt... OK
+Diff cib.xml... OK
+Diff crm_mon.txt... OK
+Diff sysinfo.txt... OK
+Log pattern matches from awenwjeupcs01:
+Jan 11 11:02:37 awenwjeupcs01 SAPInstance(rsc_sap_PJU_ERS11)[16872]: ERROR: Expected /sapmnt/PJU/profile/PJU_ERS11_awenwjeusscs to be the instance START profile, please set START_PROFILE parameter!
+Jan 11 11:03:36 awenwjeupcs01 SAPInstance(rsc_sap_PJU_ERS11)[18199]: ERROR: Expected /sapmnt/PJU/profile/PJU_ERS11_awenwjeusscs to be the instance START profile, please set START_PROFILE parameter!
+Jan 11 11:19:03 awenwjeupcs01 SAPInstance(rsc_sap_PJU_SCS01)[37447]: ERROR: SAP instance service msg_server is not running with status GRAY !
+Jan 11 11:19:03 awenwjeupcs01 SAPInstance(rsc_sap_PJU_SCS01)[37447]: ERROR: SAP instance service enserver is not running with status GRAY !
+Jan 11 11:19:06 awenwjeupcs01 Filesystem(fs_PJU_SCS)[38065]: ERROR: Couldn't unmount /usr/sap/PJU/SCS01; trying cleanup with TERM
+Jan 11 11:23:44 awenwjeupcs01 SAPInstance(rsc_sap_PJU_ERS11)[41957]: ERROR: Expected /sapmnt/PJU/profile/PJU_ERS11_awenwjeusscs to be the instance START profile, please set START_PROFILE parameter!
+Jan 11 11:26:37 awenwjeupcs01 Filesystem(fs_PJU_SCS)[45202]: ERROR: Couldn't unmount /usr/sap/PJU/SCS01; trying cleanup with TERM
+EOF
+
+# Add pcs_status to show the daemon status
+cat > test-data/sos_commands/pacemaker/pcs_status_--full << 'EOF'
+Cluster name: pju-prod-cluster
+Cluster Summary:
+  * Stack: corosync
+  * Current DC: awenwjeupcs01 (version 2.1.2-4.el8_6.9-ada5c3b36e2) - partition with quorum
+  * Last updated: Sun Jan 12 14:01:52 2026
+  * Last change:  Sat Jan 11 08:31:29 2026 by root via cibadmin on awenwjeupcs01
+  * 2 nodes configured
+  * 12 resource instances configured
+
+Node List:
+  * Online: [ awenwjeupcs01 awenwjeupcs02 ]
+
+Full List of Resources:
+  * Resource Group: g-PJU_SCS:
+    * fs_PJU_SCS        (ocf::heartbeat:Filesystem):     Started awenwjeupcs01
+    * vip_PJU_SCS       (ocf::heartbeat:IPaddr2):        Started awenwjeupcs01
+    * nc_PJU_SCS        (ocf::heartbeat:azure-lb):       Started awenwjeupcs01
+    * rsc_sap_PJU_SCS01 (ocf::heartbeat:SAPInstance):    Started awenwjeupcs01
+  * Resource Group: g-PJU_ERS:
+    * fs_PJU_ERS        (ocf::heartbeat:Filesystem):     Started awenwjeupcs02
+    * vip_PJU_AERS      (ocf::heartbeat:IPaddr2):        Started awenwjeupcs02
+    * nc_PJU_AERS       (ocf::heartbeat:azure-lb):       Started awenwjeupcs02
+    * rsc_sap_PJU_ERS11 (ocf::heartbeat:SAPInstance):    Started awenwjeupcs02
+  * rsc_st_azure        (stonith:fence_azure_arm):       Started awenwjeupcs01
+
+Daemon Status:
+  corosync: active/disabled
+  pacemaker: active/enabled
+  pcsd: active/enabled
+EOF
+
+create_fixture "test-sap-instance-config"
+
+################################################################################
+# Test: Cluster events detection from supportconfig ha.txt
+# Verifies that clusterEvents parser can extract embedded pacemaker/corosync
+# log sections from ha.txt and detect resource migrations, fencing events,
+# and resource failures.
+################################################################################
+echo ""
+echo "=== Creating test-cluster-events.tar.xz ==="
+mkdir -p test-data
+cat > test-data/ha.txt << 'EOF'
+#==[ Configuration File ]====# /etc/corosync/corosync.conf
+totem {
+    version: 2
+    cluster_name: hana-cluster
+    token: 30000
+}
+nodelist {
+    node {
+        ring0_addr: node1
+        nodeid: 1
+    }
+    node {
+        ring0_addr: node2
+        nodeid: 2
+    }
+}
+
+#==[ Command ]====# /usr/sbin/crm configure show
+property cib-bootstrap-options: \
+    stonith-enabled=true \
+    stonith-timeout=150s
+
+primitive rsc_SAPHana_HDB_HDB00 ocf:suse:SAPHana \
+    op start timeout=3600 \
+    op stop timeout=3600
+
+primitive stonith-fence_azure_arm stonith:fence_azure_arm \
+    op monitor interval=3600 timeout=120
+
+#==[ Command ]====# /usr/sbin/crm_mon -1 -r -f
+Stack: corosync
+Current DC: node1
+Last updated: Wed Jan 15 10:35:00 2025
+2 nodes configured
+3 resources configured
+
+Online: [ node1 ]
+OFFLINE: [ node2 ]
+
+Full list of resources:
+
+ rsc_SAPHana_HDB_HDB00  (ocf::heartbeat:SAPHana):      Started node1
+ rsc_ip_HDB_HDB00       (ocf::heartbeat:IPaddr2):      Started node1
+ stonith-fence_azure_arm (stonith:fence_azure_arm):     Started node1
+
+#==[ Log File ]====# /var/log/pacemaker/pacemaker.log
+Jan 15 10:30:45 node1 pacemaker-controld  [1234] (handle_request)          notice: Requesting fencing (reboot) of node node2
+Jan 15 10:30:48 node1 pacemaker-fenced    [1235] (handle_request)          notice: fence_azure_arm: Called fence_azure_arm for node node2
+Jan 15 10:30:50 node1 pacemaker-controld  [1234] (tengine_stonith_notify)  notice: Peer node2 was terminated (reboot) by node1 on behalf of pacemaker-controld.1234
+Jan 15 10:31:00 node1 pacemaker-controld  [1234] (te_rsc_command)          notice: Moving resource rsc_ip_HDB_HDB00 from node2 to node1
+Jan 15 10:31:05 node1 pacemaker-controld  [1234] (do_lrm_rsc_op)          notice: Operation rsc_SAPHana_HDB_HDB00_start_0: ok (node=node1)
+Jan 15 10:33:00 node1 pacemaker-controld  [1234] (process_lrm_event)      notice: Unexpected result (error: unknown error) was recorded for monitor of rsc_SAPHana_HDB_HDB00 on node2
+
+#==[ Log File ]====# /var/log/cluster/corosync.log
+Jan 15 10:30:42 node1 corosync  [5678] notice: Node node2 will be fenced
+Jan 15 10:30:55 node1 corosync  [5678] notice: Fencing node2: success
+EOF
+
+create_fixture "test-cluster-events"
+
+################################################################################
+# Test: Cluster events detection from sosreport (RHEL format)
+# Verifies that clusterEvents parser handles sosreport structure:
+# - pacemaker.log in sos_strings as .tailed file
+# - "targeting node X" format (vs SUSE's "of node X")
+# - "Cluster node X will be fenced" format  
+# - "Peer X was not terminated" as fencing failure
+# Also verifies RHEL-specific totem transport validation (knet expected)
+################################################################################
+echo ""
+echo "=== Creating test-cluster-events-sosreport.tar.xz ==="
+SOSDIR="sosreport-testnode-2025-01-27-abc123"
+mkdir -p "test-data/${SOSDIR}/etc/corosync"
+mkdir -p "test-data/${SOSDIR}/sos_strings/pacemaker"
+mkdir -p "test-data/${SOSDIR}/var/log/pacemaker"
+mkdir -p "test-data/${SOSDIR}/etc"
+
+# Create os-release for RHEL detection
+cat > "test-data/${SOSDIR}/etc/os-release" << 'EOF'
+NAME="Red Hat Enterprise Linux"
+VERSION="8.8 (Ootpa)"
+ID="rhel"
+ID_LIKE="fedora"
+VERSION_ID="8.8"
+PRETTY_NAME="Red Hat Enterprise Linux 8.8 (Ootpa)"
+EOF
+
+# Create corosync.conf with knet transport (correct for RHEL)
+cat > "test-data/${SOSDIR}/etc/corosync/corosync.conf" << 'EOF'
+totem {
+    version: 2
+    cluster_name: testcluster
+    transport: knet
+    token: 30000
+    token_retransmits_before_loss_const: 10
+    join: 60
+    consensus: 36000
+    max_messages: 20
+}
+
+quorum {
+    provider: corosync_votequorum
+    expected_votes: 2
+    two_node: 1
+}
+
+nodelist {
+    node {
+        ring0_addr: testnode1
+        nodeid: 1
+    }
+    node {
+        ring0_addr: testnode2
+        nodeid: 2
+    }
+}
+EOF
+
+# Create pacemaker.log as a tailed file in sos_strings (sosreport format)
+cat > "test-data/${SOSDIR}/sos_strings/pacemaker/var.log.pacemaker.pacemaker.log.tailed" << 'EOF'
+Jan 27 09:10:00 testnode1 pacemaker-schedulerd[8138] (unpack_rsc_op_failure)	warning: Unexpected result (error: Resource agent did not complete within 11m40s) was recorded for monitor of SAPHana_TST_00:1 on testnode2 at Jan 27 09:08:10 2025
+Jan 27 09:13:13 testnode1 pacemaker-schedulerd[8138] (pe_fence_node)	warning: Cluster node testnode2 will be fenced: SAPHanaTopology_TST_00:1 is thought to be active there
+Jan 27 09:13:13 testnode1 pacemaker-controld  [8146] (controld_execute_fence_action)	notice: Requesting fencing (reboot) targeting node testnode2 | action=4 timeout=150000
+Jan 27 09:13:30 testnode1 pacemaker-controld  [8146] (handle_fence_notification)	notice: Peer testnode2 was not terminated (reboot) by testnode1 on behalf of pacemaker-controld.8146: delegate failed
+Jan 27 09:14:00 testnode1 pacemaker-controld  [8146] (controld_execute_fence_action)	notice: Requesting fencing (reboot) targeting node testnode2 | action=4 timeout=150000
+Jan 27 09:14:30 testnode1 pacemaker-controld  [8146] (tengine_stonith_notify)	notice: Peer testnode2 was terminated (reboot) by testnode1 on behalf of pacemaker-controld.8146
+Jan 27 09:15:00 testnode1 pacemaker-controld  [8146] (te_rsc_command)	notice: Moving resource rsc_ip_TST_00 from testnode2 to testnode1
+EOF
+
+# Create 0-byte symlink placeholder at original path (sosreport convention)
+touch "test-data/${SOSDIR}/var/log/pacemaker/pacemaker.log"
+
+create_fixture "test-cluster-events-sosreport"
+
+################################################################################
+# Test: Firewall Rules - SCC (supportconfig) format
+# Tests iptables, ip6tables, nftables, and firewalld detection in network.txt
+################################################################################
+echo ""
+echo "=== Creating test-firewall-scc.tar.xz ==="
+mkdir -p test-data
+cat > test-data/network.txt << 'SCCEOF'
+#==[ Verification ]=================================#
+# rpm -V firewalld-0.9.3-150400.8.12.1.noarch
+# Verification Status: Passed
+
+#==[ Command ]======================================#
+# /bin/systemctl status firewalld.service
+○ firewalld.service - firewalld - dynamic firewall daemon
+     Loaded: loaded (/usr/lib/systemd/system/firewalld.service; disabled; vendor preset: disabled)
+     Active: inactive (dead)
+       Docs: man:firewalld(1)
+
+#==[ Command ]======================================#
+# /usr/bin/firewall-cmd --list-all
+FirewallD is not running
+
+#==[ Command ]======================================#
+# iptables
+
+# NOTE: The iptable_filter module is not loaded, skipping check
+
+#==[ Command ]======================================#
+# iptables
+
+# NOTE: The iptable_nat module is not loaded, skipping check
+
+#==[ Command ]======================================#
+# iptables
+
+# NOTE: The iptable_mangle module is not loaded, skipping check
+
+#==[ Command ]======================================#
+# iptables
+
+# NOTE: The iptable_raw module is not loaded, skipping check
+
+#==[ Command ]======================================#
+# ip6tables
+
+# NOTE: The ip6table_filter module is not loaded, skipping check
+
+#==[ Command ]======================================#
+# ip6tables
+
+# NOTE: The ip6table_nat module is not loaded, skipping check
+
+#==[ Command ]======================================#
+# ip6tables
+
+# NOTE: The ip6table_mangle module is not loaded, skipping check
+
+#==[ Command ]======================================#
+# ip6tables
+
+# NOTE: The ip6table_raw module is not loaded, skipping check
+
+#==[ Verification ]=================================#
+# rpm -V nftables-0.9.8-150400.6.3.1.x86_64
+# Verification Status: Passed
+
+#==[ Command ]======================================#
+# /usr/sbin/nft list tables
+
+SCCEOF
+create_fixture "test-firewall-scc"
+
+################################################################################
+# Test: Firewall Rules - SCC with active nftables rules
+# Tests nftables ruleset detection in SCC network.txt
+################################################################################
+echo ""
+echo "=== Creating test-firewall-scc-nftables.tar.xz ==="
+mkdir -p test-data
+cat > test-data/network.txt << 'SCCEOF'
+#==[ Command ]======================================#
+# /bin/systemctl status firewalld.service
+○ firewalld.service - firewalld - dynamic firewall daemon
+     Loaded: loaded (/usr/lib/systemd/system/firewalld.service; disabled; vendor preset: disabled)
+     Active: inactive (dead)
+
+#==[ Command ]======================================#
+# /usr/bin/firewall-cmd --list-all
+FirewallD is not running
+
+#==[ Command ]======================================#
+# iptables
+
+# NOTE: The iptable_filter module is not loaded, skipping check
+
+#==[ Command ]======================================#
+# /usr/sbin/nft list tables
+ip security
+
+#==[ Command ]======================================#
+# /usr/sbin/nft -a list ruleset
+table ip security {
+    chain INPUT {
+        type filter hook input priority 150; policy accept;
+    }
+    chain FORWARD {
+        type filter hook forward priority 150; policy accept;
+    }
+    chain OUTPUT {
+        type filter hook output priority 150; policy accept;
+        meta l4proto tcp ip daddr 168.63.129.16 tcp dport 53 counter packets 0 bytes 0 accept
+        meta l4proto tcp ip daddr 168.63.129.16 skuid 0 counter packets 12345 bytes 6789012 accept
+        meta l4proto tcp ip daddr 168.63.129.16 ct state invalid,new counter packets 0 bytes 0 drop
+    }
+}
+
+SCCEOF
+create_fixture "test-firewall-scc-nftables"
+
+################################################################################
+# Test: Firewall Rules - SOS (sosreport) format
+# Tests firewalld, nftables and config file detection across multiple files
+################################################################################
+echo ""
+echo "=== Creating test-firewall-sosreport.tar.xz ==="
+SOSDIR="sosreport-testfw-2025-01-15-abcdef"
+mkdir -p "test-data/${SOSDIR}/sos_commands/firewalld"
+mkdir -p "test-data/${SOSDIR}/sos_commands/firewall_tables"
+mkdir -p "test-data/${SOSDIR}/etc/sysconfig"
+mkdir -p "test-data/${SOSDIR}/etc/firewalld"
+
+# firewalld state: not running
+echo "not running" > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--state"
+
+# firewalld zones (runtime)
+echo "FirewallD is not running" > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--list-all-zones"
+
+# firewalld zones (permanent)
+echo "FirewallD is not running" > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--permanent_--list-all-zones"
+
+# firewalld direct rules
+echo "FirewallD is not running" > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--direct_--get-all-rules"
+echo "FirewallD is not running" > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--permanent_--direct_--get-all-rules"
+
+# firewalld direct chains
+echo "FirewallD is not running" > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--direct_--get-all-chains"
+echo "FirewallD is not running" > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--permanent_--direct_--get-all-chains"
+
+# firewalld passthroughs
+echo "FirewallD is not running" > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--direct_--get-all-passthroughs"
+echo "FirewallD is not running" > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--permanent_--direct_--get-all-passthroughs"
+
+# firewalld log-denied
+echo "FirewallD is not running" > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--get-log-denied"
+
+# nftables ruleset
+cat > "test-data/${SOSDIR}/sos_commands/firewall_tables/nft_-a_list_ruleset" << 'EOF'
+table ip security { # handle 3
+    chain INPUT { # handle 1
+        type filter hook input priority 150; policy accept;
+    }
+
+    chain FORWARD { # handle 2
+        type filter hook forward priority 150; policy accept;
+    }
+
+    chain OUTPUT { # handle 3
+        type filter hook output priority 150; policy accept;
+        meta l4proto tcp ip daddr 168.63.129.16 tcp dport 53 counter packets 0 bytes 0 accept # handle 4
+        meta l4proto tcp ip daddr 168.63.129.16 skuid 0 counter packets 319671 bytes 451835370 accept # handle 5
+        meta l4proto tcp ip daddr 168.63.129.16 ct state invalid,new counter packets 0 bytes 0 drop # handle 6
+    }
+}
+EOF
+
+# firewalld.conf
+cat > "test-data/${SOSDIR}/etc/firewalld/firewalld.conf" << 'EOF'
+# firewalld config file
+DefaultZone=public
+CleanupOnExit=yes
+Lockdown=no
+IPv6_rpfilter=yes
+IndividualCalls=no
+LogDenied=off
+FirewallBackend=nftables
+FlushAllOnReload=yes
+AllowZoneDrifting=yes
+EOF
+
+# /etc/sysconfig/iptables-config
+cat > "test-data/${SOSDIR}/etc/sysconfig/iptables-config" << 'EOF'
+IPTABLES_MODULES=""
+IPTABLES_SAVE_ON_STOP="no"
+IPTABLES_SAVE_ON_RESTART="no"
+IPTABLES_SAVE_COUNTER="no"
+IPTABLES_STATUS_NUMERIC="yes"
+IPTABLES_STATUS_VERBOSE="no"
+IPTABLES_STATUS_LINENUMBERS="yes"
+EOF
+
+# /etc/sysconfig/ebtables-config
+cat > "test-data/${SOSDIR}/etc/sysconfig/ebtables-config" << 'EOF'
+EBTABLES_SAVE_ON_STOP="no"
+EBTABLES_SAVE_COUNTER="no"
+EOF
+
+# /etc/sysconfig/nftables.conf
+cat > "test-data/${SOSDIR}/etc/sysconfig/nftables.conf" << 'EOF'
+# Uncomment the include statement here to load the default config sample
+#include "/etc/nftables/main.nft"
+EOF
+
+# /etc/sysconfig/firewalld
+cat > "test-data/${SOSDIR}/etc/sysconfig/firewalld" << 'EOF'
+# firewalld command line args
+FIREWALLD_ARGS=
+EOF
+
+create_fixture "test-firewall-sosreport"
+
+################################################################################
+# Test: Firewall Rules - SOS with firewalld running and active zones
+################################################################################
+echo ""
+echo "=== Creating test-firewall-sosreport-active.tar.xz ==="
+SOSDIR="sosreport-testfwactive-2025-01-15-xyzabc"
+mkdir -p "test-data/${SOSDIR}/sos_commands/firewalld"
+mkdir -p "test-data/${SOSDIR}/sos_commands/firewall_tables"
+mkdir -p "test-data/${SOSDIR}/etc/firewalld"
+
+# firewalld state: running
+echo "running" > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--state"
+
+# firewalld zones (runtime) - active
+cat > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--list-all-zones" << 'EOF'
+public (active)
+  target: default
+  icmp-block-inversion: no
+  interfaces: eth0
+  sources:
+  services: cockpit dhcpv6-client ssh
+  ports: 8080/tcp 443/tcp
+  protocols:
+  forward: yes
+  masquerade: no
+  forward-ports:
+  source-ports:
+  icmp-blocks:
+  rich rules:
+	rule family="ipv4" source address="10.0.0.0/8" accept
+EOF
+
+# firewalld zones (permanent)
+cat > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--permanent_--list-all-zones" << 'EOF'
+public (active)
+  target: default
+  icmp-block-inversion: no
+  interfaces: eth0
+  sources:
+  services: cockpit dhcpv6-client ssh
+  ports: 8080/tcp 443/tcp
+  protocols:
+  forward: yes
+  masquerade: no
+  forward-ports:
+  source-ports:
+  icmp-blocks:
+  rich rules:
+	rule family="ipv4" source address="10.0.0.0/8" accept
+EOF
+
+# firewalld direct rules
+echo "" > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--direct_--get-all-rules"
+echo "" > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--permanent_--direct_--get-all-rules"
+
+# firewalld direct chains
+echo "" > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--direct_--get-all-chains"
+echo "" > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--permanent_--direct_--get-all-chains"
+
+# firewalld passthroughs
+echo "" > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--direct_--get-all-passthroughs"
+echo "" > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--permanent_--direct_--get-all-passthroughs"
+
+# firewalld log-denied
+echo "off" > "test-data/${SOSDIR}/sos_commands/firewalld/firewall-cmd_--get-log-denied"
+
+# nftables ruleset (firewalld-generated)
+cat > "test-data/${SOSDIR}/sos_commands/firewall_tables/nft_-a_list_ruleset" << 'EOF'
+table inet firewalld { # handle 1
+    chain filter_INPUT { # handle 1
+        type filter hook input priority 10; policy accept;
+        ct state established,related accept # handle 4
+        iifname "lo" accept # handle 5
+        ct state invalid drop # handle 6
+        jump filter_INPUT_ZONES # handle 7
+        reject with icmpx admin-prohibited # handle 8
+    }
+    chain filter_FORWARD { # handle 2
+        type filter hook forward priority 10; policy accept;
+        ct state established,related accept # handle 9
+        ct state invalid drop # handle 10
+        jump filter_FORWARD_ZONES # handle 11
+        reject with icmpx admin-prohibited # handle 12
+    }
+    chain filter_OUTPUT { # handle 3
+        type filter hook output priority 10; policy accept;
+    }
+}
+EOF
+
+# firewalld.conf
+cat > "test-data/${SOSDIR}/etc/firewalld/firewalld.conf" << 'EOF'
+DefaultZone=public
+CleanupOnExit=yes
+Lockdown=no
+IPv6_rpfilter=yes
+LogDenied=off
+FirewallBackend=nftables
+FlushAllOnReload=yes
+AllowZoneDrifting=no
+EOF
+
+create_fixture "test-firewall-sosreport-active"
+
+################################################################################
+# Test: Network Interfaces - SCC (supportconfig) format
+# Tests interface detection, DHCP/static, accelerated networking in network.txt
+################################################################################
+echo ""
+echo "=== Creating test-network-interfaces-scc.tar.xz ==="
+mkdir -p test-data
+cat > test-data/network.txt << 'SCCEOF'
+#==[ Command ]======================================#
+# /sbin/ip addr show
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host
+       valid_lft forever preferred_lft forever
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+    link/ether 00:0d:3a:12:34:56 brd ff:ff:ff:ff:ff:ff
+    inet 10.0.0.4/24 brd 10.0.0.255 scope global eth0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::20d:3aff:fe12:3456/64 scope link
+       valid_lft forever preferred_lft forever
+3: eth1: <BROADCAST,MULTICAST,SLAVE,UP,LOWER_UP> mtu 1500 qdisc mq master eth0 state UP group default qlen 1000
+    link/ether 00:0d:3a:12:34:57 brd ff:ff:ff:ff:ff:ff
+
+#==[ Command ]======================================#
+# /sbin/ethtool -i eth0
+driver: hv_netvsc
+version: 5.4.0
+firmware-version: N/A
+bus-info: vmbus:xxx-yyy
+supports-statistics: yes
+
+#==[ Command ]======================================#
+# /sbin/ethtool -i eth1
+driver: mlx5_core
+version: 5.8-3.0.7
+firmware-version: 16.35.2000
+bus-info: 0000:00:02.0
+supports-statistics: yes
+
+#==[ Configuration File ]======================================#
+# /etc/sysconfig/network/ifcfg-eth0
+BOOTPROTO='dhcp'
+STARTMODE='onboot'
+CLOUD_NETCONFIG_MANAGE='yes'
+
+#==[ Configuration File ]======================================#
+# /etc/sysconfig/network/ifcfg-eth1
+BOOTPROTO='static'
+IPADDR='10.0.0.10'
+NETMASK='255.255.255.0'
+STARTMODE='hotplug'
+SCCEOF
+create_fixture "test-network-interfaces-scc"
+
+################################################################################
+# Test: Network Interfaces - SOS report format with MANA driver
+# Tests MANA detection and DHCP config in separate SOS files
+################################################################################
+echo ""
+echo "=== Creating test-network-interfaces-sos-mana.tar.xz ==="
+SOSDIR="sos_commands"
+mkdir -p "test-data/${SOSDIR}/networking"
+mkdir -p "test-data/etc/sysconfig/network-scripts"
+
+cat > "test-data/${SOSDIR}/networking/ip_-o_addr" << 'EOF'
+1: lo    inet 127.0.0.1/8 scope host lo\       valid_lft forever preferred_lft forever
+2: eth0    inet 10.1.0.5/24 brd 10.1.0.255 scope global dynamic noprefixroute eth0\       valid_lft 86399sec preferred_lft 86399sec
+3: enP30832s1    inet 10.1.0.5/24 brd 10.1.0.255 scope global dynamic noprefixroute enP30832s1\       valid_lft 86399sec preferred_lft 86399sec
+1: lo    inet6 ::1/128 scope host \       valid_lft forever preferred_lft forever
+2: eth0    inet6 fe80::1234:abcd:ef01:2345/64 scope link \       valid_lft forever preferred_lft forever
+EOF
+
+cat > "test-data/${SOSDIR}/networking/ip_-s_-d_link" << 'EOF'
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00 promiscuity 0 minmtu 0 maxmtu 0 addrgenmode eui64 numtxqueues 1 numrxqueues 1 gso_max_size 65536 gso_max_segs 65535
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP mode DEFAULT group default qlen 1000
+    link/ether 60:45:bd:12:34:56 brd ff:ff:ff:ff:ff:ff promiscuity 0 minmtu 68 maxmtu 65521 addrgenmode eui64 numtxqueues 64 numrxqueues 64 gso_max_size 62780 gso_max_segs 44
+3: enP30832s1: <BROADCAST,MULTICAST,SLAVE,UP,LOWER_UP> mtu 1500 qdisc mq master eth0 state UP mode DEFAULT group default qlen 1000
+    link/ether 60:45:bd:12:34:57 brd ff:ff:ff:ff:ff:ff promiscuity 0 minmtu 68 maxmtu 9706 addrgenmode eui64 numtxqueues 64 numrxqueues 64 gso_max_size 62780 gso_max_segs 44
+EOF
+
+cat > "test-data/${SOSDIR}/networking/ethtool_-i_eth0" << 'EOF'
+driver: hv_netvsc
+version: N/A
+firmware-version: N/A
+bus-info: {c6a23e40-1234-5678-abcd-ef0123456789}
+supports-statistics: yes
+supports-test: no
+supports-eeprom-access: no
+supports-register-dump: yes
+supports-priv-flags: no
+EOF
+
+cat > "test-data/${SOSDIR}/networking/ethtool_-i_enP30832s1" << 'EOF'
+driver: mana
+version: N/A
+firmware-version: N/A
+bus-info: 7870:00:01.0
+supports-statistics: yes
+supports-test: no
+supports-eeprom-access: no
+supports-register-dump: no
+supports-priv-flags: no
+EOF
+
+cat > "test-data/etc/sysconfig/network-scripts/ifcfg-eth0" << 'EOF'
+TYPE=Ethernet
+PROXY_METHOD=none
+BROWSER_ONLY=no
+BOOTPROTO=dhcp
+DEFROUTE=yes
+IPV4_FAILURE_FATAL=no
+NAME=eth0
+UUID=abc12345-6789-def0-1234-567890abcdef
+DEVICE=eth0
+ONBOOT=yes
+EOF
+create_fixture "test-network-interfaces-sos-mana"
+
+# === Vmcore / Kernel Crash Dump test fixtures ===
+
+echo ""
+echo "=== Creating test-vmcore-crashes.tar.xz ==="
+# Simulates a sosreport with vmcore crash dumps under /var/crash/
+mkdir -p test-data/var/crash/127.0.0.1-2026-02-13-03:48:00
+cat > test-data/var/crash/127.0.0.1-2026-02-13-03:48:00/vmcore-dmesg.txt << 'VMCORE1'
+[1402779.794755] RBP: 00007ffd130716b0 R08: 0000000000000000 R09: 000055afb46cc04a
+[1402779.794758] Call Trace:
+[1402779.794758]  <NMI>
+[1402779.794759]  ? nmi_cpu_backtrace.cold.8+0x36/0x4f
+[1402779.794760]  ? nmi_handle+0x63/0x110
+[1402779.794760]  ? default_do_nmi+0x49/0x110
+[1402779.794762]  ? entry_SYSCALL_64+0x20/0x29
+[1402779.794763]  </NMI>
+[1402779.795694] Kernel panic - not syncing: hung_task: blocked tasks
+[1402779.799668] CPU: 2 PID: 71 Comm: khungtaskd Kdump: loaded Not tainted 4.18.0-553.89.1.el8_10.x86_64 #1
+[1402779.804715] Hardware name: Microsoft Corporation Virtual Machine/Virtual Machine, BIOS 090008  12/07/2018
+[1402779.810167] Call Trace:
+[1402779.811613]  dump_stack+0x41/0x60
+[1402779.813585]  panic+0xe7/0x2ac
+[1402779.815436]  watchdog+0x25c/0x2f0
+[1402779.817475]  ? hungtask_pm_notify+0x50/0x50
+[1402779.819840]  kthread+0x134/0x150
+[1402779.822015]  ? set_kthread_struct+0x50/0x50
+[1402779.824325]  ret_from_fork+0x35/0x40
+[1402779.827475] Kernel Offset: 0x31800000 from 0xffffffff81000000
+VMCORE1
+
+mkdir -p test-data/var/crash/127.0.0.1-2025-10-05-09:02:28
+cat > test-data/var/crash/127.0.0.1-2025-10-05-09:02:28/vmcore-dmesg.txt << 'VMCORE2'
+[1597907.803447]  </NMI>
+[1597907.803448]  do_sys_openat2+0x19a/0x2b0
+[1597907.803449]  do_sys_open+0x4b/0x80
+[1597907.803449]  do_syscall_64+0x5b/0x1a0
+[1597907.804298] Kernel panic - not syncing: hung_task: blocked tasks
+[1597907.807824] CPU: 2 PID: 71 Comm: khungtaskd Kdump: loaded Not tainted 4.18.0-553.75.1.el8_10.x86_64 #1
+[1597907.812843] Hardware name: Microsoft Corporation Virtual Machine/Virtual Machine, BIOS 090008  12/07/2018
+[1597907.817822] Call Trace:
+[1597907.819308]  dump_stack+0x41/0x60
+[1597907.821112]  panic+0xe7/0x2ac
+[1597907.823058]  watchdog+0x25c/0x2f0
+[1597907.825156]  ? hungtask_pm_notify+0x50/0x50
+[1597907.827669]  kthread+0x134/0x150
+[1597907.829724]  ? set_kthread_struct+0x50/0x50
+[1597907.832021]  ret_from_fork+0x35/0x40
+VMCORE2
+
+mkdir -p test-data/sos_commands/kdump
+cat > test-data/sos_commands/kdump/kdumpctl_status << 'KDSTATUS'
+kdump: Kdump is operational
+KDSTATUS
+
+cat > test-data/sos_commands/kdump/ls_-alZR_.var.crash << 'CRASHLS'
+/var/crash:
+total 4
+drwxr-xr-x.  4 root root system_u:object_r:kdump_crash_t:s0  154 Feb 13 03:48 .
+drwxr-xr-x. 22 root root system_u:object_r:var_t:s0         4096 Mar 17  2022 ..
+drwxr-xr-x.  2 root root system_u:object_r:unlabeled_t:s0     67 Oct  5 09:02 127.0.0.1-2025-10-05-09:02:28
+drwxr-xr-x.  2 root root system_u:object_r:unlabeled_t:s0     67 Feb 13 03:48 127.0.0.1-2026-02-13-03:48:00
+
+/var/crash/127.0.0.1-2025-10-05-09:02:28:
+total 735368
+drwxr-xr-x. 2 root root system_u:object_r:unlabeled_t:s0          67 Oct  5 09:02 .
+drwxr-xr-x. 4 root root system_u:object_r:kdump_crash_t:s0       154 Feb 13 03:48 ..
+-rw-------. 1 root root system_u:object_r:unlabeled_t:s0       50098 Oct  5 09:02 kexec-dmesg.log
+-rw-------. 1 root root system_u:object_r:unlabeled_t:s0   752719997 Oct  5 09:02 vmcore
+-rw-------. 1 root root system_u:object_r:unlabeled_t:s0      240185 Oct  5 09:02 vmcore-dmesg.txt
+
+/var/crash/127.0.0.1-2026-02-13-03:48:00:
+total 1320564
+drwxr-xr-x. 2 root root system_u:object_r:unlabeled_t:s0           67 Feb 13 03:48 .
+drwxr-xr-x. 4 root root system_u:object_r:kdump_crash_t:s0        154 Feb 13 03:48 ..
+-rw-------. 1 root root system_u:object_r:unlabeled_t:s0        50470 Feb 13 03:48 kexec-dmesg.log
+-rw-------. 1 root root system_u:object_r:unlabeled_t:s0   1351110790 Feb 13 03:48 vmcore
+-rw-------. 1 root root system_u:object_r:unlabeled_t:s0      1082635 Feb 13 03:48 vmcore-dmesg.txt
+CRASHLS
+
+mkdir -p test-data/etc
+cat > test-data/etc/kdump.conf << 'KDCONF'
+# kdump configuration
+path /var/crash
+core_collector makedumpfile -l --message-level 7 -d 31
+failure_action shell
+KDCONF
+
+create_fixture "test-vmcore-crashes"
+
 echo ""
 echo "========================================="
-echo "✓ All test fixtures created successfully!"
+echo "All test fixtures created successfully!"
 echo "========================================="
 echo ""
 echo "Fixtures created in: $FIXTURES_DIR"

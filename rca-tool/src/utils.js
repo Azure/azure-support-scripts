@@ -1,5 +1,25 @@
-// SCC Report Analysis Utilities
-// Reusable helper functions for parsing SCC/supportconfig reports
+/**
+ * @module utils
+ * @description SCC Report Analysis Utilities.
+ *
+ * Reusable helper functions for parsing SCC (supportconfig) and SOS (sosreport)
+ * reports. These utilities are shared across all parsers and loaded by the Web
+ * Worker via `importScripts()`.
+ *
+ * Key functions:
+ * - {@link parseXMLSimple} — SAX-style XML parser for Web Workers
+ * - {@link grepLines} — grep-like line search with regex/string patterns
+ * - {@link extractTimestamp} — Multi-format timestamp extraction
+ * - {@link detectSystemdService} — Systemd service status detection
+ * - {@link detectRPMPackage} — RPM package detection from rpm output
+ * - {@link detectProcess} — Running process detection from ps output
+ * - {@link detectSecuritySoftware} — Combined package + process security detection
+ * - {@link extractSection} — Section extraction from supportconfig `.txt` files
+ * - {@link parseKeyValueFile} — Key-value config file parser
+ * - {@link deduplicateEvents} — Event deduplication by comparison fields
+ * - {@link compareVersion} — Semantic version comparison
+ * - {@link stripAnsiCodes} — ANSI escape code removal
+ */
 
 // Simple XML parser for Web Workers (since DOMParser is not available)
 // This is a minimal SAX-style parser for extracting elements and attributes

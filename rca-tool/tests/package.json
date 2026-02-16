@@ -1,6 +1,7 @@
 {
   "name": "rca-tool-tests",
   "version": "1.0.0",
+  "type": "module",
   "description": "Tests for RCA Tool",
   "scripts": {
     "test": "playwright test",

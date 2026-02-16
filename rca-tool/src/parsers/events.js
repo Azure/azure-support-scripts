@@ -1,14 +1,47 @@
 /**
- * Event Parsers for RCA Tool
- * 
- * Contains kernel and system event analysis parsers:
- * - emergencyMode: Emergency mode detection
- * - kernelReboots: Linux kernel reboot detection
- * - oomKiller: Out of Memory killer event detection
- * - xfsErrors: XFS filesystem error detection
- * 
- * These parsers are exported for use in the main worker file.
- * They will be manually assigned to SCC_RULES after SCC_RULES is defined.
+ * @module parsers/events
+ * @description Kernel and system event analysis parsers.
+ *
+ * Each parser scans system log files (`messages`, `localmessages`,
+ * `journalctl*`) for a specific class of critical events.
+ *
+ * ### emergencyModeParser
+ *
+ * Detects "You are in emergency mode" messages in console/system logs.
+ * Returns: `{ found, count, events: [{ timestamp, lineNumber, rawLine, sourceFile }] }`
+ *
+ * ### kernelRebootsParser
+ *
+ * Detects kernel boot and reboot events by matching:
+ * - `Linux version X.Y.Z` kernel boot messages
+ * - `systemd...Shutting down` / `Starting Reboot` service events
+ * - `kernel: reboot:` messages
+ *
+ * Returns: `{ count, events: [{ timestamp, lineNumber, kernelVersion, type, rawLine }] }`
+ * where `type` is `kernel_boot`, `systemd_shutdown`, or `reboot_message`.
+ *
+ * ### oomKillerParser
+ *
+ * Detects Out-of-Memory killer activity:
+ * - `Out of memory: Kill process PID (name)` -- actual OOM kills
+ * - `invoked oom-killer:` -- OOM invocations
+ * - `oom_reaper:` -- post-kill cleanup
+ * - `Cannot allocate memory` -- allocation failures
+ *
+ * Returns: `{ count, events: [{ timestamp, lineNumber, pid, processName,`
+ * `score, totalVM, type, rawLine }] }`
+ * where `type` is `oom_kill`, `oom_invoked`, `oom_reaper`, or `alloc_failure`.
+ *
+ * ### xfsErrorsParser
+ *
+ * Detects critical XFS filesystem errors that require manual repair:
+ * - `Please unmount the filesystem and rectify the problem(s)`
+ * - Metadata/corruption detection
+ * - Filesystem shutdown messages
+ *
+ * Returns: `{ count, events: [{ timestamp, lineNumber, device, message, rawLine }] }`
+ *
+ * @see {@link module:worker} for registration in SCC_RULES
  */
 
 // Debug logging - checks global DEBUG_CONFIG from worker.js

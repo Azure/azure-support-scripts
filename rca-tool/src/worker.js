@@ -1,5 +1,21 @@
-// Streaming XZ decompression worker using liblzma
-// Processes compressed data in chunks to keep memory usage low
+/**
+ * @module worker
+ * @description Streaming XZ decompression worker using liblzma.
+ *
+ * This Web Worker orchestrates the entire analysis pipeline:
+ * 1. Receives compressed `.tar.xz` archives from the UI thread.
+ * 2. Decompresses via liblzma WASM in configurable-size chunks.
+ * 3. Extracts individual files from the tar stream.
+ * 4. Matches each file against all registered parser `filePattern` regexes.
+ * 5. Calls `parse(content, filename)` on matching parsers.
+ * 6. Accumulates results in `analysisResults` and posts them back to the UI.
+ *
+ * Parser registration happens in the `SCC_RULES` object. Multi-file parsers
+ * (e.g. firewallRules, networkInterfaces, vmcore) use `mergeResults()` for
+ * cross-file accumulation.
+ *
+ * @see {@link module:utils} for shared helper functions
+ */
 
 console.log('[Worker] Loading version: 2025-12-23-nested-gzip');
 
@@ -42,6 +58,9 @@ if (typeof importScripts === 'function') {
     importScripts('parsers/azure.js');
     importScripts('parsers/cluster.js');
     importScripts('parsers/storage.js');
+    importScripts('parsers/networking.js');
+    importScripts('parsers/network-interfaces.js');
+    importScripts('parsers/vmcore.js');
     console.log('[Worker] Running in Web Worker context');
     console.log('[Worker] Browser:', typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown');
 }
@@ -52,6 +71,7 @@ const DEBUG_CONFIG = {
     automation: false,
     azure: false,
     cluster: false,
+    networking: false,
     unix: false,
     events: false,
     packages: false,
@@ -814,6 +834,12 @@ if (typeof createClusterParsers !== 'undefined') {
     SCC_RULES.fencingConfig = clusterParsers.fencingConfig;
     SCC_RULES.clusterEvents = clusterParsers.clusterEvents;
     SCC_RULES.liveMigration = clusterParsers.liveMigration;
+    SCC_RULES.sapInstanceConfig = clusterParsers.sapInstanceConfig;
+    SCC_RULES.sapInstanceErrors = clusterParsers.sapInstanceErrors;
+    SCC_RULES.clusterMaintenanceMode = clusterParsers.clusterMaintenanceMode;
+    SCC_RULES.sbdConfig = clusterParsers.sbdConfig;
+    SCC_RULES.azureFenceAuth = clusterParsers.azureFenceAuth;
+    SCC_RULES.iscsiConfig = clusterParsers.iscsiConfig;
 }
 
 // From parsers/storage.js
@@ -831,6 +857,9 @@ if (typeof blockDevicesParser !== 'undefined') {
 }
 if (typeof fstabAnalysisParser !== 'undefined') {
     SCC_RULES.fstabAnalysis = fstabAnalysisParser;
+}
+if (typeof dfOutputParser !== 'undefined') {
+    SCC_RULES.dfOutput = dfOutputParser;
 }
 
 // From parsers/unix.js - RHUI/EUS parsers
@@ -854,6 +883,30 @@ if (typeof leappReportParser !== 'undefined') {
 }
 if (typeof leappLogParser !== 'undefined') {
     SCC_RULES.leappLog = leappLogParser;
+}
+
+// From parsers/networking.js
+if (typeof firewallRulesParser !== 'undefined') {
+    SCC_RULES.firewallRules = firewallRulesParser;
+    console.log('[Worker] firewallRulesParser registered successfully, filePattern:', firewallRulesParser.filePattern);
+} else {
+    console.warn('[Worker] firewallRulesParser is NOT defined - networking.js may have failed to load');
+}
+
+// From parsers/network-interfaces.js
+if (typeof networkInterfacesParser !== 'undefined') {
+    SCC_RULES.networkInterfaces = networkInterfacesParser;
+    console.log('[Worker] networkInterfacesParser registered successfully, filePattern:', networkInterfacesParser.filePattern);
+} else {
+    console.warn('[Worker] networkInterfacesParser is NOT defined - network-interfaces.js may have failed to load');
+}
+
+// From parsers/vmcore.js
+if (typeof vmcoreParser !== 'undefined') {
+    SCC_RULES.vmcore = vmcoreParser;
+    console.log('[Worker] vmcoreParser registered successfully, filePattern:', vmcoreParser.filePattern);
+} else {
+    console.warn('[Worker] vmcoreParser is NOT defined - vmcore.js may have failed to load');
 }
 // ============================================================================
 
@@ -1158,6 +1211,46 @@ class IncrementalTARParser {
             return;
         }
         
+        // Normalize sos_strings tailed file paths back to their original paths
+        // sosreport stores large log files in sos_strings/<plugin>/var.log.<path>.<file>.tailed
+        // and creates symlinks from the original paths (which appear as 0-byte entries in tar)
+        // Example: sos_strings/pacemaker/var.log.pacemaker.pacemaker.log.tailed -> var/log/pacemaker/pacemaker.log
+        // Example: sos_strings/logs/var.log.messages.tailed -> var/log/messages
+        // Example: sos_strings/logs/var.log.secure-20260125.tailed -> var/log/secure-20260125
+        const tailedMatch = filename.match(/sos_strings\/[^\/]+\/(.+)\.tailed$/);
+        if (tailedMatch) {
+            // The dotted path encodes the original filesystem path with dots as separators
+            // We need to reconstruct: var.log.pacemaker.pacemaker.log -> var/log/pacemaker/pacemaker.log
+            // Strategy: known log file extensions (.log, .conf) mark where filename starts
+            const dottedPath = tailedMatch[1];
+            let originalPath;
+            
+            // Match known file extensions to find filename boundary
+            // e.g., "var.log.pacemaker.pacemaker.log" -> split at last known ext keeping it as extension
+            const extMatch = dottedPath.match(/^(.+)\.((log|conf|txt|xml)(?:[.-].+)?)$/);
+            if (extMatch) {
+                // extMatch[1] = "var.log.pacemaker.pacemaker", extMatch[2] = "log" or "log-20260127"
+                const pathPart = extMatch[1];
+                const filePart = extMatch[2];
+                // Find the last dot-separated segment before the extension as the filename base
+                const segments = pathPart.split('.');
+                const fileBase = segments.pop();
+                const dirPath = segments.join('/');
+                originalPath = dirPath + '/' + fileBase + '.' + filePart;
+            } else {
+                // No known extension (e.g., "var.log.messages", "var.log.secure-20260125")
+                const segments = dottedPath.split('.');
+                const fileName = segments.pop();
+                const dirPath = segments.join('/');
+                originalPath = dirPath + '/' + fileName;
+            }
+            
+            // Reconstruct full path with the report prefix
+            const reportPrefix = filename.substring(0, filename.indexOf('sos_strings'));
+            filename = reportPrefix + originalPath;
+            debugLog('[TAR Parser] Normalized sos_strings tailed path to:', filename);
+        }
+        
         // Performance optimization: Limit processing of compressed rotated log files
         // Track which base log files we've seen and limit compressed rotations to 3 most recent
         // Uncompressed rotated logs are processed without limit
@@ -1204,18 +1297,12 @@ class IncrementalTARParser {
             if (ruleName === 'detection' || !rule.filePattern) continue;
             
             // Debug: Log pattern testing for key files
-            if (filename.includes('os-release') || filename.includes('dpkg') || filename.includes('installed-rpms') || filename.includes('package-data') || filename.includes('dnf.log') || filename.includes('/block/') || filename.includes('/fstab')) {
+            if (filename.includes('os-release') || filename.includes('dpkg') || filename.includes('installed-rpms') || filename.includes('package-data') || filename.includes('dnf.log') || filename.includes('/block/') || filename.includes('/fstab') || filename.includes('fs-iscsi') || filename.includes('iscsi')) {
                 debugLog(`[TAR Parser] Testing rule '${ruleName}' pattern ${rule.filePattern} against:`, filename);
             }
-            
             // Check if filename matches rule pattern
             if (rule.filePattern.test(filename)) {
                 debugLog(`[TAR Parser] Matched rule '${ruleName}' for file:`, filename);
-                
-                // Special debug for storage-related rules
-                if (ruleName === 'blockDevices' || ruleName === 'fstabAnalysis') {
-                    console.log(`[Worker] STORAGE: Matched ${ruleName} for file:`, filename);
-                }
                 
                 // Extract file content
                 const dataOffset = offset + 512;
@@ -1231,9 +1318,9 @@ class IncrementalTARParser {
                 if (this.buffer.length >= dataOffset + extractSize) {
                     const content = this.extractFileContent(dataOffset, extractSize, filename);
                     if (content) {
-                        // For rules that process multiple files (like liveMigration, kernelReboots, oomKiller, xfsErrors, emergencyMode, sshService, automation, clusterEvents, rhuiErrors, and blockDevices)
+                        // For rules that process multiple files (like liveMigration, kernelReboots, oomKiller, xfsErrors, emergencyMode, sshService, automation, clusterEvents, rhuiErrors, blockDevices, sapInstanceErrors, and firewallRules)
                         // we need to accumulate results instead of replacing
-                        const isMultiFileRule = ruleName === 'liveMigration' || ruleName === 'kernelReboots' || ruleName === 'oomKiller' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation' || ruleName === 'clusterEvents' || ruleName === 'rhuiErrors' || ruleName === 'blockDevices';
+                        const isMultiFileRule = ruleName === 'liveMigration' || ruleName === 'kernelReboots' || ruleName === 'oomKiller' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation' || ruleName === 'clusterEvents' || ruleName === 'rhuiErrors' || ruleName === 'blockDevices' || ruleName === 'sapInstanceErrors' || ruleName === 'firewallRules' || ruleName === 'networkInterfaces' || ruleName === 'vmcore';
                         
                         // NOTE: We don't store file content in extractedFiles anymore to save memory
                         // Content is parsed immediately and discarded
@@ -1244,8 +1331,8 @@ class IncrementalTARParser {
                             
                             if (isMultiFileRule) {
                                 // Accumulate results for multi-file rules
-                                // rhuiErrors and blockDevices have different structures, so initialize separately
-                                if (!this.analysisResults[ruleName] && ruleName !== 'rhuiErrors' && ruleName !== 'blockDevices') {
+                                // rhuiErrors, blockDevices, sapInstanceErrors, and firewallRules have different structures, so initialize separately
+                                if (!this.analysisResults[ruleName] && ruleName !== 'rhuiErrors' && ruleName !== 'blockDevices' && ruleName !== 'sapInstanceErrors' && ruleName !== 'firewallRules' && ruleName !== 'networkInterfaces' && ruleName !== 'vmcore') {
                                     this.analysisResults[ruleName] = {
                                         count: 0,
                                         events: []
@@ -1262,8 +1349,22 @@ class IncrementalTARParser {
                                     }
                                     debugLog(`[TAR Parser] Rule 'blockDevices' accumulated from ${filename} (disks: ${this.analysisResults[ruleName].disks?.length || 0}, partitions: ${this.analysisResults[ruleName].partitions?.length || 0})`);
                                 }
-                                // For kernelReboots, xfsErrors, emergencyMode, sshService, automation, clusterEvents, and rhuiErrors, deduplicate events based on timestamp and relevant fields
-                                else if (ruleName === 'kernelReboots' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation' || ruleName === 'clusterEvents' || ruleName === 'rhuiErrors') {
+                                // Handle vmcore accumulation - merges crash dumps, kdump config/status
+                                else if (ruleName === 'vmcore') {
+                                    if (!this.analysisResults[ruleName]) {
+                                        this.analysisResults[ruleName] = {
+                                            found: false,
+                                            crashes: [],
+                                            kdumpStatus: null,
+                                            crashListing: null,
+                                            kdumpConf: null
+                                        };
+                                    }
+                                    vmcoreParser.mergeResults(this.analysisResults[ruleName], result);
+                                    debugLog(`[TAR Parser] Rule 'vmcore' accumulated from ${filename} (crashes: ${this.analysisResults[ruleName].crashes.length})`);
+                                }
+                                // For kernelReboots, xfsErrors, emergencyMode, sshService, automation, clusterEvents, rhuiErrors, sapInstanceErrors, firewallRules, and networkInterfaces, deduplicate events based on timestamp and relevant fields
+                                else if (ruleName === 'kernelReboots' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation' || ruleName === 'clusterEvents' || ruleName === 'rhuiErrors' || ruleName === 'sapInstanceErrors' || ruleName === 'firewallRules' || ruleName === 'networkInterfaces') {
                                     // Define comparison fields for each rule type
                                     const comparisonFields = ruleName === 'kernelReboots' 
                                         ? ['timestamp', 'type', 'kernelVersion']
@@ -1353,6 +1454,91 @@ class IncrementalTARParser {
                                         });
                                         
                                         debugLog(`[TAR Parser] Rule 'rhuiErrors' accumulated from ${filename} (found: ${result.found}, errors: ${result.errors.length}, total errors: ${this.analysisResults[ruleName].errors.length})`);
+                                    } else if (ruleName === 'sapInstanceErrors') {
+                                        // sapInstanceErrors: merge errors from multiple log files (analysis.txt, cluster-log.txt, messages)
+                                        if (!this.analysisResults[ruleName]) {
+                                            this.analysisResults[ruleName] = {
+                                                found: false,
+                                                errors: [],
+                                                startProfileErrors: [],
+                                                grayStatusErrors: [],
+                                                filesystemErrors: []
+                                            };
+                                        }
+                                        
+                                        // Only process if errors were found in this file
+                                        if (result.found && result.errors && result.errors.length > 0) {
+                                            // Merge found flag
+                                            this.analysisResults[ruleName].found = true;
+                                            
+                                            // Add errors with deduplication (by type, resourceName, message)
+                                            result.errors.forEach(err => {
+                                                const key = `${err.type}:${err.resourceName}:${err.message}`;
+                                                const exists = this.analysisResults[ruleName].errors.some(e => 
+                                                    `${e.type}:${e.resourceName}:${e.message}` === key
+                                                );
+                                                if (!exists) {
+                                                    this.analysisResults[ruleName].errors.push({
+                                                        ...err,
+                                                        sourceFile: filename
+                                                    });
+                                                }
+                                            });
+                                            
+                                            // Update categorized arrays
+                                            this.analysisResults[ruleName].startProfileErrors = this.analysisResults[ruleName].errors.filter(e => e.type === 'start_profile_not_found');
+                                            this.analysisResults[ruleName].grayStatusErrors = this.analysisResults[ruleName].errors.filter(e => e.type === 'sap_service_gray_status');
+                                            this.analysisResults[ruleName].filesystemErrors = this.analysisResults[ruleName].errors.filter(e => e.type === 'filesystem_unmount_error');
+                                            
+                                            debugLog(`[TAR Parser] Rule 'sapInstanceErrors' accumulated from ${filename} (errors: ${result.errors.length}, total errors: ${this.analysisResults[ruleName].errors.length})`);
+                                        }
+                                    } else if (ruleName === 'firewallRules') {
+                                        // firewallRules: merge results from multiple files (SOS has many)
+                                        if (!this.analysisResults[ruleName]) {
+                                            this.analysisResults[ruleName] = result;
+                                        } else {
+                                            const existing = this.analysisResults[ruleName];
+                                            existing.found = existing.found || result.found;
+                                            // Merge firewalld
+                                            existing.firewalld.detected = existing.firewalld.detected || result.firewalld.detected;
+                                            existing.firewalld.running = existing.firewalld.running || result.firewalld.running;
+                                            if (result.firewalld.config) existing.firewalld.config = result.firewalld.config;
+                                            if (result.firewalld.zones) existing.firewalld.zones = result.firewalld.zones;
+                                            if (result.firewalld.directRules) existing.firewalld.directRules = (existing.firewalld.directRules || '') + result.firewalld.directRules;
+                                            if (result.firewalld.passthroughs) existing.firewalld.passthroughs = (existing.firewalld.passthroughs || '') + result.firewalld.passthroughs;
+                                            if (result.firewalld.chains) existing.firewalld.chains = (existing.firewalld.chains || '') + result.firewalld.chains;
+                                            if (result.firewalld.logDenied) existing.firewalld.logDenied = result.firewalld.logDenied;
+                                            if (result.firewalld.backend) existing.firewalld.backend = result.firewalld.backend;
+                                            // Merge iptables / ip6tables
+                                            existing.iptables.detected = existing.iptables.detected || result.iptables.detected;
+                                            existing.iptables.rules.push(...result.iptables.rules);
+                                            existing.iptables.modules.push(...result.iptables.modules);
+                                            existing.ip6tables.detected = existing.ip6tables.detected || result.ip6tables.detected;
+                                            existing.ip6tables.rules.push(...result.ip6tables.rules);
+                                            existing.ip6tables.modules.push(...result.ip6tables.modules);
+                                            // Merge ebtables
+                                            existing.ebtables.detected = existing.ebtables.detected || result.ebtables.detected;
+                                            if (result.ebtables.config) existing.ebtables.config = result.ebtables.config;
+                                            // Merge nftables
+                                            existing.nftables.detected = existing.nftables.detected || result.nftables.detected;
+                                            if (result.nftables.ruleset) existing.nftables.ruleset = result.nftables.ruleset;
+                                            if (result.nftables.tables) existing.nftables.tables = result.nftables.tables;
+                                            // Merge warnings and raw sections
+                                            existing.warnings.push(...result.warnings.filter(w => !existing.warnings.includes(w)));
+                                            Object.assign(existing.rawSections, result.rawSections);
+                                            // Re-determine active firewall
+                                            existing.activeFirewall = firewallRulesParser.determineActiveFirewall(existing);
+                                        }
+                                        debugLog(`[TAR Parser] Rule 'firewallRules' accumulated from ${filename} (active: ${this.analysisResults[ruleName].activeFirewall})`);
+                                    } else if (ruleName === 'networkInterfaces') {
+                                        // networkInterfaces: merge results from multiple files (SOS has many)
+                                        if (!this.analysisResults[ruleName]) {
+                                            this.analysisResults[ruleName] = result;
+                                        } else {
+                                            networkInterfacesParser.mergeResults(this.analysisResults[ruleName], result);
+                                        }
+                                        const ifaceCount = Object.keys(this.analysisResults[ruleName].interfaces || {}).length;
+                                        debugLog(`[TAR Parser] Rule 'networkInterfaces' accumulated from ${filename} (interfaces: ${ifaceCount})`);
                                     } else {
                                         // Add sourceFile to new events
                                         const newEventsWithSource = result.events.map(event => ({
@@ -1551,6 +1737,55 @@ class IncrementalTARParser {
                                         });
                                         
                                         debugLog(`[TAR Parser] Rule '${ruleName}' merged (onlineNodes: ${existing.onlineNodes.length}, stoppedResources: ${existing.stoppedResources.length})`);
+                                    }
+                                } else if (ruleName === 'iscsiConfig') {
+                                    // iscsiConfig: merge results from multiple files (fs-iscsi.txt, ha.txt)
+                                    // Don't overwrite a found result with not-found
+                                    const existing = this.analysisResults[ruleName];
+                                    
+                                    if (!existing || !existing.found) {
+                                        // No existing result or existing is not found - use new result
+                                        this.analysisResults[ruleName] = result;
+                                        debugLog(`[TAR Parser] Rule '${ruleName}' parsed (first or replacing not-found):`, result.found);
+                                    } else if (result.found) {
+                                        // Both found - merge by keeping all sessions and targets
+                                        // Merge sessions (dedupe by ip:port:iqn)
+                                        result.sessions.forEach(newSession => {
+                                            const key = `${newSession.ip}:${newSession.port}:${newSession.iqn}`;
+                                            const exists = existing.sessions.find(s => `${s.ip}:${s.port}:${s.iqn}` === key);
+                                            if (!exists) {
+                                                existing.sessions.push(newSession);
+                                            }
+                                        });
+                                        
+                                        // Merge discoveryServers (dedupe by ip:port)
+                                        result.discoveryServers.forEach(newServer => {
+                                            const key = `${newServer.ip}:${newServer.port}`;
+                                            const exists = existing.discoveryServers.find(s => `${s.ip}:${s.port}` === key);
+                                            if (!exists) {
+                                                existing.discoveryServers.push(newServer);
+                                            }
+                                        });
+                                        
+                                        // Merge targets (dedupe by iqn)
+                                        result.targets.forEach(newTarget => {
+                                            const exists = existing.targets.find(t => t.iqn === newTarget.iqn);
+                                            if (!exists) {
+                                                existing.targets.push(newTarget);
+                                            }
+                                        });
+                                        
+                                        // Keep warnings from both
+                                        result.warnings.forEach(w => {
+                                            if (!existing.warnings.find(ew => ew.type === w.type && ew.message === w.message)) {
+                                                existing.warnings.push(w);
+                                            }
+                                        });
+                                        
+                                        debugLog(`[TAR Parser] Rule '${ruleName}' merged results (sessions: ${existing.sessions.length})`);
+                                    } else {
+                                        // New result is not found but existing is - keep existing
+                                        debugLog(`[TAR Parser] Rule '${ruleName}' keeping existing found result, ignoring not-found from ${filename}`);
                                     }
                                 } else {
                                     // Other single file rules - replace result
@@ -1860,14 +2095,53 @@ class IncrementalTARParser {
         const isSUSE = osReleaseData && osReleaseData.name && 
                       (osReleaseData.name.toLowerCase().includes('suse') || 
                        (osReleaseData.prettyName && osReleaseData.prettyName.toLowerCase().includes('suse')));
+        const isRHEL = osReleaseData && osReleaseData.name &&
+                      (osReleaseData.name.toLowerCase().includes('red hat') ||
+                       osReleaseData.name.toLowerCase().includes('rhel') ||
+                       (osReleaseData.prettyName && (osReleaseData.prettyName.toLowerCase().includes('red hat') || osReleaseData.prettyName.toLowerCase().includes('rhel'))));
+        const distroFamily = isSUSE ? 'sles' : (isRHEL ? 'rhel' : 'unknown');
         
-        // Filter corosync warnings for SUSE-specific checks
-        if (corosyncData && corosyncData.warnings && !isSUSE) {
-            // Remove the transport warning for non-SUSE distributions
-            corosyncData.warnings = corosyncData.warnings.filter(warning => 
-                warning.parameter !== 'totem.transport'
-            );
-            debugLog('[TAR Parser] Filtered totem.transport warning for non-SUSE distribution');
+        // Add distro family to corosync data for distro-aware rendering
+        if (corosyncData) {
+            corosyncData.distroFamily = distroFamily;
+        }
+        
+        // Filter corosync warnings based on distro family
+        if (corosyncData && corosyncData.warnings) {
+            if (isRHEL) {
+                // RHEL guide recommends the same totem values as SUSE, except transport should be 'knet' instead of 'udpu'
+                // Reference: https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-rhel-pacemaker
+                
+                // Remove the SUSE-specific transport warning (which expects 'udpu')
+                corosyncData.warnings = corosyncData.warnings.filter(warning => 
+                    warning.parameter !== 'totem.transport'
+                );
+                
+                // Add RHEL-specific transport check: should be 'knet' for RHEL 8+
+                if (corosyncData.totemTransport !== null && corosyncData.totemTransport !== 'knet') {
+                    corosyncData.warnings.push({
+                        parameter: 'totem.transport',
+                        expected: 'knet',
+                        actual: corosyncData.totemTransport,
+                        severity: 'warning',
+                        message: `Totem transport value is '${corosyncData.totemTransport}', but should be 'knet' for RHEL 8+ Azure environments`,
+                        documentationUrl: 'https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-rhel-pacemaker'
+                    });
+                }
+                
+                // Update documentation URLs to RHEL guide for remaining warnings
+                corosyncData.warnings.forEach(warning => {
+                    warning.documentationUrl = 'https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-rhel-pacemaker';
+                });
+                
+                debugLog('[TAR Parser] Applied RHEL-specific corosync validation (transport: knet)');
+            } else if (!isSUSE) {
+                // For unknown distros, only remove transport warning
+                corosyncData.warnings = corosyncData.warnings.filter(warning => 
+                    warning.parameter !== 'totem.transport'
+                );
+                debugLog('[TAR Parser] Filtered totem.transport warning for non-SUSE distribution');
+            }
         }
         
         // Antivirus detection results
@@ -2096,6 +2370,7 @@ class IncrementalTARParser {
             fstab: this.analysisResults.fstab || null,
             blockDevices: this.analysisResults.blockDevices || null,
             fstabAnalysis: this.analysisResults.fstabAnalysis || null,
+            dfOutput: this.analysisResults.dfOutput || null,
             storageCorrelation: this.correlateFstabWithBlockDevices(),
             nvmeList: this.analysisResults.nvmeList || null,
             involfltVersion: this.analysisResults.involfltVersion || null,
@@ -2110,6 +2385,15 @@ class IncrementalTARParser {
             rhuiErrors: this.analysisResults.rhuiErrors || null,
             leappReport: this.analysisResults.leappReport || null,
             leappLog: this.analysisResults.leappLog || null,
+            sapInstanceConfig: this.analysisResults.sapInstanceConfig || null,
+            sapInstanceErrors: this.analysisResults.sapInstanceErrors || null,
+            clusterMaintenanceMode: this.analysisResults.clusterMaintenanceMode || null,
+            sbdConfig: this.analysisResults.sbdConfig || null,
+            azureFenceAuth: this.analysisResults.azureFenceAuth || null,
+            iscsiConfig: this.analysisResults.iscsiConfig || null,
+            firewallRules: this.analysisResults.firewallRules || null,
+            networkInterfaces: this.analysisResults.networkInterfaces || null,
+            vmcore: this.analysisResults.vmcore || null,
             usedPaxFormat: this.usedPaxFormat || false,  // Flag if PAX format was detected
             // Cross-validation results
             nodesInHosts: nodesInHosts,

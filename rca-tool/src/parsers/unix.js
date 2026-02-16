@@ -1,5 +1,69 @@
-// Unix System Parsers
-// Extracts OS release information, basic environment, filesystem configuration, and kernel tuning
+/**
+ * @module parsers/unix
+ * @description Unix System Parsers for RCA Tool
+ *
+ * Provides 19 parsers covering core Linux system information: OS identity,
+ * filesystem layout, kernel tuning, time synchronisation (Azure PTP), RHUI
+ * repository health, crypto policies, and Leapp in-place upgrade analysis.
+ *
+ * ### Parser Inventory
+ *
+ * #### OS Identity
+ *
+ * | Parser | File Patterns | Purpose |
+ * |--------|---------------|---------|
+ * | `basicEnvironmentParser` | `basic-environment.txt` | Fallback OS identification from supportconfig; detects SAP and EPIC products |
+ * | `osReleaseParser` | `os-release`, `sysinfo.txt` | Primary OS identification via `/etc/os-release` fields; detects SLES, RHEL, Ubuntu, Oracle, Alma, Rocky |
+ *
+ * #### Filesystem
+ *
+ * | Parser | File Patterns | Purpose |
+ * |--------|---------------|---------|
+ * | `fstabParser` | `etc/fstab`, `fs-diskio.txt` | Extracts `/etc/fstab` entries with mount options; used alongside storage/fstabAnalysisParser for nofail validation |
+ *
+ * #### Kernel Tuning
+ *
+ * | Parser | File Patterns | Purpose |
+ * |--------|---------------|---------|
+ * | `kernelTuningParser` | `env.txt`, `sysctl.conf`, `proc/sys/` files, `sysctl_-a` | Parses sysctl parameters; flags Azure-relevant tweaks (sunrpc, TCP keepalive, panic, swap, etc.) |
+ * | `hugePagesParser` | `proc/meminfo`, `basic-environment.txt`, `memory.txt` | Reports HugePages allocation (total, free, size); flags when huge pages are in use |
+ *
+ * #### Time Synchronisation (Azure PTP)
+ *
+ * | Parser | File Patterns | Purpose |
+ * |--------|---------------|---------|
+ * | `timeSyncParser` | `env.txt`, `boot.txt`, `proc/` files | Detects hv_utils and PTP clock source modules; checks PHC index assignment |
+ * | `ptpClockSourceParser` | `chrony.conf`, `ntp.conf`, `etc/chrony*`, `etc/ntp*` | Verifies chrony/NTP is configured with `refclock PHC /dev/ptp_hyperv` for Azure PTP |
+ * | `timeSyncServiceParser` | `ntp.txt`, `chrony*`, `timekeeping.txt`, `systemd/` | Detects which time sync service (chrony/ntpd/systemd-timesyncd) is active and its configuration |
+ * | `timedatectlParser` | `ntp.txt`, `timekeeping.txt`, `timedatectl` | Parses `timedatectl` output; checks NTP enabled/synchronised and configured NTP source |
+ * | `ptpDeviceParser` | `env.txt`, `boot.txt`, `proc/`, `dev/` | Enumerates PTP devices; checks for `/dev/ptp_hyperv` symlink presence |
+ * | `chronyTrackingParser` | `ntp.txt`, `timekeeping.txt`, `chronyc_tracking` | Parses `chronyc tracking` output; reports stratum, system time offset, leap status |
+ * | `chronyMakestepParser` | `chrony.conf`, `etc/chrony*` | Checks if `makestep` is configured in chrony.conf for initial large time corrections |
+ *
+ * #### RHUI (Red Hat Update Infrastructure)
+ *
+ * | Parser | File Patterns | Purpose |
+ * |--------|---------------|---------|
+ * | `rhuiConfigParser` | `updates.txt`, `yum.repos.d/`, `plugin.conf.d/` | Detects Azure RHUI repositories (EUS, non-EUS, E4S, SAP) and dnf plugin configuration |
+ * | `eusVersionLockParser` | `updates.txt`, `yum.conf`, `dnf.conf`, `releasever` | Reads `releasever` lock value used for EUS pinning |
+ * | `rhelRhuiCheckParser` | `updates.txt`, `rhui/`, `rpm_-qa` | Checks RHUI client package installation, TLS certificate validity, content set entitlements |
+ * | `rhuiErrorsParser` | `updates.txt`, `dnf.log`, `yum.log`, `messages` | Detects RHUI connectivity errors (TLS, DNS, 404, repo metadata) from package manager logs |
+ *
+ * #### Security
+ *
+ * | Parser | File Patterns | Purpose |
+ * |--------|---------------|---------|
+ * | `cryptoPoliciesParser` | `crypto-policies/config`, `updates.txt` | Reports active crypto policy (DEFAULT, LEGACY, FUTURE, FIPS) on RHEL 8+ |
+ *
+ * #### Leapp In-Place Upgrade
+ *
+ * | Parser | File Patterns | Purpose |
+ * |--------|---------------|---------|
+ * | `leappReportParser` | `leapp-report.txt`, `leapp-report.json` | Parses Leapp pre-upgrade/upgrade report; categorises findings by severity (high, medium, low, info) with remediation hints |
+ * | `leappLogParser` | `leapp-upgrade.log`, `leapp.log` | Scans Leapp log for errors, inhibitors, and phase failures during upgrade execution |
+ *
+ * @see {@link module:worker} for registration in SCC_RULES
+ */
 
 // Debug configuration - set to true to enable debug logging
 const DEBUG_UNIX = true;

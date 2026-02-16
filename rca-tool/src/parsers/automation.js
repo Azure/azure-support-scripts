@@ -1,4 +1,42 @@
-// Automation tools detection (Ansible, Puppet, Chef, etc.)
+/**
+ * @module parsers/automation
+ * @description Automation tools detection (Ansible, Puppet, Chef, SaltStack).
+ *
+ * Scans system log files for evidence of configuration-management tool
+ * executions and returns a time-ordered list of events.
+ *
+ * ### Detected tools and patterns
+ *
+ * | Tool | Log patterns |
+ * |------|--------------|
+ * | Ansible | `ansible-command:`, `ansible-setup:` |
+ * | Puppet  | `puppet-agent:`, `puppet apply`, `puppet-run:` |
+ * | Chef    | `chef-client[PID]:`, `chef-solo[PID]:`, `chef-apply[PID]:` |
+ *
+ * Chef events include up to 5 lines of context for key phases
+ * (Starting Chef, Converging, FATAL, ERROR, etc.).
+ *
+ * ### Input files
+ *
+ * Matches: `messages`, `localmessages`, `syslog`, `journalctl*` (with
+ * optional date/number suffixes and `.txt` extension).
+ *
+ * ### Return value
+ *
+ * ```
+ * { found: boolean, count: number, events: Array<{
+ *     timestamp, lineNumber, toolType, patternType,
+ *     command, rawLine, sourceFile
+ * }> }
+ * ```
+ *
+ * ### Factory
+ *
+ * Exported as `createAutomationParser(SCC_RULES)` -- the SCC_RULES object
+ * provides `extractTimestamp()` and `stripAnsiCodes()` helpers.
+ *
+ * @see {@link module:worker} for registration in SCC_RULES
+ */
 
 // Debug logging - checks global DEBUG_CONFIG from worker.js
 function debugLog(...args) {

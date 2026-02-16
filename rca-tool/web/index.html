@@ -805,6 +805,40 @@
             return div.innerHTML;
         }
         
+        // Utility: Format bytes to human-readable size (KB blocks from df to readable)
+        function formatDfSize(sizeStr) {
+            if (!sizeStr || sizeStr === '-') return '-';
+            
+            // If already has a unit suffix (e.g., from df -h output), return as-is
+            if (/[KMGTP]i?B?$/i.test(sizeStr)) return sizeStr;
+            
+            // Convert from 1K blocks to bytes, then format
+            const blocks = parseInt(sizeStr, 10);
+            if (isNaN(blocks)) return sizeStr;
+            
+            const bytes = blocks * 1024; // df reports in 1K blocks by default
+            
+            const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+            let unitIndex = 0;
+            let size = bytes;
+            
+            while (size >= 1024 && unitIndex < units.length - 1) {
+                size /= 1024;
+                unitIndex++;
+            }
+            
+            // Format with appropriate decimal places
+            if (unitIndex === 0) {
+                return size.toFixed(0) + ' ' + units[unitIndex];
+            } else if (size >= 100) {
+                return size.toFixed(0) + ' ' + units[unitIndex];
+            } else if (size >= 10) {
+                return size.toFixed(1) + ' ' + units[unitIndex];
+            } else {
+                return size.toFixed(2) + ' ' + units[unitIndex];
+            }
+        }
+        
         // Format streaming analysis results (from worker)
         function formatStreamingAnalysis(analysis, compressedSize, decompressedSize, filename) {
             // Debug: Log the entire analysis object to see what we're receiving
@@ -831,11 +865,13 @@
             console.log('[DEBUG] distroPackages:', analysis.distroPackages);
             console.log('[DEBUG] pacemakerResources:', analysis.pacemakerResources);
             console.log('[DEBUG] kernelTuning:', analysis.kernelTuning);
+            console.log('[DEBUG] sapInstanceConfig:', analysis.sapInstanceConfig);
+            console.log('[DEBUG] sapInstanceErrors:', analysis.sapInstanceErrors);
             if (analysis.pacemakerResources && analysis.pacemakerResources.resources) {
                 console.log('[DEBUG] Resources detail:', analysis.pacemakerResources.resources);
             }
             
-            const { fileCount, directories, fileTypes, files, totalParsed, nestedGzipTotalCount, nestedGzipTotalCompressedBytes, nestedGzipCount, nestedGzipCompressedBytes, nestedGzipDecompressedBytes, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, clusterEvents, kernelReboots, oomKiller, xfsErrors, corosyncConfig, distroPackages, antivirus, automation, kernelTuning, hugePages, timeSync, ptpClockSource, timeSyncService, timedatectl, ptpDevice, chronyTracking, chronyMakestep, lvmConfig, raidConfig, fstab, blockDevices, storageCorrelation, nvmeList, involfltVersion, involfltKernelVersion, rhuiConfig, eusVersionLock, rhelRhuiCheck, cryptoPolicies, rhuiErrors, leappReport, leappLog } = analysis;
+            const { fileCount, directories, fileTypes, files, totalParsed, nestedGzipTotalCount, nestedGzipTotalCompressedBytes, nestedGzipCount, nestedGzipCompressedBytes, nestedGzipDecompressedBytes, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, clusterEvents, kernelReboots, oomKiller, xfsErrors, corosyncConfig, distroPackages, antivirus, automation, kernelTuning, hugePages, timeSync, ptpClockSource, timeSyncService, timedatectl, ptpDevice, chronyTracking, chronyMakestep, lvmConfig, raidConfig, fstab, blockDevices, fstabAnalysis, dfOutput, storageCorrelation, nvmeList, involfltVersion, involfltKernelVersion, rhuiConfig, eusVersionLock, rhelRhuiCheck, cryptoPolicies, rhuiErrors, leappReport, leappLog, clusterMaintenanceMode, sbdConfig, azureFenceAuth, iscsiConfig, firewallRules, networkInterfaces, vmcore } = analysis;
 
             // Compute a reusable SAP detection flag early so UI sections can be gated
             const dirListGlobal = (directories || []).map(d => (d || '').toLowerCase());
@@ -1149,8 +1185,6 @@
                     const clusterServiceErrorCount = hasClusterServiceErrors ? 1 : 0;
                     const totalIssues = corosyncWarningCount + clusterServiceErrorCount;
                     html += `(${totalIssues} issue${totalIssues > 1 ? 's' : ''})`;
-                } else {
-                    html += `(validated)`;
                 }
                 html += `</span>`;
                 html += `</summary>`;
@@ -1233,85 +1267,115 @@
                     html += `</div>`;
                 }
                 
+                // Distro-aware recommended values
+                // SLES: https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-suse-pacemaker
+                // RHEL: https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-rhel-pacemaker
+                const distroFamily = corosyncConfig.distroFamily || 'unknown';
+                const corosyncDocUrl = distroFamily === 'rhel'
+                    ? 'https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-rhel-pacemaker'
+                    : 'https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-suse-pacemaker';
+                const distroLabel = distroFamily === 'rhel' ? 'RHEL' : (distroFamily === 'sles' ? 'SLES' : 'Azure');
+                
+                // SLES explicitly recommends all parameters
+                // RHEL only explicitly recommends token=30000 (other totem values are pcs defaults)
+                const totemChecks = distroFamily === 'rhel' ? [
+                    { label: 'token', value: corosyncConfig.totemToken, expected: 30000 },
+                    { label: 'token_retransmits_before_loss_const', value: corosyncConfig.totemRetransmits, expected: null },
+                    { label: 'join', value: corosyncConfig.totemJoin, expected: null },
+                    { label: 'consensus', value: corosyncConfig.totemConsensus, expected: null },
+                    { label: 'max_messages', value: corosyncConfig.totemMaxMessages, expected: null },
+                    { label: 'transport', value: corosyncConfig.totemTransport, expected: null }
+                ] : [
+                    { label: 'token', value: corosyncConfig.totemToken, expected: 30000 },
+                    { label: 'token_retransmits_before_loss_const', value: corosyncConfig.totemRetransmits, expected: 10 },
+                    { label: 'join', value: corosyncConfig.totemJoin, expected: 60 },
+                    { label: 'consensus', value: corosyncConfig.totemConsensus, expected: 36000 },
+                    { label: 'max_messages', value: corosyncConfig.totemMaxMessages, expected: 20 },
+                    { label: 'transport', value: corosyncConfig.totemTransport, expected: 'udpu' }
+                ];
+                
                 // Show totem checks group
                 html += '<div style="margin-bottom: 20px;">';
-                html += '<p style="margin: 0 0 8px 0;"><strong>Totem checks:</strong></p>';
+                html += `<p style="margin: 0 0 8px 0;"><strong>Totem checks:</strong> <span style="font-size: 12px; font-weight: normal;">(${distroLabel} guide)</span></p>`;
                 
-                if (corosyncConfig.totemToken !== null) {
-                    html += `<p style="margin: 5px 0;"><strong>token:</strong> <code>${corosyncConfig.totemToken}</code>`;
-                    if (corosyncConfig.totemToken === 30000) {
-                        html += ` <span class="text-success" style="margin-left: 5px;">[OK]</span>`;
-                    }
-                    html += `</p>`;
+                const visibleTotemChecks = totemChecks.filter(c => c.value !== null);
+                if (visibleTotemChecks.length > 0) {
+                    html += `<table style="width: 100%; font-size: 13px; border-collapse: collapse; border: 1px solid var(--border-color);">`;
+                    html += `<thead><tr style="background: var(--code-bg); border-bottom: 1px solid var(--border-color);">`;
+                    html += `<th style="text-align: center; padding: 8px; border-right: 1px solid var(--border-color); width: 50px;">Status</th>`;
+                    html += `<th style="text-align: left; padding: 8px; border-right: 1px solid var(--border-color);">Parameter</th>`;
+                    html += `<th style="text-align: left; padding: 8px; border-right: 1px solid var(--border-color);">Recommended</th>`;
+                    html += `<th style="text-align: left; padding: 8px;">Current</th>`;
+                    html += `</tr></thead><tbody>`;
+                    visibleTotemChecks.forEach((check, idx) => {
+                        const hasExpected = check.expected !== null;
+                        let statusIcon, statusColor;
+                        if (hasExpected) {
+                            const isOk = check.value === check.expected;
+                            statusIcon = isOk ? '[OK]' : '[!]';
+                            statusColor = isOk ? 'color: var(--success);' : 'color: var(--danger);';
+                        } else {
+                            statusIcon = '[i]';
+                            statusColor = 'color: var(--text-secondary);';
+                        }
+                        const rowBg = idx % 2 === 1 ? 'background: var(--code-bg);' : '';
+                        html += `<tr style="border-bottom: 1px solid var(--border-color); ${rowBg}">`;
+                        html += `<td style="text-align: center; padding: 6px 8px; border-right: 1px solid var(--border-color);"><span style="${statusColor}">${statusIcon}</span></td>`;
+                        html += `<td style="padding: 6px 8px; border-right: 1px solid var(--border-color);"><code style="font-weight: bold;">${check.label}</code></td>`;
+                        html += `<td style="padding: 6px 8px; border-right: 1px solid var(--border-color);">${hasExpected ? '<code>' + check.expected + '</code>' : '<span style="color: var(--text-secondary);">—</span>'}</td>`;
+                        html += `<td style="padding: 6px 8px;"><code>${check.value}</code></td>`;
+                        html += `</tr>`;
+                    });
+                    html += `</tbody></table>`;
                 }
-                
-                if (corosyncConfig.totemRetransmits !== null) {
-                    html += `<p style="margin: 5px 0;"><strong>token_retransmits_before_loss_const:</strong> <code>${corosyncConfig.totemRetransmits}</code>`;
-                    if (corosyncConfig.totemRetransmits === 10) {
-                        html += ` <span class="text-success" style="margin-left: 5px;">[OK]</span>`;
-                    }
-                    html += `</p>`;
-                }
-                
-                if (corosyncConfig.totemJoin !== null) {
-                    html += `<p style="margin: 5px 0;"><strong>join:</strong> <code>${corosyncConfig.totemJoin}</code>`;
-                    if (corosyncConfig.totemJoin === 60) {
-                        html += ` <span class="text-success" style="margin-left: 5px;">[OK]</span>`;
-                    }
-                    html += `</p>`;
-                }
-                
-                if (corosyncConfig.totemConsensus !== null) {
-                    html += `<p style="margin: 5px 0;"><strong>consensus:</strong> <code>${corosyncConfig.totemConsensus}</code>`;
-                    if (corosyncConfig.totemConsensus === 36000) {
-                        html += ` <span class="text-success" style="margin-left: 5px;">[OK]</span>`;
-                    }
-                    html += `</p>`;
-                }
-                
-                if (corosyncConfig.totemMaxMessages !== null) {
-                    html += `<p style="margin: 5px 0;"><strong>max_messages:</strong> <code>${corosyncConfig.totemMaxMessages}</code>`;
-                    if (corosyncConfig.totemMaxMessages === 20) {
-                        html += ` <span class="text-success" style="margin-left: 5px;">[OK]</span>`;
-                    }
-                    html += `</p>`;
-                }
-                
-                if (corosyncConfig.totemTransport !== null) {
-                    html += `<p style="margin: 5px 0;"><strong>transport:</strong> <code>${corosyncConfig.totemTransport}</code>`;
-                    if (corosyncConfig.totemTransport === 'udpu') {
-                        html += ` <span class="text-success" style="margin-left: 5px;">[OK]</span>`;
-                    }
-                    html += `</p>`;
-                }
+                html += `<p style="margin: 5px 0 0 0; font-size: 12px;"><a href="${corosyncDocUrl}" target="_blank" class="text-info">View ${distroLabel} Pacemaker Documentation</a></p>`;
                 html += '</div>';
                 
                 // Show quorum checks group
+                // RHEL explicitly recommends expected_votes=2; provider and two_node are defaults
+                // SLES explicitly recommends all three
+                const quorumChecks = distroFamily === 'rhel' ? [
+                    { label: 'provider', value: corosyncConfig.quorumProvider, expected: null },
+                    { label: 'expected_votes', value: corosyncConfig.quorumExpectedVotes, expected: 2 },
+                    { label: 'two_node', value: corosyncConfig.quorumTwoNode, expected: null }
+                ] : [
+                    { label: 'provider', value: corosyncConfig.quorumProvider, expected: 'corosync_votequorum' },
+                    { label: 'expected_votes', value: corosyncConfig.quorumExpectedVotes, expected: 2 },
+                    { label: 'two_node', value: corosyncConfig.quorumTwoNode, expected: 1 }
+                ];
+                
                 html += '<div style="margin-bottom: 15px;">';
-                html += '<p style="margin: 0 0 8px 0;"><strong>Quorum checks:</strong></p>';
+                html += `<p style="margin: 0 0 8px 0;"><strong>Quorum checks:</strong> <span style="font-size: 12px; font-weight: normal;">(${distroLabel} guide)</span></p>`;
                 
-                if (corosyncConfig.quorumProvider !== null) {
-                    html += `<p style="margin: 5px 0;"><strong>provider:</strong> <code>${corosyncConfig.quorumProvider}</code>`;
-                    if (corosyncConfig.quorumProvider === 'corosync_votequorum') {
-                        html += ` <span class="text-success" style="margin-left: 5px;">[OK]</span>`;
-                    }
-                    html += `</p>`;
-                }
-                
-                if (corosyncConfig.quorumExpectedVotes !== null) {
-                    html += `<p style="margin: 5px 0;"><strong>expected_votes:</strong> <code>${corosyncConfig.quorumExpectedVotes}</code>`;
-                    if (corosyncConfig.quorumExpectedVotes === 2) {
-                        html += ` <span class="text-success" style="margin-left: 5px;">[OK]</span>`;
-                    }
-                    html += `</p>`;
-                }
-                
-                if (corosyncConfig.quorumTwoNode !== null) {
-                    html += `<p style="margin: 5px 0;"><strong>two_node:</strong> <code>${corosyncConfig.quorumTwoNode}</code>`;
-                    if (corosyncConfig.quorumTwoNode === 1) {
-                        html += ` <span class="text-success" style="margin-left: 5px;">[OK]</span>`;
-                    }
-                    html += `</p>`;
+                const visibleQuorumChecks = quorumChecks.filter(c => c.value !== null);
+                if (visibleQuorumChecks.length > 0) {
+                    html += `<table style="width: 100%; font-size: 13px; border-collapse: collapse; border: 1px solid var(--border-color);">`;
+                    html += `<thead><tr style="background: var(--code-bg); border-bottom: 1px solid var(--border-color);">`;
+                    html += `<th style="text-align: center; padding: 8px; border-right: 1px solid var(--border-color); width: 50px;">Status</th>`;
+                    html += `<th style="text-align: left; padding: 8px; border-right: 1px solid var(--border-color);">Parameter</th>`;
+                    html += `<th style="text-align: left; padding: 8px; border-right: 1px solid var(--border-color);">Recommended</th>`;
+                    html += `<th style="text-align: left; padding: 8px;">Current</th>`;
+                    html += `</tr></thead><tbody>`;
+                    visibleQuorumChecks.forEach((check, idx) => {
+                        const hasExpected = check.expected !== null;
+                        let statusIcon, statusColor;
+                        if (hasExpected) {
+                            const isOk = check.value === check.expected;
+                            statusIcon = isOk ? '[OK]' : '[!]';
+                            statusColor = isOk ? 'color: var(--success);' : 'color: var(--danger);';
+                        } else {
+                            statusIcon = '[i]';
+                            statusColor = 'color: var(--text-secondary);';
+                        }
+                        const rowBg = idx % 2 === 1 ? 'background: var(--code-bg);' : '';
+                        html += `<tr style="border-bottom: 1px solid var(--border-color); ${rowBg}">`;
+                        html += `<td style="text-align: center; padding: 6px 8px; border-right: 1px solid var(--border-color);"><span style="${statusColor}">${statusIcon}</span></td>`;
+                        html += `<td style="padding: 6px 8px; border-right: 1px solid var(--border-color);"><code style="font-weight: bold;">${check.label}</code></td>`;
+                        html += `<td style="padding: 6px 8px; border-right: 1px solid var(--border-color);">${hasExpected ? '<code>' + check.expected + '</code>' : '<span style="color: var(--text-secondary);">—</span>'}</td>`;
+                        html += `<td style="padding: 6px 8px;"><code>${check.value}</code></td>`;
+                        html += `</tr>`;
+                    });
+                    html += `</tbody></table>`;
                 }
                 html += '</div>';
                 
@@ -1675,6 +1739,340 @@
                         html += '</ul>';
                     } else {
                         html += `<p style="margin: 0; font-size: 13px;" class="text-danger"><em>No fencing devices detected</em></p>`;
+                    }
+                    
+                    html += '</div>';
+                    html += '</div>';
+                }
+                
+                // Show cluster maintenance mode status
+                if (clusterMaintenanceMode && clusterMaintenanceMode.found) {
+                    const maint = clusterMaintenanceMode;
+                    if (maint.maintenanceMode || (maint.resourcesInMaintenance && maint.resourcesInMaintenance.length > 0)) {
+                        html += '<div style="margin-top: 20px; margin-bottom: 15px;">';
+                        html += '<p style="margin: 0 0 8px 0;"><strong>Maintenance Mode:</strong></p>';
+                        html += '<div class="subsection warning-block">';
+                        
+                        if (maint.maintenanceMode) {
+                            html += `<p style="margin: 0 0 10px 0;" class="text-warning"><strong>[!] Cluster is in MAINTENANCE MODE</strong></p>`;
+                            html += `<p style="margin: 0; font-size: 13px;">Resources are not being managed. Run <code>crm configure property maintenance-mode=false</code> to exit.</p>`;
+                        }
+                        
+                        if (maint.resourcesInMaintenance && maint.resourcesInMaintenance.length > 0) {
+                            html += `<p style="margin: 10px 0 5px 0; font-size: 13px;"><strong>Resources in maintenance:</strong></p>`;
+                            html += '<ul style="margin: 0; padding-left: 20px; font-size: 12px;">';
+                            maint.resourcesInMaintenance.forEach(r => {
+                                html += `<li><code>${r}</code></li>`;
+                            });
+                            html += '</ul>';
+                        }
+                        
+                        html += '</div>';
+                        html += '</div>';
+                    }
+                }
+                
+                // Show Azure fence agent authentication details
+                if (azureFenceAuth && azureFenceAuth.found) {
+                    const auth = azureFenceAuth;
+                    html += '<div style="margin-top: 20px; margin-bottom: 15px;">';
+                    html += '<p style="margin: 0 0 8px 0;"><strong>Azure Fence Agent Authentication:</strong></p>';
+                    html += '<div class="subsection">';
+                    
+                    // Auth method
+                    const authMethodDisplay = auth.authMethod === 'msi' ? 'Managed Identity (MSI)' : 
+                                             auth.authMethod === 'service_principal' ? 'Service Principal' : 'Unknown';
+                    const authMethodClass = auth.authMethod === 'msi' ? 'text-success' : 'text-warning';
+                    html += `<p style="margin: 0 0 10px 0; font-size: 13px;">`;
+                    html += `<strong>Auth Method:</strong> <span class="${authMethodClass}" style="font-weight: bold;">${authMethodDisplay}</span>`;
+                    if (auth.authMethod === 'service_principal') {
+                        html += ` <span class="badge badge-warning" style="font-size: 10px; margin-left: 5px;">Migrate to MSI recommended</span>`;
+                    }
+                    html += `</p>`;
+                    
+                    // Azure details
+                    if (auth.subscriptionId) {
+                        html += `<p style="margin: 5px 0; font-size: 12px;"><strong>Subscription ID:</strong> <code style="font-size: 11px;">${auth.subscriptionId}</code></p>`;
+                    }
+                    if (auth.resourceGroup) {
+                        html += `<p style="margin: 5px 0; font-size: 12px;"><strong>Resource Group:</strong> <code style="font-size: 11px;">${auth.resourceGroup}</code></p>`;
+                    }
+                    if (auth.tenantId) {
+                        html += `<p style="margin: 5px 0; font-size: 12px;"><strong>Tenant ID:</strong> <code style="font-size: 11px;">${auth.tenantId}</code></p>`;
+                    }
+                    
+                    // PCMK timing parameters table
+                    const fenceTimingChecks = [
+                        { label: 'pcmk_delay_max', value: auth.pcmkDelayMax, expected: null },
+                        { label: 'pcmk_reboot_timeout', value: auth.pcmkRebootTimeout, expected: 900 },
+                        { label: 'power_timeout', value: auth.powerTimeout, expected: 240 },
+                        { label: 'pcmk_monitor_retries', value: auth.pcmkMonitorRetries, expected: 4 },
+                        { label: 'pcmk_action_limit', value: auth.pcmkActionLimit, expected: 3 }
+                    ];
+                    const visibleFenceChecks = fenceTimingChecks.filter(c => c.value !== null);
+                    if (visibleFenceChecks.length > 0) {
+                        html += `<p style="margin: 10px 0 8px 0; font-size: 13px;"><strong>Timing Parameters:</strong></p>`;
+                        html += `<table style="width: 100%; font-size: 13px; border-collapse: collapse; border: 1px solid var(--border-color); margin-bottom: 10px;">`;
+                        html += `<thead><tr style="background: var(--code-bg); border-bottom: 1px solid var(--border-color);">`;
+                        html += `<th style="text-align: center; padding: 8px; border-right: 1px solid var(--border-color); width: 50px;">Status</th>`;
+                        html += `<th style="text-align: left; padding: 8px; border-right: 1px solid var(--border-color);">Parameter</th>`;
+                        html += `<th style="text-align: left; padding: 8px; border-right: 1px solid var(--border-color);">Recommended</th>`;
+                        html += `<th style="text-align: left; padding: 8px;">Current</th>`;
+                        html += `</tr></thead><tbody>`;
+                        visibleFenceChecks.forEach((check, idx) => {
+                            const hasExpected = check.expected !== null;
+                            let statusIcon, statusColor;
+                            if (hasExpected) {
+                                const isOk = check.value === check.expected;
+                                statusIcon = isOk ? '[OK]' : '[!]';
+                                statusColor = isOk ? 'color: var(--success);' : 'color: var(--danger);';
+                            } else {
+                                statusIcon = '[i]';
+                                statusColor = 'color: var(--text-secondary);';
+                            }
+                            const rowBg = idx % 2 === 1 ? 'background: var(--code-bg);' : '';
+                            html += `<tr style="border-bottom: 1px solid var(--border-color); ${rowBg}">`;
+                            html += `<td style="text-align: center; padding: 6px 8px; border-right: 1px solid var(--border-color);"><span style="${statusColor}">${statusIcon}</span></td>`;
+                            html += `<td style="padding: 6px 8px; border-right: 1px solid var(--border-color);"><code style="font-weight: bold;">${check.label}</code></td>`;
+                            html += `<td style="padding: 6px 8px; border-right: 1px solid var(--border-color);">${hasExpected ? '<code>' + check.expected + '</code>' : '<span style="color: var(--text-secondary);">&mdash;</span>'}</td>`;
+                            html += `<td style="padding: 6px 8px;"><code>${check.value}</code></td>`;
+                            html += `</tr>`;
+                        });
+                        html += `</tbody></table>`;
+                    }
+                    
+                    // Host map
+                    if (auth.pcmkHostMap) {
+                        html += `<p style="margin: 10px 0 5px 0; font-size: 12px;"><strong>Host Map:</strong></p>`;
+                        html += `<code style="font-size: 11px; display: block; padding: 5px; background: var(--code-bg); border-radius: 3px;">${auth.pcmkHostMap}</code>`;
+                    }
+                    
+                    // Warnings
+                    if (auth.warnings && auth.warnings.length > 0) {
+                        html += `<div style="margin-top: 10px;" class="warning-block">`;
+                        auth.warnings.forEach(w => {
+                            html += `<p style="margin: 5px 0; font-size: 12px;"><strong>[!]</strong> ${w.message}</p>`;
+                            if (w.recommendation) {
+                                html += `<p style="margin: 0 0 5px 15px; font-size: 11px;" class="text-muted">${w.recommendation}</p>`;
+                            }
+                            if (w.documentationUrl) {
+                                html += `<p style="margin: 0 0 5px 15px; font-size: 11px;"><a href="${w.documentationUrl}" target="_blank" class="text-info">Documentation</a></p>`;
+                            }
+                        });
+                        html += `</div>`;
+                    }
+                    
+                    html += '</div>';
+                    html += '</div>';
+                }
+                
+                // Show SBD configuration if available
+                if (sbdConfig && sbdConfig.found) {
+                    const sbd = sbdConfig;
+                    const hasWarnings = sbd.warnings && sbd.warnings.length > 0;
+                    
+                    html += '<div style="margin-top: 20px; margin-bottom: 15px;">';
+                    html += '<p style="margin: 0 0 8px 0;"><strong>SBD Configuration:</strong>';
+                    if (hasWarnings) {
+                        html += ` <span class="badge badge-warning">${sbd.warnings.length} issue(s)</span>`;
+                    }
+                    html += '</p>';
+                    html += '<div class="subsection">';
+                    
+                    // SBD devices
+                    if (sbd.sbdDevices && sbd.sbdDevices.length > 0) {
+                        html += `<p style="margin: 0 0 10px 0; font-size: 13px;"><strong>SBD Devices:</strong> ${sbd.sbdDevices.length} configured</p>`;
+                        html += '<ul style="margin: 0 0 10px 0; padding-left: 20px; font-size: 12px;">';
+                        sbd.sbdDevices.forEach(d => {
+                            html += `<li><code style="font-size: 11px;">${d}</code></li>`;
+                        });
+                        html += '</ul>';
+                    } else {
+                        html += `<p style="margin: 0 0 10px 0; font-size: 13px;" class="text-muted"><em>No SBD_DEVICE configured</em></p>`;
+                    }
+                    
+                    // SBD settings table
+                    const sbdChecks = [
+                        { label: 'SBD_PACEMAKER', value: sbd.sbdPacemaker, expected: 'yes' },
+                        { label: 'SBD_STARTMODE', value: sbd.sbdStartmode, expected: 'always' },
+                        { label: 'SBD_DELAY_START', value: sbd.sbdDelayStart, expected: null, validate: v => !isNaN(parseInt(v, 10)) && v !== 'no' && v !== 'yes', hint: 'numeric (seconds)' },
+                        { label: 'SBD_WATCHDOG_DEV', value: sbd.sbdWatchdogDev, expected: null },
+                        { label: 'SBD_WATCHDOG_TIMEOUT', value: sbd.sbdWatchdogTimeout, expected: null },
+                        { label: 'SBD_TIMEOUT_ACTION', value: sbd.sbdTimeoutAction, expected: null }
+                    ];
+                    const visibleSbdChecks = sbdChecks.filter(c => c.value !== null);
+                    if (visibleSbdChecks.length > 0) {
+                        html += `<p style="margin: 0 0 8px 0; font-size: 13px;"><strong>SBD Parameters:</strong></p>`;
+                        html += `<table style="width: 100%; font-size: 13px; border-collapse: collapse; border: 1px solid var(--border-color); margin-bottom: 10px;">`;
+                        html += `<thead><tr style="background: var(--code-bg); border-bottom: 1px solid var(--border-color);">`;
+                        html += `<th style="text-align: center; padding: 8px; border-right: 1px solid var(--border-color); width: 50px;">Status</th>`;
+                        html += `<th style="text-align: left; padding: 8px; border-right: 1px solid var(--border-color);">Parameter</th>`;
+                        html += `<th style="text-align: left; padding: 8px; border-right: 1px solid var(--border-color);">Recommended</th>`;
+                        html += `<th style="text-align: left; padding: 8px;">Current</th>`;
+                        html += `</tr></thead><tbody>`;
+                        visibleSbdChecks.forEach((check, idx) => {
+                            const hasExpected = check.expected !== null;
+                            const hasValidate = typeof check.validate === 'function';
+                            let statusIcon, statusColor;
+                            if (hasExpected) {
+                                const isOk = String(check.value) === String(check.expected);
+                                statusIcon = isOk ? '[OK]' : '[!]';
+                                statusColor = isOk ? 'color: var(--success);' : 'color: var(--danger);';
+                            } else if (hasValidate) {
+                                const isOk = check.validate(check.value);
+                                statusIcon = isOk ? '[OK]' : '[!]';
+                                statusColor = isOk ? 'color: var(--success);' : 'color: var(--danger);';
+                            } else {
+                                statusIcon = '[i]';
+                                statusColor = 'color: var(--text-secondary);';
+                            }
+                            const recommendedText = hasExpected ? '<code>' + check.expected + '</code>' : (check.hint ? '<span style="color: var(--text-secondary);">' + check.hint + '</span>' : '<span style="color: var(--text-secondary);">&mdash;</span>');
+                            const rowBg = idx % 2 === 1 ? 'background: var(--code-bg);' : '';
+                            html += `<tr style="border-bottom: 1px solid var(--border-color); ${rowBg}">`;
+                            html += `<td style="text-align: center; padding: 6px 8px; border-right: 1px solid var(--border-color);"><span style="${statusColor}">${statusIcon}</span></td>`;
+                            html += `<td style="padding: 6px 8px; border-right: 1px solid var(--border-color);"><code style="font-weight: bold;">${check.label}</code></td>`;
+                            html += `<td style="padding: 6px 8px; border-right: 1px solid var(--border-color);">${recommendedText}</td>`;
+                            html += `<td style="padding: 6px 8px;"><code>${check.value}</code></td>`;
+                            html += `</tr>`;
+                        });
+                        html += `</tbody></table>`;
+                    }
+                    
+                    // Warnings
+                    if (hasWarnings) {
+                        html += `<div style="margin-top: 10px;" class="warning-block">`;
+                        sbd.warnings.forEach(w => {
+                            html += `<p style="margin: 5px 0; font-size: 12px;"><strong>[!]</strong> ${w.message}</p>`;
+                            if (w.recommendation) {
+                                html += `<p style="margin: 0 0 5px 15px; font-size: 11px;" class="text-muted">${w.recommendation}</p>`;
+                            }
+                            if (w.documentationUrl) {
+                                html += `<p style="margin: 0 0 5px 15px; font-size: 11px;"><a href="${w.documentationUrl}" target="_blank" class="text-info">Azure documentation</a></p>`;
+                            }
+                        });
+                        html += `</div>`;
+                    }
+                    
+                    html += '</div>';
+                    html += '</div>';
+                }
+                
+                // Show iSCSI configuration if available
+                if (iscsiConfig && iscsiConfig.found) {
+                    const iscsi = iscsiConfig;
+                    html += '<div style="margin-top: 20px; margin-bottom: 15px;">';
+                    html += '<p style="margin: 0 0 8px 0;"><strong>iSCSI Configuration:</strong></p>';
+                    html += '<div class="subsection">';
+                    
+                    if (iscsi.initiatorName) {
+                        html += `<p style="margin: 0 0 10px 0; font-size: 13px;"><strong>Initiator Name:</strong> <code style="font-size: 11px;">${iscsi.initiatorName}</code></p>`;
+                    }
+                    
+                    // Show discovery servers
+                    if (iscsi.discoveryServers && iscsi.discoveryServers.length > 0) {
+                        html += `<p style="margin: 10px 0 5px 0; font-size: 13px;"><strong>Discovery Servers:</strong> ${iscsi.discoveryServers.length}</p>`;
+                        html += '<ul style="margin: 0; padding-left: 20px; font-size: 12px;">';
+                        iscsi.discoveryServers.forEach(d => {
+                            html += `<li><code>${d.ip}:${d.port}</code> <span class="text-muted">(via ${d.method})</span></li>`;
+                        });
+                        html += '</ul>';
+                    }
+                    
+                    // Show active sessions
+                    if (iscsi.sessions && iscsi.sessions.length > 0) {
+                        html += `<p style="margin: 10px 0 5px 0; font-size: 13px;"><strong>Active iSCSI Sessions:</strong> ${iscsi.sessions.length}</p>`;
+                        html += '<div style="max-height: 200px; overflow-y: auto;">';
+                        html += '<ul style="margin: 0; padding-left: 20px; font-size: 12px;">';
+                        iscsi.sessions.forEach(s => {
+                            const stateClass = (s.connectionState === 'LOGGED IN') ? 'text-success' : 'text-warning';
+                            const stateIcon = (s.connectionState === 'LOGGED IN') ? '●' : '○';
+                            html += `<li><span class="${stateClass}">${stateIcon}</span> <code>${s.ip}:${s.port}</code> - <code style="font-size: 11px;">${s.iqn}</code>`;
+                            if (s.connectionState) {
+                                html += ` <span class="${stateClass}">[${s.connectionState}]</span>`;
+                            }
+                            html += `</li>`;
+                        });
+                        html += '</ul>';
+                        html += '</div>';
+                    } else if (iscsi.targets && iscsi.targets.length > 0) {
+                        // Show targets if no active sessions (warning case)
+                        html += `<p style="margin: 10px 0 5px 0; font-size: 13px;"><strong>iSCSI Targets (no active sessions!):</strong> ${iscsi.targets.length}</p>`;
+                        html += '<ul style="margin: 0; padding-left: 20px; font-size: 12px;">';
+                        iscsi.targets.forEach(t => {
+                            html += `<li><code style="font-size: 11px;">${t.iqn}</code> <span class="text-muted">(${t.portals.length} portal(s))</span></li>`;
+                        });
+                        html += '</ul>';
+                    }
+                    
+                    // Show key iscsid.conf settings as table
+                    const iscsiChecks = [
+                        { label: 'node.startup', value: iscsi.iscsidConfig ? iscsi.iscsidConfig['node.startup'] : null, expected: 'automatic' },
+                        { label: 'node.session.timeo.replacement_timeout', value: iscsi.iscsidConfig ? iscsi.iscsidConfig['node.session.timeo.replacement_timeout'] : null, expected: '5' },
+                        { label: 'node.conn[0].timeo.login_timeout', value: iscsi.iscsidConfig ? iscsi.iscsidConfig['node.conn[0].timeo.login_timeout'] : null, expected: null },
+                        { label: 'node.conn[0].timeo.logout_timeout', value: iscsi.iscsidConfig ? iscsi.iscsidConfig['node.conn[0].timeo.logout_timeout'] : null, expected: null },
+                        { label: 'node.session.initial_login_retry_max', value: iscsi.iscsidConfig ? iscsi.iscsidConfig['node.session.initial_login_retry_max'] : null, expected: null },
+                        { label: 'node.session.iscsi.FirstBurstLength', value: iscsi.iscsidConfig ? iscsi.iscsidConfig['node.session.iscsi.FirstBurstLength'] : null, expected: null },
+                        { label: 'node.session.iscsi.MaxBurstLength', value: iscsi.iscsidConfig ? iscsi.iscsidConfig['node.session.iscsi.MaxBurstLength'] : null, expected: null },
+                        { label: 'discovery.sendtargets.iscsi.MaxRecvDataSegmentLength', value: iscsi.iscsidConfig ? iscsi.iscsidConfig['discovery.sendtargets.iscsi.MaxRecvDataSegmentLength'] : null, expected: null }
+                    ];
+                    const visibleIscsiChecks = iscsiChecks.filter(c => c.value !== null && c.value !== undefined);
+                    if (visibleIscsiChecks.length > 0) {
+                        html += `<p style="margin: 10px 0 8px 0; font-size: 13px;"><strong>iSCSI Parameters:</strong></p>`;
+                        html += `<table style="width: 100%; font-size: 13px; border-collapse: collapse; border: 1px solid var(--border-color); margin-bottom: 10px;">`;
+                        html += `<thead><tr style="background: var(--code-bg); border-bottom: 1px solid var(--border-color);">`;
+                        html += `<th style="text-align: center; padding: 8px; border-right: 1px solid var(--border-color); width: 50px;">Status</th>`;
+                        html += `<th style="text-align: left; padding: 8px; border-right: 1px solid var(--border-color);">Parameter</th>`;
+                        html += `<th style="text-align: left; padding: 8px; border-right: 1px solid var(--border-color);">Recommended</th>`;
+                        html += `<th style="text-align: left; padding: 8px;">Current</th>`;
+                        html += `</tr></thead><tbody>`;
+                        visibleIscsiChecks.forEach((check, idx) => {
+                            const hasExpected = check.expected !== null;
+                            let statusIcon, statusColor;
+                            if (hasExpected) {
+                                const isOk = String(check.value).trim() === String(check.expected);
+                                statusIcon = isOk ? '[OK]' : '[!]';
+                                statusColor = isOk ? 'color: var(--success);' : 'color: var(--danger);';
+                            } else {
+                                statusIcon = '[i]';
+                                statusColor = 'color: var(--text-secondary);';
+                            }
+                            const rowBg = idx % 2 === 1 ? 'background: var(--code-bg);' : '';
+                            html += `<tr style="border-bottom: 1px solid var(--border-color); ${rowBg}">`;
+                            html += `<td style="text-align: center; padding: 6px 8px; border-right: 1px solid var(--border-color);"><span style="${statusColor}">${statusIcon}</span></td>`;
+                            html += `<td style="padding: 6px 8px; border-right: 1px solid var(--border-color);"><code style="font-weight: bold;">${check.label}</code></td>`;
+                            html += `<td style="padding: 6px 8px; border-right: 1px solid var(--border-color);">${hasExpected ? '<code>' + check.expected + '</code>' : '<span style="color: var(--text-secondary);">&mdash;</span>'}</td>`;
+                            html += `<td style="padding: 6px 8px;"><code>${check.value}</code></td>`;
+                            html += `</tr>`;
+                        });
+                        html += `</tbody></table>`;
+                    }
+                    
+                    // Service status
+                    if (iscsi.serviceStatus && (iscsi.serviceStatus.iscsiService || iscsi.serviceStatus.iscsidService)) {
+                        html += `<p style="margin: 10px 0 5px 0; font-size: 13px;"><strong>Service Status:</strong></p>`;
+                        html += '<ul style="margin: 0; padding-left: 20px; font-size: 12px;">';
+                        if (iscsi.serviceStatus.iscsiService) {
+                            const isActive = iscsi.serviceStatus.iscsiService.includes('active');
+                            html += `<li><code>iscsi.service</code>: <span class="${isActive ? 'text-success' : 'text-warning'}">${iscsi.serviceStatus.iscsiService}</span></li>`;
+                        }
+                        if (iscsi.serviceStatus.iscsidService) {
+                            const isActive = iscsi.serviceStatus.iscsidService.includes('active');
+                            html += `<li><code>iscsid.service</code>: <span class="${isActive ? 'text-success' : 'text-warning'}">${iscsi.serviceStatus.iscsidService}</span></li>`;
+                        }
+                        html += '</ul>';
+                    }
+                    
+                    // Warnings
+                    if (iscsi.warnings && iscsi.warnings.length > 0) {
+                        html += `<div style="margin-top: 10px;" class="warning-block">`;
+                        iscsi.warnings.forEach(w => {
+                            const severityClass = w.severity === 'error' ? 'text-danger' : (w.severity === 'warning' ? 'text-warning' : 'text-info');
+                            html += `<p style="margin: 5px 0; font-size: 12px;" class="${severityClass}"><strong>[${w.severity.toUpperCase()}]</strong> ${w.message}</p>`;
+                            if (w.recommendation) {
+                                html += `<p style="margin: 0 0 5px 15px; font-size: 11px;" class="text-muted">${w.recommendation}</p>`;
+                            }
+                        });
+                        html += `</div>`;
                     }
                     
                     html += '</div>';
@@ -2149,6 +2547,188 @@
                         });
                         html += `</ul>`;
                     }
+                    html += `</div>`;
+                }
+                
+                html += `</div></details>`;
+            }
+            
+            // SAP Instance Configuration Issues Section
+            const sapInstanceConfig = analysis.sapInstanceConfig;
+            const sapInstanceErrors = analysis.sapInstanceErrors;
+            const hasSapInstanceIssues = (sapInstanceConfig && sapInstanceConfig.found && sapInstanceConfig.warnings && sapInstanceConfig.warnings.length > 0) ||
+                                         (sapInstanceErrors && sapInstanceErrors.found && sapInstanceErrors.errors && sapInstanceErrors.errors.length > 0);
+            
+            if (hasSapInstanceIssues) {
+                const totalIssues = (sapInstanceConfig && sapInstanceConfig.warnings ? sapInstanceConfig.warnings.length : 0) +
+                                   (sapInstanceErrors && sapInstanceErrors.errors ? sapInstanceErrors.errors.length : 0);
+                const hasErrors = sapInstanceErrors && sapInstanceErrors.errors && sapInstanceErrors.errors.some(e => e.severity === 'error');
+                const blockClass = hasErrors ? 'danger-block' : 'warning-block';
+                const statusPrefix = hasErrors ? '[ERROR]' : '[WARNING]';
+                
+                html += `<details open class="${blockClass}">`;
+                html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">${statusPrefix} SAP Instance Configuration <span style="font-size: 12px; font-weight: normal;">(${totalIssues} issue${totalIssues !== 1 ? 's' : ''} found)</span></summary>`;
+                html += `<div style="margin-top: 15px;">`;
+                
+                // Show SAP Instance resources detected
+                if (sapInstanceConfig && sapInstanceConfig.found && sapInstanceConfig.instances && sapInstanceConfig.instances.length > 0) {
+                    html += `<div style="margin-bottom: 15px;">`;
+                    html += `<p style="margin: 0 0 10px 0; font-weight: bold;">SAPInstance Resources:</p>`;
+                    html += `<table style="width: 100%; border-collapse: collapse; font-size: 13px;">`;
+                    html += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.2);">`;
+                    html += `<th style="padding: 5px; text-align: left;">Resource</th>`;
+                    html += `<th style="padding: 5px; text-align: left;">InstanceName</th>`;
+                    html += `<th style="padding: 5px; text-align: left;">START_PROFILE</th>`;
+                    html += `</tr>`;
+                    
+                    sapInstanceConfig.instances.forEach(r => {
+                        html += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">`;
+                        html += `<td style="padding: 5px;"><code>${r.resourceName}</code></td>`;
+                        html += `<td style="padding: 5px;"><code>${r.instanceName || 'N/A'}</code></td>`;
+                        html += `<td style="padding: 5px; word-break: break-all;"><code>${r.startProfile || 'N/A'}</code></td>`;
+                        html += `</tr>`;
+                    });
+                    html += `</table>`;
+                    html += `</div>`;
+                }
+                
+                // Show configuration warnings (START_PROFILE, InstanceName mismatches)
+                if (sapInstanceConfig && sapInstanceConfig.warnings && sapInstanceConfig.warnings.length > 0) {
+                    html += `<div style="margin-bottom: 15px;">`;
+                    html += `<p style="margin: 0 0 10px 0; font-weight: bold;" class="text-warning">Configuration Issues:</p>`;
+                    
+                    sapInstanceConfig.warnings.forEach(warning => {
+                        const warnClass = warning.severity === 'error' ? 'text-danger' : 'text-warning';
+                        const icon = warning.severity === 'error' ? '[X]' : '[!]';
+                        
+                        html += `<div class="warning-block" style="margin-bottom: 10px;">`;
+                        html += `<p style="margin: 0;" class="${warnClass}"><strong>${icon} ${warning.message}</strong></p>`;
+                        if (warning.resource) {
+                            html += `<p style="margin: 5px 0 0 0; font-size: 12px;">Resource: <code>${warning.resource}</code></p>`;
+                        }
+                        if (warning.recommendation) {
+                            html += `<p style="margin: 10px 0 0 0; font-size: 13px;"><strong>Recommendation:</strong> ${warning.recommendation}</p>`;
+                        }
+                        if (warning.documentationUrl) {
+                            html += `<p style="margin: 5px 0 0 0; font-size: 12px;"><a href="${warning.documentationUrl}" target="_blank" class="text-info">View Documentation</a></p>`;
+                        }
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+                
+                // Show runtime errors (GRAY status, START_PROFILE errors, filesystem issues)
+                if (sapInstanceErrors && sapInstanceErrors.errors && sapInstanceErrors.errors.length > 0) {
+                    html += `<div style="margin-bottom: 15px;">`;
+                    html += `<p style="margin: 0 0 10px 0; font-weight: bold;" class="text-danger">Runtime Errors:</p>`;
+                    
+                    // Group errors by type (match parser type values)
+                    const startProfileErrors = sapInstanceErrors.errors.filter(e => e.type === 'start_profile_not_found');
+                    const grayStatusErrors = sapInstanceErrors.errors.filter(e => e.type === 'sap_service_gray_status');
+                    const filesystemErrors = sapInstanceErrors.errors.filter(e => e.type === 'filesystem_unmount_error');
+                    
+                    if (startProfileErrors.length > 0) {
+                        html += `<div class="danger-block" style="margin-bottom: 10px;">`;
+                        html += `<p style="margin: 0;" class="text-danger"><strong>[X] START_PROFILE Errors (${startProfileErrors.length})</strong></p>`;
+                        html += `<p style="margin: 5px 0 0 0; font-size: 13px;">The SAP instance cannot find the expected START profile. This indicates a mismatch between the resource configuration and the actual profile path.</p>`;
+                        html += `<div style="margin: 10px 0; max-height: 300px; overflow-y: auto;">`;
+                        startProfileErrors.forEach(e => {
+                            html += `<div style="margin-bottom: 12px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px; border-left: 3px solid var(--danger);">`;
+                            html += `<p style="margin: 0 0 5px 0;"><strong>Resource:</strong> <code>${e.resourceName}</code></p>`;
+                            html += `<p style="margin: 0 0 5px 0; font-size: 13px;"><strong>Error:</strong> ${e.message}</p>`;
+                            if (e.profilePath) {
+                                html += `<p style="margin: 0 0 5px 0; font-size: 12px;"><strong>Profile Path:</strong> <code style="word-break: break-all;">${e.profilePath}</code></p>`;
+                            }
+                            if (e.timestamp) {
+                                html += `<p style="margin: 0 0 5px 0; font-size: 11px;" class="text-muted"><strong>Timestamp:</strong> ${e.timestamp}</p>`;
+                            }
+                            if (e.sourceFile || e.lineNumber) {
+                                html += `<p style="margin: 0 0 5px 0; font-size: 11px;" class="text-muted"><strong>Source:</strong> ${e.sourceFile || 'unknown'}${e.lineNumber ? ' (line ' + e.lineNumber + ')' : ''}</p>`;
+                            }
+                            if (e.rawLine) {
+                                html += `<details style="margin-top: 5px;"><summary style="cursor: pointer; font-size: 11px; color: #888;">Show raw log line</summary>`;
+                                html += `<pre style="margin: 5px 0 0 0; padding: 5px; background: var(--code-bg); border-radius: 3px; font-size: 10px; overflow-x: auto; white-space: pre-wrap; word-break: break-all;">${escapeHtml(e.rawLine)}</pre>`;
+                                html += `</details>`;
+                            }
+                            html += `</div>`;
+                        });
+                        html += `</div>`;
+                        html += `<p style="margin: 10px 0 0 0; font-size: 13px;"><strong>Recommendation:</strong> ${startProfileErrors[0].recommendation || 'Verify the START_PROFILE parameter matches the actual profile file location on the filesystem.'}</p>`;
+                        html += `<p style="margin: 5px 0 0 0; font-size: 12px;">`;
+                        html += `<a href="https://docs.redhat.com/en/documentation/red_hat_enterprise_linux_for_sap_solutions/8/html/configuring_ha_clusters_to_manage_sap_netweaver_or_sap_s4hana_application_server_instances_using_the_rhel_ha_add-on" target="_blank" class="text-info">Red Hat SAP HA Documentation</a>`;
+                        html += ` | <a href="https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-rhel-nfs-azure-files" target="_blank" class="text-info">Azure SAP HA with NFS</a>`;
+                        html += `</p>`;
+                        html += `</div>`;
+                    }
+                    
+                    if (grayStatusErrors.length > 0) {
+                        html += `<div class="danger-block" style="margin-bottom: 10px;">`;
+                        html += `<p style="margin: 0;" class="text-danger"><strong>[X] SAP Services in GRAY Status (${grayStatusErrors.length})</strong></p>`;
+                        html += `<p style="margin: 5px 0 0 0; font-size: 13px;">SAP instance services are in GRAY status, indicating they are not running properly.</p>`;
+                        html += `<div style="margin: 10px 0; max-height: 300px; overflow-y: auto;">`;
+                        grayStatusErrors.forEach(e => {
+                            html += `<div style="margin-bottom: 12px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px; border-left: 3px solid var(--danger);">`;
+                            html += `<p style="margin: 0 0 5px 0;"><strong>Resource:</strong> <code>${e.resourceName}</code></p>`;
+                            if (e.serviceName) {
+                                html += `<p style="margin: 0 0 5px 0; font-size: 13px;"><strong>Service:</strong> <code>${e.serviceName}</code> <span class="badge badge-danger">GRAY</span></p>`;
+                            }
+                            html += `<p style="margin: 0 0 5px 0; font-size: 13px;"><strong>Error:</strong> ${e.message}</p>`;
+                            if (e.timestamp) {
+                                html += `<p style="margin: 0 0 5px 0; font-size: 11px;" class="text-muted"><strong>Timestamp:</strong> ${e.timestamp}</p>`;
+                            }
+                            if (e.sourceFile || e.lineNumber) {
+                                html += `<p style="margin: 0 0 5px 0; font-size: 11px;" class="text-muted"><strong>Source:</strong> ${e.sourceFile || 'unknown'}${e.lineNumber ? ' (line ' + e.lineNumber + ')' : ''}</p>`;
+                            }
+                            if (e.rawLine) {
+                                html += `<details style="margin-top: 5px;"><summary style="cursor: pointer; font-size: 11px; color: #888;">Show raw log line</summary>`;
+                                html += `<pre style="margin: 5px 0 0 0; padding: 5px; background: var(--code-bg); border-radius: 3px; font-size: 10px; overflow-x: auto; white-space: pre-wrap; word-break: break-all;">${escapeHtml(e.rawLine)}</pre>`;
+                                html += `</details>`;
+                            }
+                            html += `</div>`;
+                        });
+                        html += `</div>`;
+                        html += `<p style="margin: 10px 0 0 0; font-size: 13px;"><strong>Recommendation:</strong> ${grayStatusErrors[0].recommendation || 'Check SAP instance logs under /usr/sap/<SID>/<INSTANCE>/work/ for startup errors. Verify NFS mounts are available and SAP profile is correct.'}</p>`;
+                        html += `<p style="margin: 5px 0 0 0; font-size: 12px;">`;
+                        html += `<a href="https://help.sap.com/docs/SAP_NETWEAVER_AS_ABAP/e4f4e1f10a8f4d23853dc8769d2f17e7" target="_blank" class="text-info">SAP Instance Troubleshooting</a>`;
+                        html += ` | <a href="https://learn.microsoft.com/en-us/azure/sap/workloads/sap-hana-high-availability" target="_blank" class="text-info">Azure SAP HANA HA Guide</a>`;
+                        html += `</p>`;
+                        html += `</div>`;
+                    }
+                    
+                    if (filesystemErrors.length > 0) {
+                        html += `<div class="danger-block" style="margin-bottom: 10px;">`;
+                        html += `<p style="margin: 0;" class="text-danger"><strong>[X] Filesystem Errors (${filesystemErrors.length})</strong></p>`;
+                        html += `<p style="margin: 5px 0 0 0; font-size: 13px;">Filesystem operations failed during cluster resource management.</p>`;
+                        html += `<div style="margin: 10px 0; max-height: 300px; overflow-y: auto;">`;
+                        filesystemErrors.forEach(e => {
+                            html += `<div style="margin-bottom: 12px; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px; border-left: 3px solid var(--warning);">`;
+                            html += `<p style="margin: 0 0 5px 0;"><strong>Resource:</strong> <code>${e.resourceName}</code></p>`;
+                            if (e.mountPoint) {
+                                html += `<p style="margin: 0 0 5px 0; font-size: 13px;"><strong>Mount Point:</strong> <code>${e.mountPoint}</code></p>`;
+                            }
+                            html += `<p style="margin: 0 0 5px 0; font-size: 13px;"><strong>Error:</strong> ${e.message}</p>`;
+                            if (e.timestamp) {
+                                html += `<p style="margin: 0 0 5px 0; font-size: 11px;" class="text-muted"><strong>Timestamp:</strong> ${e.timestamp}</p>`;
+                            }
+                            if (e.sourceFile || e.lineNumber) {
+                                html += `<p style="margin: 0 0 5px 0; font-size: 11px;" class="text-muted"><strong>Source:</strong> ${e.sourceFile || 'unknown'}${e.lineNumber ? ' (line ' + e.lineNumber + ')' : ''}</p>`;
+                            }
+                            if (e.rawLine) {
+                                html += `<details style="margin-top: 5px;"><summary style="cursor: pointer; font-size: 11px; color: #888;">Show raw log line</summary>`;
+                                html += `<pre style="margin: 5px 0 0 0; padding: 5px; background: var(--code-bg); border-radius: 3px; font-size: 10px; overflow-x: auto; white-space: pre-wrap; word-break: break-all;">${escapeHtml(e.rawLine)}</pre>`;
+                                html += `</details>`;
+                            }
+                            html += `</div>`;
+                        });
+                        html += `</div>`;
+                        html += `<p style="margin: 10px 0 0 0; font-size: 13px;"><strong>Recommendation:</strong> ${filesystemErrors[0].recommendation || 'Check for processes using the filesystem with "lsof" or "fuser". This may indicate SAP processes did not stop cleanly before failover.'}</p>`;
+                        html += `<p style="margin: 5px 0 0 0; font-size: 12px;">`;
+                        html += `<a href="https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-rhel-nfs-azure-files" target="_blank" class="text-info">Azure SAP HA with Azure Files NFS</a>`;
+                        html += ` | <a href="https://learn.microsoft.com/en-us/azure/azure-netapp-files/azure-netapp-files-solution-architectures#sap-hana" target="_blank" class="text-info">Azure NetApp Files for SAP</a>`;
+                        html += `</p>`;
+                        html += `</div>`;
+                    }
+                    
                     html += `</div>`;
                 }
                 
@@ -2937,7 +3517,421 @@
 
             // Close Events grouping
             html += `</div></details>`;
-            
+
+            // ================================================================
+            // KERNEL CRASH DUMPS (vmcore) - show if crash dumps detected
+            // ================================================================
+            const vmcoreData = vmcore || { found: false, crashes: [], kdumpStatus: null, crashListing: null, kdumpConf: null };
+            const hasCrashes = vmcoreData.found && vmcoreData.crashes && vmcoreData.crashes.length > 0;
+            const crashCount = vmcoreData.crashes ? vmcoreData.crashes.length : 0;
+            const vmcoreBlockClass = hasCrashes ? 'danger-block' : 'info-block';
+
+            if (hasCrashes) {
+                html += `<details class="${vmcoreBlockClass}" open>`;
+                html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
+                html += `Kernel Crash Dumps <span class="badge badge-danger">${crashCount} vmcore${crashCount !== 1 ? 's' : ''}</span>`;
+                html += `</summary>`;
+                html += `<div style="margin-top: 15px;">`;
+
+                // Kdump status
+                if (vmcoreData.kdumpStatus) {
+                    const statusClass = vmcoreData.kdumpStatus.operational ? 'text-success' : 'text-danger';
+                    const statusIcon = vmcoreData.kdumpStatus.operational ? '[OK]' : '[!]';
+                    html += `<p><strong>Kdump Status:</strong> <span class="${statusClass}">${statusIcon} ${vmcoreData.kdumpStatus.raw}</span></p>`;
+                }
+
+                // Crash dump table
+                html += `<table style="width: 100%; font-size: 13px; border-collapse: collapse; border: 1px solid var(--border-color); margin-top: 10px;">`;
+                html += `<thead><tr style="background: var(--code-bg); border-bottom: 1px solid var(--border-color);">`;
+                html += `<th style="text-align: left; padding: 8px; border-right: 1px solid var(--border-color);">Date</th>`;
+                html += `<th style="text-align: left; padding: 8px; border-right: 1px solid var(--border-color);">Panic Reason</th>`;
+                html += `<th style="text-align: left; padding: 8px; border-right: 1px solid var(--border-color);">Kernel</th>`;
+                html += `<th style="text-align: left; padding: 8px; border-right: 1px solid var(--border-color);">Process</th>`;
+                html += `<th style="text-align: right; padding: 8px;">Vmcore Size</th>`;
+                html += `</tr></thead><tbody>`;
+
+                vmcoreData.crashes.forEach((crash, idx) => {
+                    const rowBg = idx % 2 === 1 ? 'background: var(--code-bg);' : '';
+                    // Try to find the vmcore size from the crash listing
+                    let sizeStr = '-';
+                    if (vmcoreData.crashListing && vmcoreData.crashListing.entries) {
+                        const listing = vmcoreData.crashListing.entries.find(e => e.crashDate === crash.date);
+                        if (listing) {
+                            sizeStr = listing.sizeGB >= 1.0 ? listing.sizeGB + ' GB' : listing.sizeMB + ' MB';
+                        }
+                    }
+
+                    html += `<tr style="border-bottom: 1px solid var(--border-color); ${rowBg}">`;
+                    html += `<td style="padding: 6px 8px; border-right: 1px solid var(--border-color); white-space: nowrap;"><code>${crash.date || '-'}</code></td>`;
+                    html += `<td style="padding: 6px 8px; border-right: 1px solid var(--border-color);"><strong class="text-danger">${crash.panicReason || '-'}</strong></td>`;
+                    html += `<td style="padding: 6px 8px; border-right: 1px solid var(--border-color); font-size: 12px;"><code>${crash.kernelVersion || '-'}</code></td>`;
+                    html += `<td style="padding: 6px 8px; border-right: 1px solid var(--border-color); font-size: 12px;">${crash.comm || '-'} (PID ${crash.pid || '-'})</td>`;
+                    html += `<td style="padding: 6px 8px; text-align: right; font-size: 12px;"><code>${sizeStr}</code></td>`;
+                    html += `</tr>`;
+
+                    // Call trace sub-row (collapsed)
+                    if (crash.callTrace && crash.callTrace.length > 0) {
+                        html += `<tr style="${rowBg}">`;
+                        html += `<td colspan="5" style="padding: 4px 8px;">`;
+                        html += `<details style="margin: 0;"><summary style="cursor: pointer; font-size: 12px; color: var(--text-secondary);">Call Trace (${crash.callTrace.length} frames)</summary>`;
+                        html += `<pre style="margin: 5px 0; padding: 8px; font-size: 11px; max-height: 200px; overflow-y: auto; background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 4px;">`;
+                        crash.callTrace.forEach(frame => {
+                            html += frame + '\n';
+                        });
+                        html += `</pre></details></td></tr>`;
+                    }
+                });
+                html += `</tbody></table>`;
+
+                // Total disk usage
+                if (vmcoreData.crashListing) {
+                    html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted">`;
+                    html += `<strong>Total vmcore disk usage:</strong> ${vmcoreData.crashListing.totalGB} GB across ${vmcoreData.crashListing.count} dump${vmcoreData.crashListing.count !== 1 ? 's' : ''}`;
+                    html += `</p>`;
+                }
+
+                // Kdump configuration
+                if (vmcoreData.kdumpConf) {
+                    html += `<details style="margin-top: 10px;">`;
+                    html += `<summary style="cursor: pointer; font-size: 13px;">Kdump Configuration</summary>`;
+                    html += `<div style="margin-top: 5px; font-size: 12px;">`;
+                    html += `<p><strong>Dump path:</strong> <code>${vmcoreData.kdumpConf.path}</code></p>`;
+                    if (vmcoreData.kdumpConf.coreCollector) html += `<p><strong>Core collector:</strong> <code>${vmcoreData.kdumpConf.coreCollector}</code></p>`;
+                    if (vmcoreData.kdumpConf.defaultAction) html += `<p><strong>Failure action:</strong> <code>${vmcoreData.kdumpConf.defaultAction}</code></p>`;
+                    html += `</div></details>`;
+                }
+
+                html += `<p style="margin-top: 10px; font-size: 12px;">`;
+                html += `<a href="https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/linux/troubleshoot-kdump" target="_blank" class="text-info">Kdump Documentation</a>`;
+                html += `</p>`;
+
+                html += `</div></details>`;
+            }
+
+            // ================================================================
+            // NETWORKING - group Network Interfaces, Firewall Rules
+            // ================================================================
+            const fw = firewallRules || { found: false };
+            const fwDetected = fw.found;
+            const fwActive = fw.activeFirewall || 'none';
+            const fwActiveLabel = fwActive === 'none'
+                ? 'No Active Firewall'
+                : `Active: ${fwActive}`;
+            const ni = networkInterfaces || { found: false, interfaces: {}, raw: {} };
+            const niDetected = ni.found;
+            const niIfaceList = Object.values(ni.interfaces || {});
+            const niHasAccelNet = niIfaceList.some(i => i.accelNet);
+            const networkingBlockClass = (fwDetected && fwActive !== 'none') || niDetected ? 'info-block' : 'content-details';
+
+            html += `<details class="${networkingBlockClass}" open>`;
+            html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">Networking</summary>`;
+            html += `<div style="margin-top: 15px;">`;
+
+            // --- Network Interfaces sub-section ---
+            {
+                const ifaceEntries = niIfaceList.filter(i => i.name !== 'lo');
+                const ifaceCount = ifaceEntries.length;
+                const niSummaryParts = [];
+                if (ifaceCount > 0) niSummaryParts.push(`${ifaceCount} interface${ifaceCount !== 1 ? 's' : ''}`);
+                if (niHasAccelNet) niSummaryParts.push('Accelerated Networking');
+                const niSummaryLabel = niSummaryParts.length > 0 ? niSummaryParts.join(' | ') : 'No interfaces detected';
+
+                const niBlockClass = niDetected ? 'info-block' : 'content-details';
+                html += `<details class="${niBlockClass}" ${niDetected ? 'open' : ''}>`;
+                html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
+                html += `Network Interfaces`;
+                html += ` <span style="font-size: 12px; font-weight: normal;">(${niSummaryLabel})</span>`;
+                html += `</summary>`;
+                html += `<div style="margin-top: 15px;">`;
+
+                if (!niDetected || ifaceCount === 0) {
+                    html += `<p class="text-muted"><em>No network interface configuration was detected in the analyzed files.</em></p>`;
+                } else {
+                    // Build table of interfaces
+                    html += `<div style="overflow-x: auto;">`;
+                    html += `<table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 15px;">`;
+                    html += `<thead><tr style="background: var(--code-bg); text-align: left;">`;
+                    html += `<th style="padding: 6px 8px; border-bottom: 2px solid var(--border-color);">Interface</th>`;
+                    html += `<th style="padding: 6px 8px; border-bottom: 2px solid var(--border-color);">State</th>`;
+                    html += `<th style="padding: 6px 8px; border-bottom: 2px solid var(--border-color);">IPv4</th>`;
+                    html += `<th style="padding: 6px 8px; border-bottom: 2px solid var(--border-color);">IPv6</th>`;
+                    html += `<th style="padding: 6px 8px; border-bottom: 2px solid var(--border-color);">MAC</th>`;
+                    html += `<th style="padding: 6px 8px; border-bottom: 2px solid var(--border-color);">MTU</th>`;
+                    html += `<th style="padding: 6px 8px; border-bottom: 2px solid var(--border-color);">DHCP / Static</th>`;
+                    html += `<th style="padding: 6px 8px; border-bottom: 2px solid var(--border-color);">Driver</th>`;
+                    html += `<th style="padding: 6px 8px; border-bottom: 2px solid var(--border-color);">Accel Net</th>`;
+                    html += `</tr></thead><tbody>`;
+
+                    // Sort: eth0 first, then alphabetical
+                    ifaceEntries.sort((a, b) => {
+                        if (a.name === 'eth0') return -1;
+                        if (b.name === 'eth0') return 1;
+                        return a.name.localeCompare(b.name);
+                    });
+
+                    for (const iface of ifaceEntries) {
+                        const stateClass = iface.state === 'UP' ? 'text-success' : iface.state === 'DOWN' ? 'text-danger' : 'text-muted';
+                        const ipv4Str = (iface.ipv4 || []).map(ip => ip.address + (ip.prefix ? '/' + ip.prefix : '')).join('<br>') || '<span class="text-muted">-</span>';
+                        const ipv6Str = (iface.ipv6 || []).filter(ip => !ip.address.startsWith('fe80:')).map(ip => ip.address + (ip.prefix ? '/' + ip.prefix : '')).join('<br>') || '<span class="text-muted">-</span>';
+                        const macStr = iface.mac || '<span class="text-muted">-</span>';
+                        const mtuStr = iface.mtu || '<span class="text-muted">-</span>';
+
+                        let bootprotoStr = '<span class="text-muted">-</span>';
+                        if (iface.bootproto) {
+                            const bp = iface.bootproto.toLowerCase();
+                            if (bp === 'dhcp' || bp === 'dhcp4') {
+                                bootprotoStr = '<span style="color: #2196F3; font-weight: bold;">DHCP</span>';
+                            } else if (bp === 'static' || bp === 'none') {
+                                bootprotoStr = '<span style="color: #FF9800; font-weight: bold;">Static</span>';
+                            } else {
+                                bootprotoStr = iface.bootproto;
+                            }
+                        }
+
+                        const driverStr = iface.driver || '<span class="text-muted">-</span>';
+                        let accelStr;
+                        if (iface.accelNet) {
+                            const dInfo = iface.driverInfo || iface.driver || '';
+                            if (iface.driver === 'mana') {
+                                accelStr = '<span style="color: #4CAF50; font-weight: bold;" title="Microsoft Azure Network Adapter">MANA</span>';
+                            } else {
+                                accelStr = '<span style="color: #4CAF50; font-weight: bold;" title="' + dInfo + '">Yes</span>';
+                            }
+                        } else if (iface.driver === 'hv_netvsc') {
+                            // If hv_netvsc without a linked accel interface, mark as No
+                            accelStr = '<span class="text-muted">No</span>';
+                        } else {
+                            accelStr = '<span class="text-muted">-</span>';
+                        }
+
+                        // If this is a primary interface with a linked accel interface, annotate
+                        if (iface.driver === 'hv_netvsc' && !iface.accelNet) {
+                            // Check if any interface has this as master
+                            const linkedIface = niIfaceList.find(s => s.master === iface.name && s.accelNet);
+                            if (linkedIface) {
+                                accelStr = '<span style="color: #4CAF50; font-weight: bold;" title="via ' + linkedIface.name + ' (' + (linkedIface.driver || '') + ')">Yes (via ' + linkedIface.name + ')</span>';
+                            }
+                        }
+
+                        const masterNote = iface.master ? ` <span class="text-muted">(linked to ${iface.master})</span>` : '';
+
+                        html += `<tr style="border-bottom: 1px solid var(--border-color);">`;
+                        html += `<td style="padding: 5px 8px; font-weight: bold;">${iface.name}${masterNote}</td>`;
+                        html += `<td style="padding: 5px 8px;" class="${stateClass}">${iface.state || '-'}</td>`;
+                        html += `<td style="padding: 5px 8px;">${ipv4Str}</td>`;
+                        html += `<td style="padding: 5px 8px; font-size: 11px;">${ipv6Str}</td>`;
+                        html += `<td style="padding: 5px 8px; font-family: monospace; font-size: 11px;">${macStr}</td>`;
+                        html += `<td style="padding: 5px 8px;">${mtuStr}</td>`;
+                        html += `<td style="padding: 5px 8px;">${bootprotoStr}</td>`;
+                        html += `<td style="padding: 5px 8px;">${driverStr}</td>`;
+                        html += `<td style="padding: 5px 8px;">${accelStr}</td>`;
+                        html += `</tr>`;
+                    }
+
+                    html += `</tbody></table></div>`;
+
+                    // Raw sections
+                    const rawKeys = Object.keys(ni.raw || {});
+                    if (rawKeys.length > 0) {
+                        html += `<details style="margin-top: 10px;"><summary style="cursor: pointer; font-size: 11px; color: #666;">Raw Network Configuration (${rawKeys.length} section${rawKeys.length !== 1 ? 's' : ''})</summary>`;
+                        html += `<div style="margin-top: 5px;">`;
+                        rawKeys.forEach(key => {
+                            html += `<details style="margin-top: 3px;"><summary style="cursor: pointer; font-size: 11px; color: #888;">${key}</summary>`;
+                            html += `<pre style="background: var(--code-bg); padding: 6px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 2px; white-space: pre-wrap;">${ni.raw[key]}</pre></details>`;
+                        });
+                        html += `</div></details>`;
+                    }
+                }
+
+                html += `</div></details>`;
+            }
+
+            // --- Firewall Rules sub-section ---
+            const fwBlockClass = !fwDetected ? 'info-block'
+                : fwActive === 'none' ? 'warning-block'
+                : 'info-block';
+
+            html += `<details class="${fwBlockClass}">`;
+            html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
+            html += `Firewall Rules`;
+            html += ` <span style="font-size: 12px; font-weight: normal;">(${fwActiveLabel})</span>`;
+            html += `</summary>`;
+            html += `<div style="margin-top: 15px;">`;
+
+            if (!fwDetected) {
+                html += `<p class="text-muted"><em>No firewall configuration was detected in the analyzed files.</em></p>`;
+                html += `<p style="margin-top: 10px; font-size: 12px;" class="text-muted"><em>Checked for: firewalld, iptables, ip6tables, ebtables, nftables</em></p>`;
+            } else {
+                // Warnings
+                if (fw.warnings && fw.warnings.length > 0) {
+                    fw.warnings.forEach(w => {
+                        html += `<p style="margin-bottom: 5px;" class="text-warning"><strong>[WARN]</strong> ${w}</p>`;
+                    });
+                }
+
+                // --- firewalld ---
+                if (fw.firewalld && fw.firewalld.detected) {
+                    const fwd = fw.firewalld;
+                    const runClass = fwd.running ? 'text-success' : 'text-warning';
+                    const runLabel = fwd.running ? 'running' : 'not running';
+                    html += `<details class="subsection" ${fwd.running ? 'open' : ''} style="margin-bottom: 10px;">`;
+                    html += `<summary style="cursor: pointer; font-weight: bold; padding: 4px 8px; background: var(--code-bg); border-radius: 4px;">firewalld <span class="${runClass}" style="font-weight: normal;">(${runLabel})</span></summary>`;
+                    html += `<div style="margin-top: 8px; margin-left: 20px;">`;
+
+                    if (fwd.backend) {
+                        html += `<p style="margin: 4px 0; font-size: 12px;"><strong>Backend:</strong> ${fwd.backend}</p>`;
+                    }
+                    if (fwd.config) {
+                        const cfgKeys = ['DefaultZone', 'LogDenied', 'AllowZoneDrifting', 'FlushAllOnReload', 'Lockdown'];
+                        const cfgEntries = cfgKeys.filter(k => fwd.config[k] !== undefined).map(k => `${k}=${fwd.config[k]}`);
+                        if (cfgEntries.length > 0) html += `<p style="margin: 4px 0; font-size: 12px;"><strong>Config:</strong> ${cfgEntries.join(', ')}</p>`;
+                    }
+                    if (fwd.logDenied) {
+                        html += `<p style="margin: 4px 0; font-size: 12px;"><strong>LogDenied:</strong> ${fwd.logDenied}</p>`;
+                    }
+
+                    // Zones
+                    if (fwd.zones) {
+                        html += `<details style="margin-top: 5px;"><summary style="cursor: pointer; font-size: 12px;">Zones (runtime)</summary>`;
+                        html += `<pre style="background: var(--code-bg); padding: 6px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 2px; white-space: pre-wrap;">${fwd.zones}</pre></details>`;
+                    }
+                    // Direct rules
+                    if (fwd.directRules && fwd.directRules.trim()) {
+                        html += `<details style="margin-top: 5px;"><summary style="cursor: pointer; font-size: 12px;">Direct Rules</summary>`;
+                        html += `<pre style="background: var(--code-bg); padding: 6px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 2px; white-space: pre-wrap;">${fwd.directRules.trim()}</pre></details>`;
+                    }
+                    if (fwd.chains && fwd.chains.trim()) {
+                        html += `<details style="margin-top: 5px;"><summary style="cursor: pointer; font-size: 12px;">Direct Chains</summary>`;
+                        html += `<pre style="background: var(--code-bg); padding: 6px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 2px; white-space: pre-wrap;">${fwd.chains.trim()}</pre></details>`;
+                    }
+                    if (fwd.passthroughs && fwd.passthroughs.trim()) {
+                        html += `<details style="margin-top: 5px;"><summary style="cursor: pointer; font-size: 12px;">Passthroughs</summary>`;
+                        html += `<pre style="background: var(--code-bg); padding: 6px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 2px; white-space: pre-wrap;">${fwd.passthroughs.trim()}</pre></details>`;
+                    }
+
+                    // Raw firewalld.conf
+                    if (fw.rawSections && fw.rawSections['firewalld.conf']) {
+                        html += `<details style="margin-top: 5px;"><summary style="cursor: pointer; font-size: 11px; color: #666;">Raw firewalld.conf</summary>`;
+                        html += `<pre style="background: var(--code-bg); padding: 6px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 2px; white-space: pre-wrap;">${fw.rawSections['firewalld.conf']}</pre></details>`;
+                    }
+
+                    html += `</div></details>`;
+                }
+
+                // --- nftables ---
+                if (fw.nftables && fw.nftables.detected) {
+                    const nft = fw.nftables;
+                    const hasRules = nft.ruleset && nft.ruleset !== '(empty)' && nft.ruleset.length > 10;
+                    const nftLabel = hasRules ? 'rules present' : 'no rules';
+                    const nftClass = hasRules ? 'text-info' : 'text-muted';
+                    html += `<details class="subsection" ${hasRules ? 'open' : ''} style="margin-bottom: 10px;">`;
+                    html += `<summary style="cursor: pointer; font-weight: bold; padding: 4px 8px; background: var(--code-bg); border-radius: 4px;">nftables <span class="${nftClass}" style="font-weight: normal;">(${nftLabel})</span></summary>`;
+                    html += `<div style="margin-top: 8px; margin-left: 20px;">`;
+
+                    if (nft.tables) {
+                        html += `<p style="margin: 4px 0; font-size: 12px;"><strong>Tables:</strong> <code>${nft.tables}</code></p>`;
+                    }
+                    if (hasRules) {
+                        html += `<pre style="background: var(--code-bg); padding: 8px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 5px; white-space: pre-wrap;">${nft.ruleset}</pre>`;
+                    }
+                    // Raw nftables sysconfig
+                    if (fw.rawSections && fw.rawSections['nftables-sysconfig']) {
+                        html += `<details style="margin-top: 5px;"><summary style="cursor: pointer; font-size: 11px; color: #666;">Raw /etc/sysconfig/nftables.conf</summary>`;
+                        html += `<pre style="background: var(--code-bg); padding: 6px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 2px; white-space: pre-wrap;">${fw.rawSections['nftables-sysconfig']}</pre></details>`;
+                    }
+
+                    html += `</div></details>`;
+                }
+
+                // --- iptables ---
+                if (fw.iptables && fw.iptables.detected) {
+                    const ipt = fw.iptables;
+                    const hasRules = ipt.rules && ipt.rules.length > 0;
+                    const allUnloaded = ipt.modules && ipt.modules.length > 0 && !hasRules;
+                    const iptLabel = hasRules ? `${ipt.rules.length} table(s) with rules` : allUnloaded ? 'modules not loaded' : 'no rules';
+                    const iptClass = hasRules ? 'text-info' : 'text-muted';
+                    html += `<details class="subsection" ${hasRules ? 'open' : ''} style="margin-bottom: 10px;">`;
+                    html += `<summary style="cursor: pointer; font-weight: bold; padding: 4px 8px; background: var(--code-bg); border-radius: 4px;">iptables <span class="${iptClass}" style="font-weight: normal;">(${iptLabel})</span></summary>`;
+                    html += `<div style="margin-top: 8px; margin-left: 20px;">`;
+
+                    if (hasRules) {
+                        ipt.rules.forEach(r => {
+                            html += `<p style="margin: 3px 0; font-size: 12px; font-weight: bold;">${r.heading}</p>`;
+                            html += `<pre style="background: var(--code-bg); padding: 6px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 2px; white-space: pre-wrap;">${r.raw}</pre>`;
+                        });
+                    }
+                    if (allUnloaded) {
+                        ipt.modules.forEach(m => {
+                            html += `<p style="margin: 3px 0; font-size: 12px;" class="text-muted">${m.module}: ${m.note}</p>`;
+                        });
+                    }
+                    // Raw config
+                    if (fw.rawSections && fw.rawSections['iptables-config']) {
+                        html += `<details style="margin-top: 5px;"><summary style="cursor: pointer; font-size: 11px; color: #666;">Raw /etc/sysconfig/iptables-config</summary>`;
+                        html += `<pre style="background: var(--code-bg); padding: 6px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 2px; white-space: pre-wrap;">${fw.rawSections['iptables-config']}</pre></details>`;
+                    }
+
+                    html += `</div></details>`;
+                }
+
+                // --- ip6tables ---
+                if (fw.ip6tables && fw.ip6tables.detected) {
+                    const ip6t = fw.ip6tables;
+                    const hasRules = ip6t.rules && ip6t.rules.length > 0;
+                    const allUnloaded = ip6t.modules && ip6t.modules.length > 0 && !hasRules;
+                    const ip6tLabel = hasRules ? `${ip6t.rules.length} table(s) with rules` : allUnloaded ? 'modules not loaded' : 'no rules';
+                    const ip6tClass = hasRules ? 'text-info' : 'text-muted';
+                    html += `<details class="subsection" style="margin-bottom: 10px;">`;
+                    html += `<summary style="cursor: pointer; font-weight: bold; padding: 4px 8px; background: var(--code-bg); border-radius: 4px;">ip6tables <span class="${ip6tClass}" style="font-weight: normal;">(${ip6tLabel})</span></summary>`;
+                    html += `<div style="margin-top: 8px; margin-left: 20px;">`;
+
+                    if (hasRules) {
+                        ip6t.rules.forEach(r => {
+                            html += `<p style="margin: 3px 0; font-size: 12px; font-weight: bold;">${r.heading}</p>`;
+                            html += `<pre style="background: var(--code-bg); padding: 6px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 2px; white-space: pre-wrap;">${r.raw}</pre>`;
+                        });
+                    }
+                    if (allUnloaded) {
+                        ip6t.modules.forEach(m => {
+                            html += `<p style="margin: 3px 0; font-size: 12px;" class="text-muted">${m.module}: ${m.note}</p>`;
+                        });
+                    }
+
+                    html += `</div></details>`;
+                }
+
+                // --- ebtables ---
+                if (fw.ebtables && fw.ebtables.detected) {
+                    html += `<details class="subsection" style="margin-bottom: 10px;">`;
+                    html += `<summary style="cursor: pointer; font-weight: bold; padding: 4px 8px; background: var(--code-bg); border-radius: 4px;">ebtables <span class="text-muted" style="font-weight: normal;">(config present)</span></summary>`;
+                    html += `<div style="margin-top: 8px; margin-left: 20px;">`;
+                    if (fw.ebtables.config) {
+                        html += `<pre style="background: var(--code-bg); padding: 6px; border-radius: 4px; overflow-x: auto; font-size: 11px; white-space: pre-wrap;">${fw.ebtables.config}</pre>`;
+                    }
+                    html += `</div></details>`;
+                }
+
+                // Raw sections toggle
+                if (fw.rawSections && Object.keys(fw.rawSections).length > 0) {
+                    const rawKeys = Object.keys(fw.rawSections).filter(k =>
+                        !['firewalld.conf', 'iptables-config', 'ebtables-config', 'nftables-sysconfig'].includes(k)
+                    );
+                    if (rawKeys.length > 0) {
+                        html += `<details style="margin-top: 10px;"><summary style="cursor: pointer; font-size: 11px; color: #666;">All Raw Sections (${rawKeys.length})</summary>`;
+                        html += `<div style="margin-top: 5px;">`;
+                        rawKeys.forEach(key => {
+                            html += `<details style="margin-top: 3px;"><summary style="cursor: pointer; font-size: 11px; color: #888;">${key}</summary>`;
+                            html += `<pre style="background: var(--code-bg); padding: 6px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 2px; white-space: pre-wrap;">${fw.rawSections[key]}</pre></details>`;
+                        });
+                        html += `</div></details>`;
+                    }
+                }
+            }
+            html += `</div></details>`;
+
+            // Close Networking grouping
+            html += `</div></details>`;
+
             // Antivirus and Security Software - Always show
             const antivirusData = analysis.antivirus || { anyDetected: false, allHaveExceptions: false };
             const hasAntivirus = antivirusData.anyDetected;
@@ -3355,15 +4349,21 @@
                         html += `<div class="warning-block" style="margin-top: 15px;">`;
                         html += `<p style="margin: 0 0 10px 0;"><strong>[!] Azure Network Optimization - Parameters Need Adjustment</strong></p>`;
 
-                        kernelTuning.azureNetworkWarnings.forEach(warning => {
-                            html += `<div style="margin-bottom: 15px;">`;
-                            html += `<p style="margin: 0; font-size: 13px;"><code style="font-weight: bold;">${warning.parameter}</code></p>`;
-                            html += `<p style="margin: 5px 0; font-size: 12px;">`;
-                            html += `Expected: <code class="text-success">${warning.expected}</code>, `;
-                            html += `Found: <code class="text-danger">${warning.actual}</code>`;
-                            html += `</p>`;
-                            html += `</div>`;
+                        html += `<table style="width: 100%; font-size: 13px; border-collapse: collapse; border: 1px solid var(--border-color);">`;
+                        html += `<thead><tr style="background: var(--code-bg); border-bottom: 1px solid var(--border-color);">`;
+                        html += `<th style="text-align: left; padding: 8px; border-right: 1px solid var(--border-color);">Parameter</th>`;
+                        html += `<th style="text-align: left; padding: 8px; border-right: 1px solid var(--border-color);">Expected</th>`;
+                        html += `<th style="text-align: left; padding: 8px;">Found</th>`;
+                        html += `</tr></thead><tbody>`;
+                        kernelTuning.azureNetworkWarnings.forEach((warning, idx) => {
+                            const rowBg = idx % 2 === 1 ? 'background: var(--code-bg);' : '';
+                            html += `<tr style="border-bottom: 1px solid var(--border-color); ${rowBg}">`;
+                            html += `<td style="padding: 6px 8px; border-right: 1px solid var(--border-color);"><code style="font-weight: bold;">${warning.parameter}</code></td>`;
+                            html += `<td style="padding: 6px 8px; border-right: 1px solid var(--border-color);"><code class="text-success">${warning.expected}</code></td>`;
+                            html += `<td style="padding: 6px 8px;"><code class="text-danger">${warning.actual}</code></td>`;
+                            html += `</tr>`;
                         });
+                        html += `</tbody></table>`;
 
                         html += `<p style="margin: 10px 0 0 0; font-size: 12px;">`;
                         html += `<a href="https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-optimize-network-bandwidth#linux-virtual-machines" target="_blank" class="text-info">View Documentation</a>`;
@@ -3382,21 +4382,25 @@
                         html += `These parameters are optional recommendations for network optimization. They are informational only and do not indicate configuration issues, and should only be applied depending on conditions detailed in the documentation.`;
                         html += `</p>`;
 
-                        kernelTuning.optionalNetworkInfo.forEach(info => {
+                        html += `<table style="width: 100%; font-size: 13px; border-collapse: collapse; border: 1px solid var(--border-color);">`;
+                        html += `<thead><tr style="background: var(--code-bg); border-bottom: 1px solid var(--border-color);">`;
+                        html += `<th style="text-align: center; padding: 8px; border-right: 1px solid var(--border-color); width: 50px;">Status</th>`;
+                        html += `<th style="text-align: left; padding: 8px; border-right: 1px solid var(--border-color);">Parameter</th>`;
+                        html += `<th style="text-align: left; padding: 8px; border-right: 1px solid var(--border-color);">Recommended</th>`;
+                        html += `<th style="text-align: left; padding: 8px;">Current</th>`;
+                        html += `</tr></thead><tbody>`;
+                        kernelTuning.optionalNetworkInfo.forEach((info, idx) => {
                             const statusIcon = info.matches ? '[OK]' : '[i]';
                             const statusColor = info.matches ? 'color: var(--success);' : 'color: var(--text-secondary);';
-                            
-                            html += `<div style="margin-bottom: 12px;">`;
-                            html += `<p style="margin: 0; font-size: 13px;">`;
-                            html += `<span style="${statusColor}">${statusIcon}</span> `;
-                            html += `<code style="font-weight: bold;">${info.parameter}</code>`;
-                            html += `</p>`;
-                            html += `<p style="margin: 5px 0; font-size: 12px; padding-left: 20px;">`;
-                            html += `Recommended: <code>${info.expected}</code>, `;
-                            html += `Current: <code>${info.actual}</code>`;
-                            html += `</p>`;
-                            html += `</div>`;
+                            const rowBg = idx % 2 === 1 ? 'background: var(--code-bg);' : '';
+                            html += `<tr style="border-bottom: 1px solid var(--border-color); ${rowBg}">`;
+                            html += `<td style="text-align: center; padding: 6px 8px; border-right: 1px solid var(--border-color);"><span style="${statusColor}">${statusIcon}</span></td>`;
+                            html += `<td style="padding: 6px 8px; border-right: 1px solid var(--border-color);"><code style="font-weight: bold;">${info.parameter}</code></td>`;
+                            html += `<td style="padding: 6px 8px; border-right: 1px solid var(--border-color);"><code>${info.expected}</code></td>`;
+                            html += `<td style="padding: 6px 8px;"><code>${info.actual}</code></td>`;
+                            html += `</tr>`;
                         });
+                        html += `</tbody></table>`;
 
                         html += `<p style="margin: 10px 0 0 0; font-size: 12px;">`;
                         html += `<a href="${kernelTuning.optionalNetworkInfo[0].documentationUrl}" target="_blank" class="text-info">View Documentation</a>`;
@@ -4347,12 +5351,115 @@
                 }
 
                 if (fstab && fstab.found && fstab.content) {
-                    html += `<details style="margin-top: 15px;">`;
-                    html += `<summary style="font-size: 14px; cursor: pointer;">Filesystem Table (/etc/fstab)</summary>`;
+                    // Check if we have nofail warnings from fstabAnalysis
+                    const nofailWarnings = (fstabAnalysis && fstabAnalysis.warnings) 
+                        ? fstabAnalysis.warnings.filter(w => w.type === 'missing_nofail')
+                        : [];
+                    const hasNofailWarnings = nofailWarnings.length > 0;
+                    
+                    html += `<details style="margin-top: 15px;" ${hasNofailWarnings ? 'open' : ''}>`;
+                    html += `<summary style="font-size: 14px; cursor: pointer;">Filesystem Table (/etc/fstab)`;
+                    if (hasNofailWarnings) {
+                        html += ` <span class="badge badge-warning">[!] ${nofailWarnings.length} missing nofail</span>`;
+                    }
+                    html += `</summary>`;
                     html += `<div style="margin-top: 10px;">`;
-                    html += `<pre style="background: var(--code-bg); padding: 10px; border: 1px solid var(--code-border); border-radius: 4px; overflow-x: auto; font-size: 12px; white-space: pre-wrap;">`;
-                    html += fstab.content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                    html += `</pre>`;
+                    
+                    // Show nofail warnings if any
+                    if (hasNofailWarnings) {
+                        html += `<div class="warning-block" style="margin-bottom: 15px;">`;
+                        html += `<p style="margin: 0 0 10px 0;"><strong>[!] Non-OS partitions missing 'nofail' option</strong></p>`;
+                        html += `<p style="margin: 0 0 10px 0; font-size: 13px;">These mount points may prevent the system from booting if the storage becomes unavailable:</p>`;
+                        html += `<ul style="margin: 0 0 10px 0; padding-left: 20px; font-size: 12px;">`;
+                        nofailWarnings.forEach(w => {
+                            html += `<li style="margin: 3px 0;"><code>${w.mountpoint}</code> (${w.fstype}) - source: <code style="font-size: 11px;">${w.source}</code></li>`;
+                        });
+                        html += `</ul>`;
+                        html += `<p style="margin: 0; font-size: 12px;"><strong>Recommendation:</strong> Add <code>nofail</code> option to these entries in /etc/fstab</p>`;
+                        html += `<p style="margin: 5px 0 0 0; font-size: 12px;"><a href="https://learn.microsoft.com/en-us/azure/virtual-machines/linux/fstab-device-names" target="_blank" class="text-info">Azure fstab best practices</a></p>`;
+                        html += `</div>`;
+                    }
+                    
+                    // If we have fstabAnalysis and dfOutput, show enhanced table
+                    if (fstabAnalysis && fstabAnalysis.found && fstabAnalysis.entries && fstabAnalysis.entries.length > 0) {
+                        const mountToUsage = (dfOutput && dfOutput.found) ? dfOutput.mountToUsage : {};
+                        
+                        html += `<div style="overflow-x: auto;">`;
+                        html += `<table style="width: 100%; border-collapse: collapse; font-size: 12px; min-width: 800px;">`;
+                        html += `<thead><tr style="background: var(--code-bg); border-bottom: 2px solid var(--code-border);">`;
+                        html += `<th style="padding: 8px; text-align: left;">Mount Point</th>`;
+                        html += `<th style="padding: 8px; text-align: left;">Source</th>`;
+                        html += `<th style="padding: 8px; text-align: left;">Type</th>`;
+                        html += `<th style="padding: 8px; text-align: right;">Size</th>`;
+                        html += `<th style="padding: 8px; text-align: right;">Used</th>`;
+                        html += `<th style="padding: 8px; text-align: right;">Use%</th>`;
+                        html += `<th style="padding: 8px; text-align: left;">Options</th>`;
+                        html += `<th style="padding: 8px; text-align: center;">Status</th>`;
+                        html += `</tr></thead><tbody>`;
+                        
+                        fstabAnalysis.entries.forEach(entry => {
+                            const usage = mountToUsage[entry.mountpoint];
+                            const usePct = usage ? usage.usePercent : null;
+                            
+                            // Determine row styling based on issues
+                            let rowStyle = '';
+                            let statusBadge = '';
+                            
+                            if (entry.needsNofail) {
+                                rowStyle = 'background: rgba(255, 193, 7, 0.1);';
+                                statusBadge = '<span class="badge badge-warning" title="Missing nofail option">[!] nofail</span>';
+                            } else if (entry.isVirtualFs) {
+                                statusBadge = '<span class="text-muted">virtual</span>';
+                            } else if (entry.isOsPartition) {
+                                statusBadge = '<span class="text-success">OS</span>';
+                            } else if (entry.source.includes('azure_resource') || (entry.mountpoint === '/mnt' && entry.source.includes('/dev/disk/cloud/'))) {
+                                statusBadge = '<span class="text-muted">Ephemeral disk</span>';
+                            } else if (entry.hasNofail) {
+                                statusBadge = '<span class="text-muted">Data disk</span>';
+                            }
+                            
+                            // Color code usage percentage
+                            let usePctClass = '';
+                            let usePctDisplay = '-';
+                            if (usePct !== null && !isNaN(usePct)) {
+                                usePctDisplay = usePct + '%';
+                                if (usePct >= 90) {
+                                    usePctClass = 'text-danger';
+                                    usePctDisplay = '<strong>' + usePct + '%</strong>';
+                                } else if (usePct >= 80) {
+                                    usePctClass = 'text-warning';
+                                }
+                            }
+                            
+                            html += `<tr style="border-bottom: 1px solid var(--code-border); ${rowStyle}">`;
+                            html += `<td style="padding: 6px 8px; font-family: monospace;">${entry.mountpoint}</td>`;
+                            html += `<td style="padding: 6px 8px; font-family: monospace; font-size: 11px; max-width: 250px; overflow: hidden; text-overflow: ellipsis;" title="${entry.source}">${entry.source}</td>`;
+                            html += `<td style="padding: 6px 8px;">${entry.fstype}</td>`;
+                            html += `<td style="padding: 6px 8px; text-align: right; font-family: monospace;">${usage ? formatDfSize(usage.size) : '-'}</td>`;
+                            html += `<td style="padding: 6px 8px; text-align: right; font-family: monospace;">${usage ? formatDfSize(usage.used) : '-'}</td>`;
+                            html += `<td style="padding: 6px 8px; text-align: right; font-family: monospace;" class="${usePctClass}">${usePctDisplay}</td>`;
+                            html += `<td style="padding: 6px 8px; font-size: 11px; max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="${entry.options}">${entry.options}</td>`;
+                            html += `<td style="padding: 6px 8px; text-align: center;">${statusBadge}</td>`;
+                            html += `</tr>`;
+                        });
+                        
+                        html += `</tbody></table>`;
+                        html += `</div>`;
+                        
+                        // Show raw fstab in a collapsible section
+                        html += `<details style="margin-top: 10px;">`;
+                        html += `<summary style="font-size: 12px; cursor: pointer; color: #888;">Show raw /etc/fstab</summary>`;
+                        html += `<pre style="background: var(--code-bg); padding: 10px; border: 1px solid var(--code-border); border-radius: 4px; overflow-x: auto; font-size: 11px; white-space: pre-wrap; margin-top: 5px;">`;
+                        html += fstab.content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        html += `</pre>`;
+                        html += `</details>`;
+                    } else {
+                        // Fall back to raw fstab display
+                        html += `<pre style="background: var(--code-bg); padding: 10px; border: 1px solid var(--code-border); border-radius: 4px; overflow-x: auto; font-size: 12px; white-space: pre-wrap;">`;
+                        html += fstab.content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        html += `</pre>`;
+                    }
+                    
                     html += `</div>`;
                     html += `</details>`;
                 }

@@ -1,3 +1,12 @@
+/**
+ * @module tests/sysinfo-parser
+ * @description Unit tests for the sysinfo Distribution parser.
+ *
+ * Includes a lightweight extraction of the `parseSysinfo` logic for
+ * fast unit tests (no browser needed) plus an integration test that
+ * loads the real `unix.js` parser source and executes the function
+ * via `new Function` with a mock context.
+ */
 import { test, expect } from '@playwright/test';
 
 // Lightweight sysinfo parser (extracted for unit testing)
@@ -29,6 +38,9 @@ test('returns not found when Distribution line is missing', async () => {
 import fs from 'fs';
 import path from 'path';
 import vm from 'vm';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 test('sysinfo parser extracts Distribution line from worker', async () => {
   // osRelease parser is now in external module, so load from there

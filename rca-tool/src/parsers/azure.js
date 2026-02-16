@@ -1,5 +1,41 @@
-// Azure-specific parsers for VM metadata and billing detection
-// These parsers extract Azure VM properties and SUSE registration information
+/**
+ * @module parsers/azure
+ * @description Azure VM metadata and billing model detection.
+ *
+ * ### azureVMPropertiesParser
+ *
+ * Extracts Azure VM properties from the IMDS (Instance Metadata Service)
+ * snapshot captured by supportconfig or sosreport.
+ *
+ * | Property | Source |
+ * |----------|--------|
+ * | vmSize, publisher, offer, sku | `compute` object |
+ * | licenseType | `compute.licenseType` |
+ * | billingCode | `compute.billingCode` |
+ * | osDiskType, dataDisks | `compute.storageProfile` |
+ *
+ * Billing model (PAYG vs BYOS) is determined by a two-rule cascade:
+ * 1. **licenseType** takes precedence (e.g. `RHEL_BYOS`, `SLES`, `UBUNTU_PRO`).
+ * 2. **billingCode** is used as fallback (e.g. `Linux_IaaS_SUSE`, `Linux_IaaS`).
+ *
+ * Input files:
+ * - SOS: `instance_metadata.json` (JSON)
+ * - SCC: `public_cloud/metadata.txt` (key-value pairs, parsed by `parseSCCMetadata()`)
+ *
+ * Returns: `{ found, vmSize, publisher, offer, sku, billingCode, licenseType,`
+ * `billingModel, detectionMethod, osDiskType, dataDisks, hasUltraDisk, hasPremiumV2 }`
+ *
+ * ### suseCloudRegisterParser
+ *
+ * Detects SUSE cloud registration server from `public_cloud/cloudregister.txt`
+ * and infers the billing model:
+ * - PAYG: smt-azure, susecloud.net, update.suse.com
+ * - BYOS: scc.suse.com, custom RMT servers
+ *
+ * Returns: `{ found, billingModel, detectionMethod, registrationServer, registrationType }`
+ *
+ * @see {@link module:worker} for registration in SCC_RULES
+ */
 
 // Debug logging - checks global DEBUG_CONFIG from worker.js
 function debugLog(...args) {

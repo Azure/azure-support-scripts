@@ -1,0 +1,24 @@
+{
+    "source": {
+        "include": ["src/", "tests/"],
+        "includePattern": ".+\\.js$",
+        "exclude": ["src/LAZY_LOADING_GUIDE.js", "src/lazy-parsers.js", "tests/node_modules", "tests/test-results", "tests/playwright-report", "tests/fixtures"]
+    },
+    "opts": {
+        "destination": "docs/",
+        "recurse": true,
+        "readme": "README.md"
+    },
+    "plugins": ["plugins/markdown"],
+    "templates": {
+        "cleverLinks": true,
+        "monospaceLinks": false,
+        "default": {
+            "outputSourceFiles": false,
+            "includeDate": true
+        }
+    },
+    "tags": {
+        "allowUnknownTags": true
+    }
+}
