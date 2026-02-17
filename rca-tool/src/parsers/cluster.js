@@ -2755,6 +2755,45 @@ const clusterEventsParser = {
                     }
                     continue;
                 }
+
+                // Pacemaker result lines: "Result of stop operation for <resource> on <node>: ok"
+                // Also covers "Result of start operation for <resource> on <node>: ok"
+                const resultOpMatch = messageText.match(/Result of (start|stop) operation for (\S+) on (\S+):\s*(\w+)/i);
+                if (resultOpMatch) {
+                    const [, actionRaw, resource, node] = resultOpMatch;
+                    const action = actionRaw.toLowerCase();
+
+                    // Reject systemd messages explicitly
+                    if (messageText.includes('systemd')) continue;
+
+                    // Reject lines with process ID patterns like [123]:
+                    if (/\[\d+\]:/.test(messageText)) continue;
+
+                    // Exclude systemd service type names
+                    const isSystemdService = resource.match(/\.(service|target|socket|mount|swap|path|timer|device|scope|slice)$/i) ||
+                                            resource.includes('@');
+
+                    // Filter out known system resources
+                    const isSystemResource = this.systemResourceBlacklist.test(resource);
+
+                    // Filter out non-cluster node names
+                    const isNonClusterNode = this.nonClusterNodePattern.test(node);
+
+                    if (!isSystemdService && !isSystemResource && !isNonClusterNode) {
+                        resourceMigrations.push({
+                            timestamp: timestamp,
+                            resource: resource,
+                            fromNode: action === 'stop' ? node : null,
+                            toNode: action === 'start' ? node : null,
+                            action: action,
+                            sourceFile: filename,
+                            sourceLine: lineNum + 1,
+                            logLine: trimmed.substring(0, 200)
+                        });
+                        debugLog('[clusterEvents parser] Found resource operation result:', resource, action, 'on', node);
+                    }
+                    continue;
+                }
                 
                 // Resource operation format: "Operation resource_start_0: ok (node=nodeX)"
                 const opMatch = messageText.match(/Operation\s+(\S+?)_(?:start|stop|monitor|migrate)_\d+:\s*\w+\s*\(node=(\S+)\)/i);
