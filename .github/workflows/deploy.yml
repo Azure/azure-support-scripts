@@ -134,7 +134,9 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: post-deploy-test-results
-        path: rca-tool/tests/test-results/
+        path: |
+          rca-tool/tests/playwright-report/
+          rca-tool/tests/test-results/
         retention-days: 30
 
     - name: Upload post-deployment coverage report
