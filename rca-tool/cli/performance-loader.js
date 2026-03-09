@@ -10,11 +10,32 @@ import path from 'path';
 import vm from 'vm';
 import { fileURLToPath } from 'url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Handle both ESM and CJS environments for __dirname
+const getDirname = () => {
+    // For bundled CJS, use __dirname if available
+    if (typeof __dirname !== 'undefined') {
+        return __dirname;
+    }
+    // For ESM, derive from import.meta.url
+    return path.dirname(fileURLToPath(import.meta.url));
+};
 
-// Read the shared performance module
-const perfPath = path.join(__dirname, '..', 'src', 'performance.js');
-const perfCode = fs.readFileSync(perfPath, 'utf8');
+// Placeholder for embedded performance code - will be replaced by build script
+// In development, this remains null and performance.js is loaded from filesystem
+let EMBEDDED_PERFORMANCE = null;
+
+// Load performance code from either embedded or filesystem source
+function loadPerformanceCode() {
+    if (EMBEDDED_PERFORMANCE) {
+        return EMBEDDED_PERFORMANCE;
+    }
+    // Development mode: load from filesystem
+    const currentDir = getDirname();
+    const perfPath = path.join(currentDir, '..', 'src', 'performance.js');
+    return fs.readFileSync(perfPath, 'utf8');
+}
+
+const perfCode = loadPerformanceCode();
 
 // Evaluate in a sandbox that mimics the global scope
 const sandbox = {

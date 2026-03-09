@@ -31,6 +31,12 @@ function loadParsersForBundle() {
     return JSON.stringify(parsers);
 }
 
+// Load performance.js source for embedding
+function loadPerformanceForBundle() {
+    const perfPath = path.join(__dirname, '..', 'src', 'performance.js');
+    return JSON.stringify(fs.readFileSync(perfPath, 'utf8'));
+}
+
 async function build() {
     console.log('Building CLI bundle...\n');
 
@@ -76,6 +82,13 @@ async function build() {
         content = content.replace(
             /EMBEDDED_PARSERS\s*=\s*null/,
             `EMBEDDED_PARSERS = ${parsersJson}`
+        );
+        
+        // Also embed performance.js source
+        const performanceJson = loadPerformanceForBundle();
+        content = content.replace(
+            /EMBEDDED_PERFORMANCE\s*=\s*null/,
+            `EMBEDDED_PERFORMANCE = ${performanceJson}`
         );
         
         if (content.length === originalLength) {
