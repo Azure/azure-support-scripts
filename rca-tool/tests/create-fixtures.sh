@@ -19,7 +19,7 @@ create_fixture() {
     rmdir test-data 2>/dev/null || true
     tar -cJf "$FIXTURES_DIR/scc_$name.tar.xz" "scc_$name"
     rm -rf "scc_$name"
-    echo "✓ Created scc_$name"
+    echo "[OK] Created scc_$name"
 }
 
 # 1. Test for systemd false positives
@@ -787,7 +787,7 @@ if [ -f "$CORRUPTED_FILE" ]; then
         echo "  Truncating from $FILE_SIZE to $TRUNCATE_SIZE bytes (60%) to simulate corruption..."
         dd if="$CORRUPTED_FILE" of="${CORRUPTED_FILE}.tmp" bs=1 count=$TRUNCATE_SIZE 2>/dev/null
         mv "${CORRUPTED_FILE}.tmp" "$CORRUPTED_FILE"
-        echo "✓ Created corrupted test fixture"
+        echo "[OK] Created corrupted test fixture"
     else
         echo "  File too small to truncate, creating larger test data..."
         # Add more content to make file larger
@@ -809,7 +809,7 @@ EOF
         echo "  Truncating from $FILE_SIZE to $TRUNCATE_SIZE bytes (60%) to simulate corruption..."
         dd if="$CORRUPTED_FILE" of="${CORRUPTED_FILE}.tmp" bs=1 count=$TRUNCATE_SIZE 2>/dev/null
         mv "${CORRUPTED_FILE}.tmp" "$CORRUPTED_FILE"
-        echo "✓ Created corrupted test fixture"
+        echo "[OK] Created corrupted test fixture"
     fi
 fi
 
@@ -1021,7 +1021,7 @@ ca-certificates.noarch                 2023.2.60_v7.0.306-80.0.el8_8          @r
 EOF
 tar -cJf "$FIXTURES_DIR/sosreport-rpm-raw.tar.xz" sosreport-rpm-raw
 rm -rf sosreport-rpm-raw
-echo "✓ Created sosreport-rpm-raw (14 packages)"
+echo "[OK] Created sosreport-rpm-raw (14 packages)"
 
 # Test for raw YUM package list display (RHEL 7 style)
 echo ""
@@ -1050,7 +1050,7 @@ ca-certificates.noarch              2022.2.54-74.el7_9       @repo/$releasever
 EOF
 tar -cJf "$FIXTURES_DIR/sosreport-yum-raw.tar.xz" sosreport-yum-raw
 rm -rf sosreport-yum-raw
-echo "✓ Created sosreport-yum-raw (15 packages)"
+echo "[OK] Created sosreport-yum-raw (15 packages)"
 
 # Test for raw DEB package list display
 echo ""
@@ -1087,7 +1087,7 @@ ii  systemd                       245.4-4ubuntu3.23            amd64        syst
 EOF
 tar -cJf "$FIXTURES_DIR/sosreport-deb-raw.tar.xz" sosreport-deb-raw
 rm -rf sosreport-deb-raw
-echo "✓ Created sosreport-deb-raw (22 packages)"
+echo "[OK] Created sosreport-deb-raw (22 packages)"
 
 ################################################################################
 # RPM.txt (SUSE supportconfig format) – exercises rpm.txt parsing with
@@ -1114,7 +1114,7 @@ some-other-section-data
 RPMSCC
 tar -cJf "$FIXTURES_DIR/sosreport-rpm-txt-scc.tar.xz" sosreport-rpm-txt-scc
 rm -rf sosreport-rpm-txt-scc
-echo "✓ Created sosreport-rpm-txt-scc (7 packages)"
+echo "[OK] Created sosreport-rpm-txt-scc (7 packages)"
 
 ################################################################################
 # installed-rpms (RHEL sosreport format) – exercises RPM version validation:
@@ -1151,7 +1151,7 @@ nodelist {
 COROCONF
 tar -cJf "$FIXTURES_DIR/sosreport-installed-rpms.tar.xz" sosreport-installed-rpms
 rm -rf sosreport-installed-rpms
-echo "✓ Created sosreport-installed-rpms (8 packages)"
+echo "[OK] Created sosreport-installed-rpms (8 packages)"
 
 # Test for Azure VM with Ultra Disk and Premium SSD v2
 echo ""
@@ -2914,7 +2914,7 @@ with zipfile.ZipFile(fixture_path, 'w', zipfile.ZIP_DEFLATED) as zf:
     zf.writestr('device_0/etc/redhat-release', redhat_release)
     zf.writestr('device_0/etc/hostname', hostname_content)
 INSPECT_STORAGE_PYEOF
-echo "✓ Created test-inspect-iaas-disk-storage.zip"
+echo "[OK] Created test-inspect-iaas-disk-storage.zip"
 
 ################################################################################
 # Test: sosreport storage - block devices from lsblk/blkid + fstab
@@ -3216,7 +3216,7 @@ with zipfile.ZipFile(fixture_path, 'w', zipfile.ZIP_DEFLATED) as zf:
     zf.writestr('device_0/var/lib/waagent/Microsoft.CPlat.Core.LinuxPatchExtension-1.6.64/config/HandlerStatus', handler_status_patch)
     zf.writestr('device_0/var/lib/waagent/Microsoft.CPlat.Core.RunCommandLinux-1.0.11/config/HandlerStatus', handler_status_runcommand)
 INSPECT_PYEOF
-echo "✓ Created test-inspect-iaas-disk.zip"
+echo "[OK] Created test-inspect-iaas-disk.zip"
 
 echo "=== Creating test-inspect-iaas-disk-cluster.zip ==="
 
@@ -3378,7 +3378,7 @@ with zipfile.ZipFile(fixture_path, 'w', zipfile.ZIP_DEFLATED) as zf:
     zf.writestr('device_0/var/log/cloud-init-output.log', cloud_init_output)
     zf.writestr('device_0/var/log/zypp/history', zypper_history)
 INSPECT_CLUSTER_PYEOF
-echo "✓ Created test-inspect-iaas-disk-cluster.zip"
+echo "[OK] Created test-inspect-iaas-disk-cluster.zip"
 
 ################################################################################
 # InspectIaaSDisk SLES ZIP fixture
@@ -3576,7 +3576,7 @@ with zipfile.ZipFile(fixture_path, 'w', zipfile.ZIP_DEFLATED) as zf:
     zf.writestr('device_0/var/lib/waagent/Microsoft.CPlat.Core.LinuxPatchExtension-1.6.64/config/HandlerStatus', patch_status)
     zf.writestr('device_0/var/lib/waagent/Microsoft.CPlat.Core.RunCommandLinux-1.0.11/config/HandlerStatus', runcmd_status)
 INSPECT_SLES_PYEOF
-echo "✓ Created test-inspect-iaas-disk-sles.zip"
+echo "[OK] Created test-inspect-iaas-disk-sles.zip"
 
 echo ""
 echo "========================================="

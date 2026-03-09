@@ -1424,11 +1424,11 @@
 
                 // Categorised errors
                 const errorSections = [
-                    { title: 'Goal State Errors', items: waagentLog.goalStateErrors, icon: '🔄' },
-                    { title: 'Extension Errors', items: waagentLog.extensionErrors, icon: '🧩' },
-                    { title: 'Resource Disk Errors', items: waagentLog.resourceDiskErrors, icon: '💾' },
-                    { title: 'IMDS Connectivity Errors', items: waagentLog.imdsErrors, icon: '🌐' },
-                    { title: 'Status File Warnings', items: waagentLog.statusFileWarnings, icon: '📋' }
+                    { title: 'Goal State Errors', items: waagentLog.goalStateErrors, icon: '' },
+                    { title: 'Extension Errors', items: waagentLog.extensionErrors, icon: '' },
+                    { title: 'Resource Disk Errors', items: waagentLog.resourceDiskErrors, icon: '' },
+                    { title: 'IMDS Connectivity Errors', items: waagentLog.imdsErrors, icon: '' },
+                    { title: 'Status File Warnings', items: waagentLog.statusFileWarnings, icon: '' }
                 ];
 
                 errorSections.forEach(section => {
@@ -5560,7 +5560,7 @@
                         html += `<tbody>`;
                         
                         ptpClockSource.chronySources.forEach(source => {
-                            const activeMarker = source.active ? '★' : '';
+                            const activeMarker = source.active ? '*' : '';
                             const rowStyle = source.active ? 'background: var(--success-bg);' : '';
                             html += `<tr style="border-bottom: 1px solid var(--code-border); ${rowStyle}">`;
                             html += `<td style="padding: 6px;">${source.type}</td>`;

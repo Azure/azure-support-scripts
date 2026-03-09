@@ -95,7 +95,7 @@ const sshServiceParser = {
                     sourceFile: filename
                 });
                 
-                debugLog('[sshService parser] ✓ Detected SSH issue at line', i + 1, ':', timestamp, 'type:', issueType);
+                debugLog('[sshService parser] [OK] Detected SSH issue at line', i + 1, ':', timestamp, 'type:', issueType);
             }
         }
         

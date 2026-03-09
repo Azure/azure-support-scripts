@@ -28,17 +28,17 @@ cd "$PROJECT_ROOT"
 # Instrument parser files (paths in __coverage__ will reference src/parsers/)
 npx --prefix tests nyc instrument src/parsers "$TMPDIR/parsers" --compact false
 cp "$TMPDIR/parsers"/*.js "$DIST_DIR/parsers/"
-echo "  ✓ parsers/"
+echo "  [OK] parsers/"
 
 # Instrument utils.js
 npx --prefix tests nyc instrument src/utils.js "$TMPDIR" --compact false
 cp "$TMPDIR/src/utils.js" "$DIST_DIR/utils.js"
-echo "  ✓ utils.js"
+echo "  [OK] utils.js"
 
 # Instrument worker.js (renamed to liblzma-streaming-worker.js in the build)
 npx --prefix tests nyc instrument src/worker.js "$TMPDIR" --compact false
 cp "$TMPDIR/src/worker.js" "$DIST_DIR/liblzma-streaming-worker.js"
-echo "  ✓ worker.js → liblzma-streaming-worker.js"
+echo "  [OK] worker.js → liblzma-streaming-worker.js"
 
 # Inject a postMessage hook into the instrumented worker so that __coverage__
 # data piggybacks on every message sent back to the main thread.  This lets the
@@ -64,7 +64,7 @@ cat >> "$WORKER" << 'COVERAGE_HOOK'
   };
 })();
 COVERAGE_HOOK
-echo "  ✓ coverage hook injected into worker"
+echo "  [OK] coverage hook injected into worker"
 
 # Enable debug logging for all parsers so debugLog() console.log branches
 # are exercised during tests, covering those otherwise-untestable lines.
@@ -77,6 +77,6 @@ if (typeof DEBUG_CONFIG !== 'undefined') {
   Object.keys(DEBUG_CONFIG).forEach(function(k) { DEBUG_CONFIG[k] = true; });
 }
 DEBUG_HOOK
-echo "  ✓ debug config enablement injected"
+echo "  [OK] debug config enablement injected"
 
 echo "Instrumentation complete."

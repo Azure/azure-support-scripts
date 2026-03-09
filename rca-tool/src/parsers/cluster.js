@@ -3184,15 +3184,15 @@ const liveMigrationParser = {
                                 rawLine: lines[heartbeatLine]
                             });
                             
-                            debugLog('[liveMigration parser] ✓ Detected migration at line', heartbeatLine + 1, ':', timestamp);
+                            debugLog('[liveMigration parser] [OK] Detected migration at line', heartbeatLine + 1, ':', timestamp);
                             
                             // Skip ahead to avoid duplicate detections
                             i = netvscLine;
                         } else {
-                            debugLog('[liveMigration parser] ✗ No hv_netvsc found within range');
+                            debugLog('[liveMigration parser] [FAIL] No hv_netvsc found within range');
                         }
                     } else {
-                        debugLog('[liveMigration parser] ✗ No hv_balloon found within 100 lines');
+                        debugLog('[liveMigration parser] [FAIL] No hv_balloon found within 100 lines');
                     }
                 }
             }

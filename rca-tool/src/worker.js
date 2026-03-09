@@ -439,7 +439,7 @@ const SCC_RULES = {
                         sourceFile: filename
                     });
                     
-                    debugLog('[automation parser] ✓ Detected', toolType, 'at line', i + 1, ':', timestamp);
+                    debugLog('[automation parser] [OK] Detected', toolType, 'at line', i + 1, ':', timestamp);
                 }
             }
             
