@@ -6,10 +6,11 @@
  * Corosync configuration checks, Pacemaker resource parsing, SAP
  * indicator detection, STONITH/SBD fencing, SAP instance
  * configuration and error reporting, live-migration events, nested
- * gzip decompression, and Getty message filtering.
+ * gzip decompression, Getty message filtering, and InspectIaaSDisk
+ * cluster file parsing (hosts, corosync.conf).
  */
 import { test, expect } from './coverage-fixture.js';
-import { uploadAndWaitForAnalysis, getResultText, isSapDetectedFromResult, navigateToApp } from './test-helpers.js';
+import { uploadAndWaitForAnalysis, getResultText, isSapDetectedFromResult, navigateToApp, fixturePath } from './test-helpers.js';
 
 test.describe('Cluster Parsers', () => {
 
@@ -191,5 +192,49 @@ test.describe('Cluster Parsers', () => {
     if (resultText.includes('Cluster Events')) {
       expect(resultText).not.toMatch(/Getty stopped|agetty|tty1 stop/i);
     }
+  });
+
+  test('parses corosync.conf and detects cluster nodes from InspectIaaSDisk ZIP', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk-cluster.zip'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('InspectIaaSDisk Results');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+
+    // Should detect cluster nodes from corosync.conf nodelist
+    expect(content).toContain('hananode01');
+    expect(content).toContain('hananode02');
+
+    // Should detect corosync token value (30000)
+    expect(content).toMatch(/token.*30000|30000.*token/i);
+  });
+
+  test('validates hosts file against cluster nodes in InspectIaaSDisk ZIP', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk-cluster.zip'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('hananode01');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+
+    // Both cluster nodes should be found in hosts file
+    expect(content).toContain('hananode01');
+    expect(content).toContain('hananode02');
+
+    // Should show the corosync transport type
+    expect(content).toMatch(/udpu/i);
   });
 });

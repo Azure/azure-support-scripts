@@ -89,4 +89,24 @@ test.describe('Services Parsers', () => {
     expect(result).toMatch(/DLM.*enabled/i);
     expect(result).toContain('https://access.redhat.com/solutions/878023');
   });
+
+  test('detects Azure VM Extensions from InspectIaaSDisk ZIP', async ({ page }) => {
+    const result = await uploadAndWaitForAnalysis(page, 'test-inspect-iaas-disk.zip');
+
+    // Should show Azure VM Extensions section with 4 extensions
+    expect(result).toContain('Azure VM Extensions');
+
+    // Should detect Defender as NotReady
+    expect(result).toContain('Microsoft Defender for Endpoint');
+    expect(result).toMatch(/NotReady/);
+
+    // Should detect healthy extensions
+    expect(result).toContain('Azure Backup');
+    expect(result).toContain('Azure Update Manager');
+    expect(result).toContain('Run Command');
+    expect(result).toContain('Ready');
+
+    // Should show the not-ready warning badge
+    expect(result).toMatch(/not ready/i);
+  });
 });

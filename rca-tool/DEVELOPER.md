@@ -6,35 +6,40 @@ How to build and contribute to rca-tool.
 
 Currently, the tool manages:
 
-|Function|Description|Mature code?|crm/hb|scc|sos|console /messages / syslog / plain text files|
-|--------|-----------|------|------|---|---|-----------|
-|Azure vm size|Extract Azure VM Size, from wireserver metadata|🗸|n.a.|🗸|🗸||
-|Azure BYOS/PAYG|Licensing source for Azure, from wireserver metadata.|𐄂|n.a.|🗸|🗸||
-|Distro detection|It finds distribution mayor and minor version from OS files or wireserver metadata|🗸|🗸|🗸|🗸||
-|Cluster node detection and validation|Detects if a node name is declared in both cluster config and hosts file|🗸|🗸|🗸|🗸||
-|Corosync configuration and validation|Azure best practices are compared. Needs improvement for non-Suse|𐄂|🗸|🗸|🗸||
-|Cluster resource extraction|List resources, active node for each. Adding constains would be useful.|🗸|🗸|🗸|🗸||
-|Corosync runtime status|Details which nodes are active, which is localhost|🗸|🗸|🗸|🗸||
-|Fencing detection|Azure fencing or SDB. Needs warning if two are active at the same time.|🗸|🗸|🗸|🗸||
-|Cluster events|Migrations are detected and listed|🗸|🗸|🗸|🗸||
-|Live migration|Azure Live Migrations are detected and listed|🗸|🗸|🗸|🗸|🗸|
-|Kernel reboot events|Shutdown, reboots and kernel starts are listed. Shows kernel version when boots|🗸|🗸|🗸|🗸|🗸|
-|Out of memory/oomk events|If the system cannot allocate memory for processes or has out of memory events, they are detected and listed.|🗸|n.a.|🗸|🗸|🗸|
-|Cluster packages|Validation of packages install in specific version ranges. Needs improvement for non-Suse.||||||
-|AV Detection|MS Defender, Cloudstrike Falcon, Illumio, Trend Micro, Guardicore|🗸|n.a.|🗸|🗸||
-|DLM Service Detection|Detects if DLM (Distributed Lock Manager) service is enabled and alerts|🗸|n.a.|🗸|🗸||
-|Kernel parameters and validation|It grabs kernel parameters (sysctl) and displays them raw. If SAP Hana is found, it also validates best practices.|🗸|||🗸||
-|Huge Pages Detection|Detects static huge pages and Transparent Huge Pages (THP) configuration. Shows warnings for unused pages and recommendations for SAP HANA.|🗸|n.a.|🗸|🗸||
-|Raw fstab|It grab the raw fstab.|🗸|n.a.|🗸|🗸||
-|Azure Site Recovery|It detects if the involflt_start service is enabled.|🗸|n.a.|🗸|||
-|XFS corruption|If we see a message about xfs corruption, it is listed as an event.|🗸||🗸|🗸||
-|XFS duplicate UUID|If the is a kernel message about a duplicate UUID XFS mount, it is listed as an event.|🗸||🗸|🗸|🗸|
-|NVME Detection|If NVME disks are found, they are listed.|🗸|n.a.||🗸||
-|Network Kernel Parameters|Recommended and optional kernel parameters for network are verified on the collected sysctl.|🗸|n.a.|🗸|🗸||
-|Raw list of distro packages|Shows a raw list of packages from dpkg -l, dnf list, yum list and rpm.txt|🗸|n.a.|🗸|🗸||
-|Azure Storage Type Detection|Standard SSD, Premium SSDv2, Ultradisk, etc.|🗸|n.a.|n.a.|🗸||
-|SSH error detection|Failed to start and permission errors|𐄂|n.a.|🗸|🗸|🗸|
-|(WIP)||𐄂|n.a.|🗸|🗸||
+|Function|Description|Mature code?|crm/hb|scc|sos|console /messages / syslog / plain text files|inspect|
+|--------|-----------|------|------|---|---|-----------|-------|
+|Azure vm size|Extract Azure VM Size, from wireserver metadata|🗸|n.a.|🗸|🗸|||
+|Azure BYOS/PAYG|Licensing source for Azure, from wireserver metadata.|𐄂|n.a.|🗸|🗸|||
+|Distro detection|It finds distribution mayor and minor version from OS files or wireserver metadata|🗸|🗸|🗸|🗸||🗸|
+|Cluster node detection and validation|Detects if a node name is declared in both cluster config and hosts file|🗸|🗸|🗸|🗸||🗸|
+|Corosync configuration and validation|Azure best practices are compared. Needs improvement for non-Suse|𐄂|🗸|🗸|🗸||🗸|
+|Cluster resource extraction|List resources, active node for each. Adding constains would be useful.|🗸|🗸|🗸|🗸|||
+|Corosync runtime status|Details which nodes are active, which is localhost|🗸|🗸|🗸|🗸|||
+|Fencing detection|Azure fencing or SDB. Needs warning if two are active at the same time.|🗸|🗸|🗸|🗸|||
+|Cluster events|Migrations are detected and listed|🗸|🗸|🗸|🗸||🗸|
+|Live migration|Azure Live Migrations are detected and listed|🗸|🗸|🗸|🗸|🗸|🗸|
+|Kernel reboot events|Shutdown, reboots and kernel starts are listed. Shows kernel version when boots|🗸|🗸|🗸|🗸|🗸|🗸|
+|Out of memory/oomk events|If the system cannot allocate memory for processes or has out of memory events, they are detected and listed.|🗸|n.a.|🗸|🗸|🗸|🗸|
+|Cluster packages|Validation of packages install in specific version ranges. Needs improvement for non-Suse.|||||||
+|AV Detection|MS Defender, Cloudstrike Falcon, Illumio, Trend Micro, Guardicore|🗸|n.a.|🗸|🗸|||
+|DLM Service Detection|Detects if DLM (Distributed Lock Manager) service is enabled and alerts|🗸|n.a.|🗸|🗸|||
+|Kernel parameters and validation|It grabs kernel parameters (sysctl) and displays them raw. If SAP Hana is found, it also validates best practices.|🗸|||🗸|||
+|Huge Pages Detection|Detects static huge pages and Transparent Huge Pages (THP) configuration. Shows warnings for unused pages and recommendations for SAP HANA.|🗸|n.a.|🗸|🗸|||
+|Raw fstab|It grab the raw fstab.|🗸|n.a.|🗸|🗸||🗸|
+|Azure Site Recovery|It detects if the involflt_start service is enabled.|🗸|n.a.|🗸||||
+|XFS corruption|If we see a message about xfs corruption, it is listed as an event.|🗸||🗸|🗸||🗸|
+|XFS duplicate UUID|If the is a kernel message about a duplicate UUID XFS mount, it is listed as an event.|🗸||🗸|🗸|🗸|🗸|
+|Emergency mode|Detects when system entered emergency mode from log messages|🗸|n.a.|🗸|🗸||🗸|
+|NVME Detection|If NVME disks are found, they are listed.|🗸|n.a.||🗸|||
+|Network Kernel Parameters|Recommended and optional kernel parameters for network are verified on the collected sysctl.|🗸|n.a.|🗸|🗸|||
+|Raw list of distro packages|Shows a raw list of packages from dpkg -l, dnf list, yum list and rpm.txt|🗸|n.a.|🗸|🗸|||
+|Azure Storage Type Detection|Standard SSD, Premium SSDv2, Ultradisk, etc.|🗸|n.a.|n.a.|🗸|||
+|SSH error detection|Failed to start and permission errors|𐄂|n.a.|🗸|🗸|🗸||
+|Network Interfaces|Detects interfaces, DHCP/static, drivers, accelerated networking from ifcfg/netplan files|🗸|n.a.|🗸|🗸||🗸|
+|Firewall Rules|Detects firewall technology (firewalld, nftables, iptables) and configuration|🗸|n.a.|🗸|🗸||🗸|
+|InspectIaaSDisk results|Parses disk inspection diagnostics: request info, filesystem status, OS metadata, mount points, and mount failures with warnings|🗸|n.a.|n.a.|n.a.|n.a.|🗸|
+|Azure Linux Agent config|Parses /etc/waagent.conf: extensions, firewall, swap, FIPS, auto-update, SCSI timeout. Flags risky settings.|🗸|n.a.|🗸|🗸||🗸|
+|(WIP)||𐄂|n.a.|🗸|🗸|||
 
 
 Note: "n.a." in this table, means that some data is not present on all type of debug files.

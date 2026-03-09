@@ -60,14 +60,17 @@ const emergencyModeParser = {
     // Detects emergency mode events by finding the pattern:
     // - "You are in emergency mode."
     // Returns array of detected emergency mode events with timestamps
-    parse: function(content, filename) {
-        const lines = content.split('\n');
+    parse: function(content, filename, _lines) {
+        const lines = _lines || content.split('\n');
         const emergencyEvents = [];
         
         debugLog('[emergencyMode parser] Analyzing', lines.length, 'lines for emergency mode events');
         
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
+            
+            // Fast pre-filter
+            if (!line.includes('emergency mode')) continue;
             
             // Pattern: "You are in emergency mode."
             if (line.match(/You are in emergency mode/i)) {
@@ -106,14 +109,21 @@ const kernelRebootsParser = {
     // - "Command line:" (kernel command line)
     // - System restart messages
     // Returns array of detected reboot events with timestamps and kernel versions
-    parse: function(content) {
-        const lines = content.split('\n');
+    parse: function(content, _filename, _lines) {
+        const lines = _lines || content.split('\n');
         const reboots = [];
         
         debugLog('[kernelReboots parser] Analyzing', lines.length, 'lines for kernel reboots');
         
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
+            
+            // Fast pre-filter: skip lines that can't match any reboot pattern
+            if (!(line.includes('Linux version') || line.includes('hutting down') ||
+                  line.includes('tarting Reboot') || line.includes('topped target') ||
+                  line.includes('reboot:'))) {
+                continue;
+            }
             
             // Pattern 1: "Linux version X.Y.Z" - primary boot message
             // Match both formats:
@@ -202,14 +212,20 @@ const oomKillerParser = {
     // - "oom-killer:" or "oom_reaper:"
     // - Memory statistics and killed process information
     // Returns array of detected OOM events with process details
-    parse: function(content) {
-        const lines = content.split('\n');
+    parse: function(content, _filename, _lines) {
+        const lines = _lines || content.split('\n');
         const oomEvents = [];
         
         debugLog('[oomKiller parser] Analyzing', lines.length, 'lines for OOM killer events');
         
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
+            
+            // Fast pre-filter: skip lines that can't match any OOM pattern
+            if (!(line.includes('ut of memory') || line.includes('oom-killer') ||
+                  line.includes('oom_reaper') || line.includes('annot allocate memory'))) {
+                continue;
+            }
             
             // Pattern 1: "Out of memory: Kill process" or "Out of memory: Killed process"
             const oomKillMatch = line.match(/Out of memory:.*Kill(?:ed)? process\s+(\d+)\s+\(([^)]+)\)/i);
@@ -368,31 +384,27 @@ const xfsErrorsParser = {
     // Parse function receives file content as string
     // Detects XFS filesystem errors that require unmounting and repair
     // Example: [1814128.610637] XFS (sdd1): Please unmount the filesystem and rectify the problem(s)
-    parse: function(content) {
+    parse: function(content, _filename, _lines) {
         debugLog('[xfsErrors parser] Analyzing for XFS filesystem errors');
         
         // Pattern to match XFS error messages
         const xfsPattern = /XFS\s+\(([^)]+)\):\s*(.+)/i;
         
-        // Use grepLines to find all XFS messages
-        const result = SCC_RULES.grepLines(content, xfsPattern, { 
-            firstMatchOnly: false, 
-            returnAllMatches: true 
-        });
-        
-        if (!result.found) {
-            debugLog('[xfsErrors parser] No XFS messages found');
-            return {
-                count: 0,
-                events: []
-            };
-        }
-        
+        // Use pre-split lines with fast pre-filter instead of grepLines
+        // (avoids re-splitting content and skips >99% of lines)
+        const lines = _lines || content.split('\n');
         const xfsErrors = [];
         
-        // Filter for critical errors only
-        for (const match of result.matches) {
-            const fullMatch = match.line.match(xfsPattern);
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
+            // Fast pre-filter: skip lines without XFS keyword
+            if (!line.includes('XFS')) continue;
+            
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            
+            const fullMatch = trimmed.match(xfsPattern);
             if (!fullMatch) continue;
             
             const device = fullMatch[1];
@@ -406,20 +418,21 @@ const xfsErrorsParser = {
                              /internal error/i.test(message) ||
                              /shutting down filesystem/i.test(message) ||
                              /filesystem has been shut down/i.test(message) ||
-                             /duplicate UUID.*can't mount/i.test(message);
+                             /duplicate UUID.*can't mount/i.test(message) ||
+                             /unrecovered unlinked inode/i.test(message);
             
             if (isCritical) {
-                const timestamp = SCC_RULES.extractTimestamp(match.line);
+                const timestamp = SCC_RULES.extractTimestamp(line);
                 
                 xfsErrors.push({
                     timestamp: timestamp || 'Unknown',
-                    lineNumber: match.lineNumber,
+                    lineNumber: i + 1,
                     device: device,
                     message: message,
-                    rawLine: match.line
+                    rawLine: trimmed
                 });
                 
-                debugLog('[xfsErrors parser] ✓ Detected XFS error at line', match.lineNumber, ':', timestamp, 'device:', device);
+                debugLog('[xfsErrors parser] ✓ Detected XFS error at line', i + 1, ':', timestamp, 'device:', device);
             }
         }
         

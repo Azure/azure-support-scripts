@@ -37,11 +37,11 @@ body.dark-mode {
     --muted-text: #aaa;
     --border-color: #444;
     
-    /* Semantic colors - adjusted for dark mode */
-    --success-color: #3cb371;
-    --danger-color: #e57373;
+    /* Semantic colors - adjusted for dark mode (WCAG AA contrast with white text) */
+    --success-color: #2e8b57;
+    --danger-color: #c62828;
     --warning-color: #ffb74d;
-    --info-color: #4fc3f7;
+    --info-color: #0277bd;
     --warning-text: #ffb74d;
     --danger-dark: #ef5350;
     --info-dark: #29b6f6;

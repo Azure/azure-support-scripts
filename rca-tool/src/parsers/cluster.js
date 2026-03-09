@@ -42,7 +42,7 @@
  * | Parser | File Patterns | Purpose |
  * |--------|---------------|---------|
  * | `clusterEventsParser` | `pacemaker.log`, `corosync.log`, `messages`, `journalctl*` | **Multi-file**: accumulates node join/leave, resource failover, fencing actions across rotated logs |
- * | `liveMigrationParser` | `pacemaker.log`, `corosync.log`, `messages`, `localmessages` | Detects Hyper-V Live Migration by matching hv_utils/hv_balloon/hv_netvsc sequence within 100 lines |
+ * | `liveMigrationParser` | `pacemaker.log`, `corosync.log`, `messages`, `localmessages` | Detects Hyper-V Live Migration by matching hv_utils/hv_balloon/hv_netvsc sequence within 100 lines (see [Integration Services]{@link https://learn.microsoft.com/en-us/windows-server/virtualization/hyper-v/integration-services}, [Maintenance and Updates]{@link https://learn.microsoft.com/en-us/azure/virtual-machines/maintenance-and-updates}) |
  *
  * #### SAP
  *
@@ -90,7 +90,7 @@ const corosyncConfigParser = {
     // 2. sosreport: direct corosync.conf file
     // Extracts corosync.conf section and validates totem token parameter
     // Returns object with configuration and validation warnings
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         const warnings = [];
         let corosyncConf = null;
         let totemToken = null;
@@ -428,8 +428,8 @@ const clusterNodesParser = {
         
         // Parse function receives file content as string
         // Returns array of cluster node names and node-to-IP mapping
-        parse: function(content) {
-            const lines = content.split('\n');
+        parse: function(content, _filename, _lines) {
+            const lines = _lines || content.split('\n');
             const nodeSet = new Set();
             const nodeToIpMap = {}; // Maps hostname to IP from corosync.conf
             
@@ -609,7 +609,7 @@ const hostsFileParser = {
         // 1. supportconfig: network.txt with embedded /etc/hosts section
         // 2. sosreport: direct /etc/hosts file
         // Returns object with hosts entries and validation info
-        parse: function(content, filename) {
+        parse: function(content, filename, _lines) {
             // Extract the /etc/hosts section
             const section = SCC_RULES.extractSection(content, filename, '# /etc/hosts', '/etc/hosts');
             
@@ -659,12 +659,12 @@ const pacemakerResourcesParser = {
         // sosreport/crm_report: */cib.xml, */crm_mon*.txt, */crm*config, */pcs_config, */pcs_status*, */pacemaker.log
         filePattern: /cib\.xml$|\/crm_mon.*\.txt$|\/crm.*config$|pacemaker\.log$|\/ha\.txt$|\/pcs_config$|\/pcs_status/,
         
-        parse: function(content, filename) {
+        parse: function(content, filename, _lines) {
             debugLog('[pacemakerResources parser] Analyzing pacemaker configuration in:', filename);
             
             const resources = [];
             const constraints = [];
-            const lines = content.split('\n');
+            const lines = _lines || content.split('\n');
             
             // Pattern 1: CIB XML format - <primitive id="resource-name" class="..." type="...">
             // Pattern 2: crm config format - primitive resource-name type:provider
@@ -1470,10 +1470,10 @@ const pacemakerResourcesParser = {
 const corosyncStatusParser = {
         filePattern: /corosync-cfgtool.*-s$/,
         
-        parse: function(content, filename) {
+        parse: function(content, filename, _lines) {
             debugLog('[corosyncStatus parser] Analyzing corosync runtime status in:', filename);
             
-            const lines = content.split('\n');
+            const lines = _lines || content.split('\n');
             let isValid = true;
             let errorMessage = null;
             let localNodeId = null;
@@ -1531,7 +1531,7 @@ const clusterStatusParser = {
         // Target file patterns - crm_mon XML output, cib.xml, or pcs_status
         filePattern: /cib\.xml$|\/crm_mon.*\.txt$|\/crm_mon.*\.xml$|\/ha\.txt$|\/pcs_status/,
         
-        parse: function(content, filename) {
+        parse: function(content, filename, _lines) {
             debugLog('[clusterStatus parser] Analyzing cluster status in:', filename);
             
             let clusterName = null;
@@ -1770,7 +1770,7 @@ const clusterStatusParser = {
             
             // Parse text-based crm_mon output or pcs_status if no XML found
             if (nodeStatuses.length === 0) {
-                const lines = content.split('\n');
+                const lines = _lines || content.split('\n');
                 let inNodesSection = false;
                 let lineNum = 0;
                 
@@ -1929,7 +1929,7 @@ const clusterDaemonStatusParser = {
     // Target file patterns - pcs_status output which contains Daemon Status section
     filePattern: /\/pcs_status|\/ha\.txt$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[clusterDaemonStatus parser] Analyzing daemon status in:', filename);
         
         const daemons = {
@@ -1941,7 +1941,7 @@ const clusterDaemonStatusParser = {
         let found = false;
         
         // Look for Daemon Status section in pcs status output
-        const lines = content.split('\n');
+        const lines = _lines || content.split('\n');
         let inDaemonSection = false;
         
         for (let i = 0; i < lines.length; i++) {
@@ -2048,7 +2048,7 @@ const clusterDaemonStatusParser = {
 const azureScheduledEventsParser = {
     filePattern: /\/pcs_status.*|\/crm_mon.*|cib\.xml$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[azureScheduledEvents parser] Analyzing Azure scheduled events config in:', filename);
         
         const result = {
@@ -2063,7 +2063,7 @@ const azureScheduledEventsParser = {
             warnings: []
         };
         
-        const lines = content.split('\n');
+        const lines = _lines || content.split('\n');
         let inNodeAttributes = false;
         let inResourceList = false;
         let inNodeList = false;
@@ -2246,7 +2246,7 @@ const fencingConfigParser = {
         // Target file patterns - match cib.xml anywhere in the archive, pcs_config, pcs_property
         filePattern: /cib\.xml$|\/crm_mon.*\.txt$|\/crm.*config$|stonith|\/ha\.txt$|\/pcs_config$|\/pcs_property/,
         
-        parse: function(content, filename) {
+        parse: function(content, filename, _lines) {
             debugLog('[fencingConfig parser] Analyzing fencing configuration in:', filename);
             
             const fencingDevices = [];
@@ -2352,7 +2352,7 @@ const fencingConfigParser = {
             }
             
             // Parse line-by-line for non-XML formats (crm config, pcs config, etc.)
-            const lines = content.split('\n');
+            const lines = _lines || content.split('\n');
             for (let lineNum = 0; lineNum < lines.length; lineNum++) {
                 const line = lines[lineNum];
                 const trimmed = line.trim();
@@ -2561,8 +2561,9 @@ const clusterEventsParser = {
             return logSections;
         },
         
-        parse: function(content, filename) {
-            debugLog('[clusterEvents parser] Analyzing cluster logs in:', filename, 'lines:', content.split('\n').length);
+        parse: function(content, filename, _lines) {
+            const lines = _lines || content.split('\n');
+            debugLog('[clusterEvents parser] Analyzing cluster logs in:', filename, 'lines:', lines.length);
             
             // For supportconfig ha.txt, extract embedded log sections
             if (filename.includes('ha.txt')) {
@@ -2601,19 +2602,35 @@ const clusterEventsParser = {
                 };
             }
             
-            // For direct log files, parse content directly
-            return this.parseLogContent(content, filename);
+            // For direct log files, parse content directly (pass pre-split lines)
+            return this.parseLogContent(content, filename, lines);
         },
         
-        parseLogContent: function(content, filename) {
-            debugLog('[clusterEvents parser] Parsing log content from:', filename, 'lines:', content.split('\n').length);
+        parseLogContent: function(content, filename, _preLines) {
+            const lines = _preLines || content.split('\n');
+            debugLog('[clusterEvents parser] Parsing log content from:', filename, 'lines:', lines.length);
             
             const resourceMigrations = [];
             const fencingEvents = [];
-            const lines = content.split('\n');
             
             for (let lineNum = 0; lineNum < lines.length; lineNum++) {
                 const line = lines[lineNum];
+                
+                // Fast keyword pre-filter: skip lines that cannot match any cluster event pattern.
+                // String.includes() is ~100x faster than regex and eliminates >95% of syslog lines.
+                // For Starting/Stopping/Stopped, also require " on " (cluster pattern) and exclude systemd.
+                if (!(line.includes('oving') || line.includes('igrat') ||
+                      ((line.includes('tarting') || line.includes('topping') || line.includes('topped')) && line.includes(' on ') && !line.includes('systemd')) ||
+                      line.includes('Operation') || line.includes('Result of') ||
+                      line.includes('fence') || line.includes('Fence') || line.includes('FENCE') ||
+                      line.includes('stonith') || line.includes('STONITH') ||
+                      line.includes('Peer') || line.includes('peer') ||
+                      line.includes('terminated') || line.includes('fenced') ||
+                      line.includes('Unexpected') || line.includes('Transition') ||
+                      line.includes('timed out') || line.includes('did not complete'))) {
+                    continue;
+                }
+                
                 const trimmed = line.trim();
                 
                 // Skip empty lines
@@ -2699,9 +2716,8 @@ const clusterEventsParser = {
                     // Filter out non-cluster node names (tty1, pts/0, console, etc.)
                     const isNonClusterNode = this.nonClusterNodePattern.test(node);
                     
-                    // Only add if not systemd service, not system resource, valid cluster node, and not a duplicate
-                    if (!isSystemdService && !isSystemResource && !isNonClusterNode &&
-                        !resourceMigrations.find(m => m.resource === resource && m.toNode === node && m.sourceLine === lineNum + 1)) {
+                    // Only add if not systemd service, not system resource, and valid cluster node
+                    if (!isSystemdService && !isSystemResource && !isNonClusterNode) {
                         resourceMigrations.push({
                             timestamp: timestamp,
                             resource: resource,
@@ -2803,19 +2819,17 @@ const clusterEventsParser = {
                     const isStop = messageText.includes('_stop_');
                     
                     if (isStart) {
-                        if (!resourceMigrations.find(m => m.resource === resource && m.toNode === node && m.sourceLine === lineNum + 1)) {
-                            resourceMigrations.push({
-                                timestamp: timestamp,
-                                resource: resource,
-                                fromNode: null,
-                                toNode: node,
-                                action: 'start',
-                                sourceFile: filename,
-                                sourceLine: lineNum + 1,
-                                logLine: trimmed.substring(0, 200)
-                            });
-                            debugLog('[clusterEvents parser] Found resource operation start:', resource, 'on', node);
-                        }
+                        resourceMigrations.push({
+                            timestamp: timestamp,
+                            resource: resource,
+                            fromNode: null,
+                            toNode: node,
+                            action: 'start',
+                            sourceFile: filename,
+                            sourceLine: lineNum + 1,
+                            logLine: trimmed.substring(0, 200)
+                        });
+                        debugLog('[clusterEvents parser] Found resource operation start:', resource, 'on', node);
                     } else if (isStop) {
                         resourceMigrations.push({
                             timestamp: timestamp,
@@ -2879,18 +2893,16 @@ const clusterEventsParser = {
                 const stonithOpSuccess = messageText.match(/Operation\s+(?:stonith-)?(\S+?)_(?:reboot|monitor|on|off)_\d+:\s*ok/i);
                 if (stonithOpSuccess && (messageText.toLowerCase().includes('stonith') || messageText.toLowerCase().includes('fence'))) {
                     const node = stonithOpSuccess[1];
-                    if (!fencingEvents.find(e => e.targetNode === node && e.sourceLine === lineNum + 1)) {
-                        fencingEvents.push({
-                            timestamp: timestamp,
-                            targetNode: node,
-                            action: 'fence',
-                            status: 'success',
-                            sourceFile: filename,
-                            sourceLine: lineNum + 1,
-                            logLine: trimmed.substring(0, 200)
-                        });
-                        debugLog('[clusterEvents parser] Found successful stonith operation:', node);
-                    }
+                    fencingEvents.push({
+                        timestamp: timestamp,
+                        targetNode: node,
+                        action: 'fence',
+                        status: 'success',
+                        sourceFile: filename,
+                        sourceLine: lineNum + 1,
+                        logLine: trimmed.substring(0, 200)
+                    });
+                    debugLog('[clusterEvents parser] Found successful stonith operation:', node);
                     continue;
                 }
                 
@@ -2899,18 +2911,16 @@ const clusterEventsParser = {
                 const peerTerminated = messageText.match(/(?:Peer|peer)\s+(\S+)\s+was\s+(?:terminated|fenced)\s+\((\w+)\)/i);
                 if (peerTerminated) {
                     const [, node, action] = peerTerminated;
-                    if (!fencingEvents.find(e => e.targetNode === node && e.sourceLine === lineNum + 1)) {
-                        fencingEvents.push({
-                            timestamp: timestamp,
-                            targetNode: node,
-                            action: action,
-                            status: 'success',
-                            sourceFile: filename,
-                            sourceLine: lineNum + 1,
-                            logLine: trimmed.substring(0, 200)
-                        });
-                        debugLog('[clusterEvents parser] Found peer termination (success):', node, action);
-                    }
+                    fencingEvents.push({
+                        timestamp: timestamp,
+                        targetNode: node,
+                        action: action,
+                        status: 'success',
+                        sourceFile: filename,
+                        sourceLine: lineNum + 1,
+                        logLine: trimmed.substring(0, 200)
+                    });
+                    debugLog('[clusterEvents parser] Found peer termination (success):', node, action);
                     continue;
                 }
                 
@@ -2918,18 +2928,16 @@ const clusterEventsParser = {
                 const peerNotTerminated = messageText.match(/(?:Peer|peer)\s+(\S+)\s+was\s+not\s+terminated\s+\((\w+)\)/i);
                 if (peerNotTerminated) {
                     const [, node, action] = peerNotTerminated;
-                    if (!fencingEvents.find(e => e.targetNode === node && e.sourceLine === lineNum + 1)) {
-                        fencingEvents.push({
-                            timestamp: timestamp,
-                            targetNode: node,
-                            action: action,
-                            status: 'failed',
-                            sourceFile: filename,
-                            sourceLine: lineNum + 1,
-                            logLine: trimmed.substring(0, 200)
-                        });
-                        debugLog('[clusterEvents parser] Found peer termination FAILURE:', node, action);
-                    }
+                    fencingEvents.push({
+                        timestamp: timestamp,
+                        targetNode: node,
+                        action: action,
+                        status: 'failed',
+                        sourceFile: filename,
+                        sourceLine: lineNum + 1,
+                        logLine: trimmed.substring(0, 200)
+                    });
+                    debugLog('[clusterEvents parser] Found peer termination FAILURE:', node, action);
                     continue;
                 }
                 
@@ -2937,18 +2945,16 @@ const clusterEventsParser = {
                 const apiSuccess = messageText.match(/stonith.*?(\S+)\s+was\s+fenced\s+successfully/i);
                 if (apiSuccess) {
                     const node = apiSuccess[1];
-                    if (!fencingEvents.find(e => e.targetNode === node && e.sourceLine === lineNum + 1)) {
-                        fencingEvents.push({
-                            timestamp: timestamp,
-                            targetNode: node,
-                            action: 'fence',
-                            status: 'success',
-                            sourceFile: filename,
-                            sourceLine: lineNum + 1,
-                            logLine: trimmed.substring(0, 200)
-                        });
-                        debugLog('[clusterEvents parser] Found stonith API success:', node);
-                    }
+                    fencingEvents.push({
+                        timestamp: timestamp,
+                        targetNode: node,
+                        action: 'fence',
+                        status: 'success',
+                        sourceFile: filename,
+                        sourceLine: lineNum + 1,
+                        logLine: trimmed.substring(0, 200)
+                    });
+                    debugLog('[clusterEvents parser] Found stonith API success:', node);
                     continue;
                 }
                 
@@ -2972,18 +2978,16 @@ const clusterEventsParser = {
                 const fenceWillMatch = messageText.match(/(?:Cluster\s+node|Node|peer)\s+(\S+)\s+will\s+be\s+fenced/i);
                 if (fenceWillMatch) {
                     const node = fenceWillMatch[1];
-                    if (!fencingEvents.find(e => e.targetNode === node && e.sourceLine === lineNum + 1)) {
-                        fencingEvents.push({
-                            timestamp: timestamp,
-                            targetNode: node,
-                            action: 'fence',
-                            status: 'pending',
-                            sourceFile: filename,
-                            sourceLine: lineNum + 1,
-                            logLine: trimmed.substring(0, 200)
-                        });
-                        debugLog('[clusterEvents parser] Found pending fencing:', node);
-                    }
+                    fencingEvents.push({
+                        timestamp: timestamp,
+                        targetNode: node,
+                        action: 'fence',
+                        status: 'pending',
+                        sourceFile: filename,
+                        sourceLine: lineNum + 1,
+                        logLine: trimmed.substring(0, 200)
+                    });
+                    debugLog('[clusterEvents parser] Found pending fencing:', node);
                     continue;
                 }
                 
@@ -2991,19 +2995,17 @@ const clusterEventsParser = {
                 const fenceAgentMatch = messageText.match(/(fence_\w+).*?(?:Called|for)\s+.*?(?:node\s+)?(\S+)/i);
                 if (fenceAgentMatch && (messageText.toLowerCase().includes('fence') || messageText.toLowerCase().includes('stonith'))) {
                     const [, agent, node] = fenceAgentMatch;
-                    if (!fencingEvents.find(e => e.targetNode === node && e.sourceLine === lineNum + 1)) {
-                        fencingEvents.push({
-                            timestamp: timestamp,
-                            targetNode: node,
-                            action: 'fence',
-                            agent: agent,
-                            status: 'in_progress',
-                            sourceFile: filename,
-                            sourceLine: lineNum + 1,
-                            logLine: trimmed.substring(0, 200)
-                        });
-                        debugLog('[clusterEvents parser] Found fence agent call:', agent, 'for node', node);
-                    }
+                    fencingEvents.push({
+                        timestamp: timestamp,
+                        targetNode: node,
+                        action: 'fence',
+                        agent: agent,
+                        status: 'in_progress',
+                        sourceFile: filename,
+                        sourceLine: lineNum + 1,
+                        logLine: trimmed.substring(0, 200)
+                    });
+                    debugLog('[clusterEvents parser] Found fence agent call:', agent, 'for node', node);
                     continue;
                 }
                 
@@ -3092,6 +3094,22 @@ const clusterEventsParser = {
         }
 };
 
+// Detects Azure/Hyper-V Live Migration via kernel-level VMBus driver messages.
+//
+// During a live migration the VM is paused and moved to a new host. The Hyper-V
+// integration components (VMBus drivers) are disconnected and reconnected,
+// producing kernel messages from three drivers in quick succession:
+//   1. hv_utils  – Heartbeat IC (Integration Component)
+//   2. hv_balloon – Dynamic Memory balloon driver
+//   3. hv_netvsc  – Network Virtual Service Client (synthetic NIC driver)
+//
+// Public documentation:
+//   - Hyper-V Integration Services (hv_utils / Heartbeat IC):
+//     https://learn.microsoft.com/en-us/windows-server/virtualization/hyper-v/integration-services
+//   - Azure VM Maintenance and Updates (live migration overview):
+//     https://learn.microsoft.com/en-us/azure/virtual-machines/maintenance-and-updates
+//   - Azure Scheduled Events – "Freeze" event for live migration:
+//     https://learn.microsoft.com/en-us/azure/virtual-machines/linux/scheduled-events
 const liveMigrationParser = {
         // Target file path patterns
         // supportconfig: */messages or */localmessages (with optional suffixes)
@@ -3103,8 +3121,8 @@ const liveMigrationParser = {
         // Detects Live Migration events by finding the sequence:
         // "hv_utils: Heartbeat IC" -> "hv_balloon" -> "hv_netvsc" within 100 lines
         // Returns array of detected migration events with timestamps
-        parse: function(content) {
-            const lines = content.split('\n');
+        parse: function(content, _filename, _lines) {
+            const lines = _lines || content.split('\n');
             const migrations = [];
             
             debugLog('[liveMigration parser] Analyzing', lines.length, 'lines');
@@ -3116,6 +3134,9 @@ const liveMigrationParser = {
             
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
+                
+                // Fast pre-filter: skip lines without any Hyper-V keyword
+                if (!(line.includes('hv_utils') || line.includes('hv_balloon') || line.includes('hv_netvsc'))) continue;
                 
                 // Count patterns for debugging
                 if (line.includes('hv_utils: Heartbeat IC')) heartbeatCount++;
@@ -3194,14 +3215,14 @@ const sapInstanceConfigParser = {
     // Target file patterns - pcs_config, crm_mon, and cib.xml
     filePattern: /\/pcs_config|\/cib\.xml$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[sapInstanceConfig parser] Analyzing SAP instance configuration in:', filename);
         
         const instances = [];
         const warnings = [];
         let found = false;
         
-        const lines = content.split('\n');
+        const lines = _lines || content.split('\n');
         let currentResource = null;
         let inSAPInstanceResource = false;
         
@@ -3427,7 +3448,7 @@ const sapInstanceErrorsParser = {
     // Target file patterns - crm_report logs, messages, syslog
     filePattern: /\/analysis\.txt$|\/cluster-log\.txt$|\/messages|\/var\/log\/messages/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[sapInstanceErrors parser] Analyzing SAP instance errors in:', filename);
         
         const errors = [];
@@ -3436,10 +3457,13 @@ const sapInstanceErrorsParser = {
         const filesystemErrors = [];
         let found = false;
         
-        const lines = content.split('\n');
+        const lines = _lines || content.split('\n');
         
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
+            
+            // Fast pre-filter: skip lines without SAP-related keywords
+            if (!(line.includes('SAPInstance') || line.includes('Filesystem('))) continue;
             
             // Detect START_PROFILE errors
             // Pattern: "SAPInstance(rsc_sap_PJU_ERS11)[16872]: ERROR: Expected /sapmnt/PJU/profile/PJU_ERS11_awenwjeusscs to be the instance START profile"
@@ -3578,7 +3602,7 @@ const sapInstanceErrorsParser = {
 const clusterMaintenanceModeParser = {
     filePattern: /cib\.xml$|\/crm_mon.*\.txt$|\/ha\.txt$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[clusterMaintenanceMode parser] Analyzing:', filename);
         
         const result = {
@@ -3652,7 +3676,7 @@ const clusterMaintenanceModeParser = {
 const sbdConfigParser = {
     filePattern: /\/sbd$|\/sysconfig\/sbd|\/ha\.txt$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[sbdConfig parser] Analyzing:', filename);
         
         const result = {
@@ -3804,7 +3828,7 @@ const sbdConfigParser = {
 const azureFenceAuthParser = {
     filePattern: /cib\.xml$|\/ha\.txt$|\/crm.*config$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[azureFenceAuth parser] Analyzing:', filename);
         
         const result = {
@@ -3935,7 +3959,7 @@ const iscsiConfigParser = {
     // Match SCC fs-iscsi.txt, sosreport iscsi/ folder, ha.txt, initiatorname.iscsi
     filePattern: /fs-iscsi\.txt$|\/iscsi\/|\/iscsiadm|\/ha\.txt$|initiatorname\.iscsi$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[iscsiConfig parser] Analyzing:', filename);
         
         const result = {

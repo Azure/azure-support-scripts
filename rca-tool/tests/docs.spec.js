@@ -43,7 +43,7 @@ test.describe('API Documentation', () => {
   ];
 
   test('docs index page loads and lists all modules', async ({ page }, testInfo) => {
-    const docsPath = testInfo.project.name === 'deployed' ? './docs/' : '/web/dist/docs/';
+    const docsPath = testInfo.project.name === 'deployed' ? './docs/' : '/docs/';
     await page.goto(docsPath);
 
     // The JSDoc index page should render with the correct title
@@ -56,7 +56,7 @@ test.describe('API Documentation', () => {
   });
 
   test('each module page loads and contains documentation', async ({ page }, testInfo) => {
-    const docsBase = testInfo.project.name === 'deployed' ? './docs/' : '/web/dist/docs/';
+    const docsBase = testInfo.project.name === 'deployed' ? './docs/' : '/docs/';
 
     // Spot-check a few representative module pages for real content
     const checks = [

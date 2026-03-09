@@ -54,7 +54,7 @@ var vmcoreParser = {
     // Match vmcore-dmesg.txt, kdumpctl status, var/crash listing, kdump.conf
     filePattern: /(?:var\/crash\/[^/]+\/vmcore-dmesg\.txt|sos_commands\/kdump\/kdumpctl_status|sos_commands\/kdump\/ls_-alZR_\.var\.crash|etc\/kdump\.conf)$/,
 
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('Parsing:', filename, '(' + content.length + ' bytes)');
 
         const result = {
@@ -110,11 +110,7 @@ var vmcoreParser = {
             // Normalize separators: 2026-02-13-03:48:00 → 2026-02-13 03:48:00
             const raw = dateMatch[1];
             const parts = raw.split(/[-:]/);
-            if (parts.length >= 6) {
-                crash.date = `${parts[0]}-${parts[1]}-${parts[2]} ${parts[3]}:${parts[4]}:${parts[5]}`;
-            } else {
-                crash.date = raw;
-            }
+            crash.date = `${parts[0]}-${parts[1]}-${parts[2]} ${parts[3]}:${parts[4]}:${parts[5]}`;
         }
 
         const lines = content.split('\n');
@@ -285,7 +281,6 @@ var vmcoreParser = {
         existing.found = existing.found || newResult.found;
 
         if (newResult.crash) {
-            if (!existing.crashes) existing.crashes = [];
             existing.crashes.push(newResult.crash);
             // Sort by date descending (most recent first)
             existing.crashes.sort((a, b) => {

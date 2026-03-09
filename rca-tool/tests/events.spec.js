@@ -8,7 +8,7 @@
  * dedup, and duplicate-UUID detection.
  */
 import { test, expect } from './coverage-fixture.js';
-import { uploadAndWaitForAnalysis, getResultText, navigateToApp } from './test-helpers.js';
+import { uploadAndWaitForAnalysis, getResultText, navigateToApp, fixturePath } from './test-helpers.js';
 
 test.describe('Events Parsers', () => {
 
@@ -49,6 +49,10 @@ test.describe('Events Parsers', () => {
     // Check for devices that appear in non-deduplicated errors
     expect(resultHTML).toContain('sdb2');
     expect(resultHTML).toContain('sdc3');
+    
+    // Check for unrecovered unlinked inode pattern
+    expect(resultHTML).toContain('unrecovered unlinked inode');
+    expect(resultHTML).toContain('sdk4');
     
     // Check for timestamps (normalized format with zero-padded days)
     expect(resultHTML).toContain('Dec 02 15:07:11');
@@ -150,5 +154,82 @@ test.describe('Events Parsers', () => {
     
     // Check for timestamp normalization
     expect(resultHTML).toContain('Dec 03 17:37:');
+  });
+
+  test('detects kernel reboots from InspectIaaSDisk ZIP', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk.zip'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('InspectIaaSDisk Results');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+
+    // Should detect kernel boot events from device_0/var/log/messages
+    expect(content).toContain('4.18.0-477.27.1.el8_8.x86_64');
+    // Should show reboot events section
+    expect(content).toMatch(/kernel.*reboot|reboot.*event/i);
+  });
+
+  test('detects OOM killer events from InspectIaaSDisk ZIP', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk.zip'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('InspectIaaSDisk Results');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+
+    // Should detect OOM killer event
+    expect(content).toContain('java');
+    expect(content).toMatch(/oom|out of memory/i);
+  });
+
+  test('detects XFS errors from InspectIaaSDisk ZIP', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk.zip'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('InspectIaaSDisk Results');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+
+    // Should detect XFS errors from device_0/var/log/messages
+    expect(content).toContain('XFS Filesystem Errors');
+    expect(content).toContain('sdb1');
+    expect(content).toContain('unrecovered unlinked inode');
+  });
+
+  test('detects emergency mode from InspectIaaSDisk ZIP', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk.zip'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('InspectIaaSDisk Results');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+
+    // Should detect emergency mode from device_0/var/log/messages
+    expect(content).toMatch(/emergency mode/i);
   });
 });

@@ -21,6 +21,7 @@ import fs from 'fs';
 import path from 'path';
 import { loadParsers, SCC_RULES } from './parser-loader.js';
 import { processArchive } from './archive-processor.js';
+import { formatPerformanceReport } from './performance-loader.js';
 
 // Handle both ESM and CJS environments
 const getDirname = () => {
@@ -40,6 +41,7 @@ function parseArgs() {
         file: null,
         json: false,
         debug: false,
+        performance: false,
         parser: null,
         listParsers: false,
         help: false,
@@ -54,6 +56,8 @@ function parseArgs() {
             options.json = true;
         } else if (arg === '--debug' || arg === '-d') {
             options.debug = true;
+        } else if (arg === '--performance' || arg === '--perf') {
+            options.performance = true;
         } else if (arg === '--list-parsers' || arg === '-l') {
             options.listParsers = true;
         } else if (arg === '--parser' || arg === '-p') {
@@ -83,6 +87,7 @@ Options:
   -h, --help           Show this help message
   -j, --json           Output results as JSON
   -d, --debug          Enable debug logging
+  --performance        Output per-file/parser timing (TSV to stderr)
   -p, --parser <name>  Run only a specific parser
   -l, --list-parsers   List available parsers
   -e, --extract <dir>  Extract results to individual files in <dir>
@@ -91,6 +96,7 @@ Examples:
   node cli.js sosreport.tar.xz
   node cli.js sosreport.tar.xz --json > results.json
   node cli.js sosreport.tar.xz --parser rhuiErrors --debug
+  node cli.js sosreport.tar.xz --performance 2>perf.tsv
   node cli.js sosreport.tar.xz --extract ./output
 `);
 }
@@ -190,7 +196,7 @@ function formatResults(results, options) {
     }
 
     // CLUSTER CONFIGURATION
-    const hasCluster = results.corosyncConfig?.found || results.clusterNodes?.found || results.pacemakerResources?.found || results.fencingConfig?.found || results.clusterDaemonStatus?.found || (results.azureScheduledEvents?.found && results.azureScheduledEvents?.warnings?.length > 0);
+    const hasCluster = results.corosyncConfig?.found || results.clusterNodes?.found || results.pacemakerResources?.found || results.fencingConfig?.found || results.clusterDaemonStatus?.found || results.clusterMaintenanceMode?.found || results.sbdConfig?.found || results.azureFenceAuth?.found || results.iscsiConfig?.found || (results.azureScheduledEvents?.found && results.azureScheduledEvents?.warnings?.length > 0);
     if (hasCluster) {
         output += '-'.repeat(70) + '\n';
         output += 'CLUSTER CONFIGURATION\n';
@@ -215,6 +221,55 @@ function formatResults(results, options) {
             output += '  Fencing:\n';
             if (results.fencingConfig.fenceAgents?.length > 0) output += `    Agents: ${results.fencingConfig.fenceAgents.join(', ')}\n`;
             results.fencingConfig.warnings?.forEach(w => output += `    [WARN] ${w.message}\n`);
+        }
+        // Cluster maintenance mode
+        if (results.clusterMaintenanceMode?.found) {
+            output += '  Maintenance Mode:\n';
+            const mm = results.clusterMaintenanceMode;
+            output += `    Enabled: ${mm.maintenanceMode ? 'YES' : 'NO'}\n`;
+            if (mm.maintenanceMode) {
+                output += `    [WARN] Cluster is in maintenance mode - no automatic failover!\n`;
+            }
+        }
+        // Azure Fence Authentication
+        if (results.azureFenceAuth?.found) {
+            output += '  Azure Fence Auth:\n';
+            const auth = results.azureFenceAuth;
+            output += `    Method: ${auth.authMethod || 'unknown'}\n`;
+            if (auth.usesServicePrincipal && auth.appId) output += `    App ID: ${auth.appId}\n`;
+            if (auth.usesMsi && auth.msiClientId) output += `    MSI Client ID: ${auth.msiClientId}\n`;
+            auth.warnings?.forEach(w => output += `    [WARN] ${w.message}\n`);
+        }
+        // SBD Configuration
+        if (results.sbdConfig?.found) {
+            output += '  SBD Configuration:\n';
+            const sbd = results.sbdConfig;
+            if (sbd.devices?.length > 0) output += `    Devices: ${sbd.devices.join(', ')}\n`;
+            if (sbd.watchdogDevice) output += `    Watchdog: ${sbd.watchdogDevice}\n`;
+            if (sbd.startmode) output += `    Start Mode: ${sbd.startmode}\n`;
+            sbd.warnings?.forEach(w => output += `    [WARN] ${w.message}\n`);
+        }
+        // iSCSI Configuration
+        if (results.iscsiConfig?.found) {
+            output += '  iSCSI Configuration:\n';
+            const iscsi = results.iscsiConfig;
+            if (iscsi.initiatorName) output += `    Initiator: ${iscsi.initiatorName}\n`;
+            if (iscsi.discoveryServers?.length > 0) output += `    Discovery Servers: ${iscsi.discoveryServers.length}\n`;
+            if (iscsi.sessions?.length > 0) {
+                output += `    Active Sessions: ${iscsi.sessions.length}\n`;
+                iscsi.sessions.forEach(s => {
+                    const state = s.connectionState ? ` [${s.connectionState}]` : '';
+                    output += `      - ${s.ip}:${s.port} ${s.iqn}${state}\n`;
+                });
+            }
+            if (iscsi.targets?.length > 0 && (!iscsi.sessions || iscsi.sessions.length === 0)) {
+                output += `    Configured Targets: ${iscsi.targets.length} (no active sessions!)\n`;
+            }
+            if (iscsi.iscsidConfig?.['node.startup']) output += `    node.startup: ${iscsi.iscsidConfig['node.startup']}\n`;
+            iscsi.warnings?.forEach(w => {
+                const prefix = w.severity === 'error' ? '[ERROR]' : '[WARN]';
+                output += `    ${prefix} ${w.message}\n`;
+            });
         }
         // Cluster daemon status (corosync/pacemaker enabled/disabled)
         if (results.clusterDaemonStatus?.found) {
@@ -457,14 +512,154 @@ function formatResults(results, options) {
     }
 
     // NETWORKING
-    if (results.hostsFile?.found || results.sshService?.found) {
+    if (results.hostsFile?.found || results.sshService?.found || results.firewallRules?.found || results.networkInterfaces?.found) {
         output += '-'.repeat(70) + '\n';
         output += 'NETWORKING\n';
         output += '-'.repeat(70) + '\n';
+
+        // Network Interfaces
+        if (results.networkInterfaces?.found) {
+            const ni = results.networkInterfaces;
+            const ifaces = Object.values(ni.interfaces || {}).filter(i => i.name !== 'lo');
+            const hasAccelNet = ifaces.some(i => i.accelNet);
+            output += `  Network Interfaces: ${ifaces.length} interface(s)${hasAccelNet ? ' [Accelerated Networking detected]' : ''}\n`;
+            for (const iface of ifaces) {
+                const ipv4 = (iface.ipv4 || []).map(ip => ip.address + (ip.prefix ? '/' + ip.prefix : '')).join(', ') || '-';
+                const driver = iface.driver || '-';
+                const bootproto = iface.bootproto ? iface.bootproto.toUpperCase() : '-';
+                let accelLabel = '-';
+                if (iface.accelNet) {
+                    accelLabel = iface.driver === 'mana' ? 'MANA' : 'Yes';
+                } else if (iface.driver === 'hv_netvsc') {
+                    const linkedIface = ifaces.find(s => s.master === iface.name && s.accelNet);
+                    accelLabel = linkedIface ? `Yes (via ${linkedIface.name})` : 'No';
+                }
+                output += `    ${iface.name}: ${iface.state || '-'} | ${ipv4} | MAC: ${iface.mac || '-'} | MTU: ${iface.mtu || '-'} | ${bootproto} | Driver: ${driver} | AccelNet: ${accelLabel}\n`;
+                if (iface.master) output += `      (linked to ${iface.master})\n`;
+            }
+        }
+
         if (results.hostsFile?.found && results.hostsFile.entries?.length > 0) output += `  Hosts File: ${results.hostsFile.entries.length} entries\n`;
         if (results.sshService?.found) {
             output += `  SSH Service: ${results.sshService.status || 'Detected'}\n`;
             results.sshService.warnings?.forEach(w => output += `    [WARN] ${w.message}\n`);
+        }
+
+        // Firewall Rules
+        if (results.firewallRules?.found) {
+            const fw = results.firewallRules;
+            output += `  Firewall (active: ${fw.activeFirewall || 'none'}):\n`;
+
+            // Warnings
+            fw.warnings?.forEach(w => output += `    [WARN] ${w}\n`);
+
+            // firewalld
+            if (fw.firewalld?.detected) {
+                const status = fw.firewalld.running ? 'RUNNING' : 'not running';
+                output += `    firewalld: ${status}`;
+                if (fw.firewalld.backend) output += ` (backend: ${fw.firewalld.backend})`;
+                output += '\n';
+                if (fw.firewalld.config) {
+                    const cfg = fw.firewalld.config;
+                    if (cfg.DefaultZone) output += `      DefaultZone: ${cfg.DefaultZone}\n`;
+                    if (cfg.LogDenied) output += `      LogDenied: ${cfg.LogDenied}\n`;
+                    if (cfg.AllowZoneDrifting) output += `      AllowZoneDrifting: ${cfg.AllowZoneDrifting}\n`;
+                }
+                if (fw.firewalld.zones && !fw.firewalld.zones.includes('FirewallD is not running')) {
+                    output += '      Zones:\n';
+                    fw.firewalld.zones.split('\n').forEach(l => output += `        ${l}\n`);
+                }
+                if (fw.firewalld.directRules?.trim()) {
+                    output += '      Direct Rules:\n';
+                    fw.firewalld.directRules.trim().split('\n').forEach(l => output += `        ${l}\n`);
+                }
+            }
+
+            // nftables
+            if (fw.nftables?.detected) {
+                const hasRules = fw.nftables.ruleset && fw.nftables.ruleset !== '(empty)' && fw.nftables.ruleset.length > 10;
+                output += `    nftables: ${hasRules ? 'rules present' : 'no rules'}\n`;
+                if (fw.nftables.tables) output += `      Tables: ${fw.nftables.tables}\n`;
+                if (hasRules) {
+                    output += '      Ruleset:\n';
+                    fw.nftables.ruleset.split('\n').forEach(l => output += `        ${l}\n`);
+                }
+            }
+
+            // iptables
+            if (fw.iptables?.detected) {
+                const hasRules = fw.iptables.rules?.length > 0;
+                const allUnloaded = fw.iptables.modules?.length > 0 && !hasRules;
+                output += `    iptables: ${hasRules ? fw.iptables.rules.length + ' table(s) with rules' : allUnloaded ? 'modules not loaded' : 'no rules'}\n`;
+                if (hasRules) {
+                    fw.iptables.rules.forEach(r => {
+                        output += `      [${r.heading}]\n`;
+                        r.raw.split('\n').forEach(l => output += `        ${l}\n`);
+                    });
+                }
+                if (allUnloaded) {
+                    fw.iptables.modules.forEach(m => output += `      ${m.module}: not loaded\n`);
+                }
+            }
+
+            // ip6tables
+            if (fw.ip6tables?.detected) {
+                const hasRules = fw.ip6tables.rules?.length > 0;
+                const allUnloaded = fw.ip6tables.modules?.length > 0 && !hasRules;
+                output += `    ip6tables: ${hasRules ? fw.ip6tables.rules.length + ' table(s) with rules' : allUnloaded ? 'modules not loaded' : 'no rules'}\n`;
+                if (hasRules) {
+                    fw.ip6tables.rules.forEach(r => {
+                        output += `      [${r.heading}]\n`;
+                        r.raw.split('\n').forEach(l => output += `        ${l}\n`);
+                    });
+                }
+                if (allUnloaded) {
+                    fw.ip6tables.modules.forEach(m => output += `      ${m.module}: not loaded\n`);
+                }
+            }
+
+            // ebtables
+            if (fw.ebtables?.detected) {
+                output += '    ebtables: config present\n';
+            }
+        }
+        output += '\n';
+    }
+
+    // KERNEL CRASH DUMPS (vmcore)
+    if (results.vmcore?.found && results.vmcore.crashes?.length > 0) {
+        output += '-'.repeat(70) + '\n';
+        output += 'KERNEL CRASH DUMPS\n';
+        output += '-'.repeat(70) + '\n';
+        const vc = results.vmcore;
+        if (vc.kdumpStatus) {
+            output += `  Kdump: ${vc.kdumpStatus.raw}\n`;
+        }
+        output += `  Crash dumps found: ${vc.crashes.length}\n`;
+        vc.crashes.forEach(crash => {
+            output += `\n  [${crash.date || 'unknown date'}]\n`;
+            output += `    Panic: ${crash.panicReason || 'unknown'}\n`;
+            if (crash.kernelVersion) output += `    Kernel: ${crash.kernelVersion}\n`;
+            if (crash.comm) output += `    Process: ${crash.comm} (PID ${crash.pid || '-'})\n`;
+            // Show vmcore size if available
+            if (vc.crashListing?.entries) {
+                const entry = vc.crashListing.entries.find(e => e.crashDate === crash.date);
+                if (entry) {
+                    output += `    Vmcore size: ${entry.sizeGB >= 1.0 ? entry.sizeGB + ' GB' : entry.sizeMB + ' MB'}\n`;
+                }
+            }
+            if (crash.callTrace?.length > 0) {
+                output += `    Call Trace (${crash.callTrace.length} frames):\n`;
+                crash.callTrace.slice(0, 10).forEach(frame => {
+                    output += `      ${frame}\n`;
+                });
+                if (crash.callTrace.length > 10) {
+                    output += `      ... (${crash.callTrace.length - 10} more frames)\n`;
+                }
+            }
+        });
+        if (vc.crashListing) {
+            output += `\n  Total vmcore disk usage: ${vc.crashListing.totalGB} GB across ${vc.crashListing.count} dump(s)\n`;
         }
         output += '\n';
     }
@@ -521,8 +716,16 @@ async function main() {
         
         const results = await processArchive(options.file, {
             debug: options.debug,
+            performance: options.performance,
             parserFilter: options.parser
         });
+
+        // Print performance report if requested
+        if (options.performance && results._performanceData) {
+            const memoryMB = process.memoryUsage().heapUsed / (1024 * 1024);
+            console.error(formatPerformanceReport(results._performanceData, memoryMB));
+            delete results._performanceData;
+        }
 
         // Extract to files if requested
         if (options.extract) {

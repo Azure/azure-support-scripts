@@ -2,9 +2,10 @@
  * @module parsers/unix
  * @description Unix System Parsers for RCA Tool
  *
- * Provides 19 parsers covering core Linux system information: OS identity,
+ * Provides 20 parsers covering core Linux system information: OS identity,
  * filesystem layout, kernel tuning, time synchronisation (Azure PTP), RHUI
- * repository health, crypto policies, and Leapp in-place upgrade analysis.
+ * repository health, crypto policies, Leapp in-place upgrade analysis,
+ * and InspectIaaSDisk disk inspection results.
  *
  * ### Parser Inventory
  *
@@ -13,7 +14,7 @@
  * | Parser | File Patterns | Purpose |
  * |--------|---------------|---------|
  * | `basicEnvironmentParser` | `basic-environment.txt` | Fallback OS identification from supportconfig; detects SAP and EPIC products |
- * | `osReleaseParser` | `os-release`, `sysinfo.txt` | Primary OS identification via `/etc/os-release` fields; detects SLES, RHEL, Ubuntu, Oracle, Alma, Rocky |
+ * | `osReleaseParser` | `os-release`, `sysinfo.txt`, `redhat-release`, `centos-release`, `SuSE-release`, `system-release` | Primary OS identification via `/etc/os-release` fields or distro release files; detects SLES, RHEL, Ubuntu, Oracle, Alma, Rocky |
  *
  * #### Filesystem
  *
@@ -21,11 +22,17 @@
  * |--------|---------------|---------|
  * | `fstabParser` | `etc/fstab`, `fs-diskio.txt` | Extracts `/etc/fstab` entries with mount options; used alongside storage/fstabAnalysisParser for nofail validation |
  *
+ * #### InspectIaaSDisk
+ *
+ * | Parser | File Patterns | Purpose |
+ * |--------|---------------|---------|
+ * | `inspectDiskResultsParser` | `results.txt` | Parses InspectIaaSDisk diagnostic output: request info, filesystem status, OS metadata, mount points, and mount failures |
+ *
  * #### Kernel Tuning
  *
  * | Parser | File Patterns | Purpose |
  * |--------|---------------|---------|
- * | `kernelTuningParser` | `env.txt`, `sysctl.conf`, `proc/sys/` files, `sysctl_-a` | Parses sysctl parameters; flags Azure-relevant tweaks (sunrpc, TCP keepalive, panic, swap, etc.) |
+ * | `kernelTuningParser` | `env.txt`, `sysctl.conf`, `sysctl.d/*.conf`, `sysctl_-a` | Parses sysctl parameters from runtime output or static config files; flags SAP HANA and Azure network tuning |
  * | `hugePagesParser` | `proc/meminfo`, `basic-environment.txt`, `memory.txt` | Reports HugePages allocation (total, free, size); flags when huge pages are in use |
  *
  * #### Time Synchronisation (Azure PTP)
@@ -65,11 +72,9 @@
  * @see {@link module:worker} for registration in SCC_RULES
  */
 
-// Debug configuration - set to true to enable debug logging
-const DEBUG_UNIX = true;
-
+// Debug logging - checks global DEBUG_CONFIG from worker.js
 function debugLog(...args) {
-    if (DEBUG_UNIX) {
+    if (typeof DEBUG_CONFIG !== 'undefined' && DEBUG_CONFIG.unix) {
         console.log('[unix.js]', ...args);
     }
 }
@@ -82,9 +87,9 @@ function debugLog(...args) {
 const basicEnvironmentParser = {
     filePattern: /basic-environment\.txt$/,
 
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[basicEnvironment parser] Analyzing basic-environment in:', filename);
-        const lines = content.split('\n');
+        const lines = _lines || content.split('\n');
         let prettyName = null;
         let name = null;
         let product = null;
@@ -170,7 +175,8 @@ const basicEnvironmentParser = {
 
 /**
  * Parser: osRelease
- * Extracts OS release information from /etc/os-release, /usr/lib/os-release, sysinfo.txt, or basic-environment.txt
+ * Extracts OS release information from /etc/os-release, /usr/lib/os-release,
+ * sysinfo.txt, basic-environment.txt, or distro release files (/etc/redhat-release, etc.)
  * Provides comprehensive distribution identification across different report formats
  */
 const osReleaseParser = {
@@ -179,9 +185,10 @@ const osReleaseParser = {
     // - /etc/os-release (crm_report)
     // - sysinfo.txt (supportconfig SUSE - older format)
     // - basic-environment.txt (supportconfig SUSE - newer format)
-    filePattern: /\/usr\/lib\/os-release$|\/etc\/os-release$|\/sysinfo\.txt$|\/basic-environment\.txt$/,
+    // - /etc/redhat-release, /etc/centos-release, /etc/SuSE-release, /etc/system-release (InspectIaaSDisk, bare systems)
+    filePattern: /\/usr\/lib\/os-release$|\/etc\/os-release$|\/sysinfo\.txt$|\/basic-environment\.txt$|\/etc\/(redhat|centos|SuSE|system)-release$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[osRelease parser] Analyzing OS release information in:', filename);
         
         // Check if this is sysinfo.txt (supportconfig SUSE format)
@@ -194,8 +201,13 @@ const osReleaseParser = {
             return this.parseBasicEnvironment(content, filename);
         }
         
+        // Check if this is a distro release file (redhat-release, centos-release, etc.)
+        if (/\/(redhat|centos|SuSE|system)-release$/.test(filename)) {
+            return this.parseDistroRelease(content, filename);
+        }
+        
         // Parse os-release format (sosreport, crm_report)
-        const lines = content.split('\n');
+        const lines = _lines || content.split('\n');
         let name = null;
         let version = null;
         let versionId = null;
@@ -438,6 +450,66 @@ const osReleaseParser = {
             hasWarnings: eolWarnings.length > 0,
             isEol: eolWarnings.length > 0
         };
+    },
+    
+    // Helper function to parse distro release files (redhat-release, centos-release, etc.)
+    // These are simple one-line files like: "Red Hat Enterprise Linux release 8.8 (Ootpa)"
+    parseDistroRelease: function(content, filename) {
+        debugLog('[osRelease parser] Parsing distro release file:', filename);
+        const firstLine = content.split('\n')[0].trim();
+        
+        if (!firstLine) {
+            debugLog('[osRelease parser] Empty distro release file');
+            return { found: false };
+        }
+        
+        const prettyName = firstLine;
+        let name = null;
+        let versionId = null;
+        let majorVersion = null;
+        let minorVersion = null;
+        
+        // Try to extract name and version from common formats:
+        // "Red Hat Enterprise Linux release 8.8 (Ootpa)" -> name="Red Hat Enterprise Linux", version="8.8"
+        // "CentOS Linux release 7.9.2009 (Core)" -> name="CentOS Linux", version="7.9.2009"
+        // "SUSE Linux Enterprise Server 15 SP5" -> name="SUSE Linux Enterprise Server", version="15"
+        // "Oracle Linux Server release 8.6" -> name="Oracle Linux Server", version="8.6"
+        const releaseMatch = firstLine.match(/^(.+?)\s+release\s+([\d.]+)/);
+        if (releaseMatch) {
+            name = releaseMatch[1].trim();
+            versionId = releaseMatch[2];
+        } else {
+            // Try SUSE-style: "SUSE Linux Enterprise Server 15 SP5"
+            const suseMatch = firstLine.match(/^(SUSE.+?)\s+(\d+)/);
+            if (suseMatch) {
+                name = suseMatch[1].trim();
+                versionId = suseMatch[2];
+            }
+        }
+        
+        if (versionId) {
+            const parts = versionId.split('.');
+            majorVersion = parts[0] || null;
+            minorVersion = parts[1] || null;
+        }
+        
+        debugLog('[osRelease parser] Parsed distro release:', { name, prettyName, versionId, majorVersion });
+        
+        // Check for out-of-support distributions
+        const eolWarnings = this.checkEolDistribution(name, majorVersion, prettyName);
+        
+        return {
+            found: true,
+            name: name,
+            version: null,
+            versionId: versionId,
+            prettyName: prettyName,
+            majorVersion: majorVersion,
+            minorVersion: minorVersion,
+            warnings: eolWarnings,
+            hasWarnings: eolWarnings.length > 0,
+            isEol: eolWarnings.length > 0
+        };
     }
 };
 
@@ -449,7 +521,7 @@ const osReleaseParser = {
 const fstabParser = {
     filePattern: /\/etc\/fstab$|\/fs-diskio\.txt$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[fstab parser] Analyzing fstab in:', filename);
         
         // If this is fs-diskio.txt from SCC, extract just the fstab section
@@ -503,20 +575,217 @@ const fstabParser = {
         };
     }
 };
-const kernelTuningParser = {
-    filePattern: /sos_commands\/kernel\/sysctl_-a$|\/env\.txt$/,
+
+/**
+ * Parser: inspectDiskResults
+ * Extracts metadata from InspectIaaSDisk results.txt files.
+ * Parses: Request Info (storage account, operational ID, guestfish version),
+ * Filesystem Status (device/uuid/type), Inspection Metadata (OS type, distribution,
+ * product name), Mount Points mapping, and Mount success/failure status.
+ *
+ * @example
+ * // results.txt contains sections like:
+ * // ========== Request Info ==========
+ * // Storage Acct: md-xxx.blob.storage.azure.net
+ * // ========== End Request Info ==========
+ * // Filesystem Status:
+ * // /dev/sda1: xfs [uuid=xxx]
+ * // Inspection Metadata for /dev/rootvg/rootlv
+ * // Distribution: rhel
+ * // Product Name: Red Hat Enterprise Linux release 8.8 (Ootpa)
+ * // Mounting /dev/rootvg/rootlv on / SUCCEEDED.
+ */
+const inspectDiskResultsParser = {
+    filePattern: /^results\.txt$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
+        debugLog('[inspectDiskResults parser] Analyzing results.txt:', filename);
+        const lines = _lines || content.split('\n');
+        
+        const result = {
+            found: false,
+            isInspectDisk: false,
+            requestInfo: {},
+            filesystemStatus: [],
+            inspectionMetadata: {},
+            mountPoints: {},
+            mountResults: [],
+            warnings: []
+        };
+        
+        // Quick validation: InspectIaaSDisk results.txt starts with execution time
+        // and contains "Request Info" section
+        let hasRequestInfo = false;
+        let hasInspectionMetadata = false;
+        
+        let section = null; // Track which section we're in
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const trimmed = line.trim();
+            
+            // ===== Section detection =====
+            if (trimmed === '========== Request Info ==========') {
+                section = 'requestInfo';
+                hasRequestInfo = true;
+                continue;
+            }
+            if (trimmed === '========== End Request Info ==========') {
+                section = null;
+                continue;
+            }
+            if (trimmed === 'Filesystem Status:') {
+                section = 'filesystemStatus';
+                continue;
+            }
+            if (trimmed.startsWith('Inspection Status:') || trimmed.startsWith('Inspection Metadata for')) {
+                section = 'inspectionMetadata';
+                hasInspectionMetadata = true;
+                continue;
+            }
+            if (trimmed === 'Mount Points:') {
+                section = 'mountPoints';
+                continue;
+            }
+            
+            // Stop parsing structured header when we hit the manifest/operations section
+            if (trimmed.startsWith('Using manifest:') || /^\d{2}:\d{2}:\d{2}\s+Executing Operation/.test(trimmed)) {
+                section = null;
+                break;
+            }
+            
+            // ===== Section parsing =====
+            if (section === 'requestInfo') {
+                const kvMatch = trimmed.match(/^(.+?):\s+(.+)$/);
+                if (kvMatch) {
+                    const key = kvMatch[1].trim();
+                    const value = kvMatch[2].trim();
+                    if (key === 'Storage Acct') result.requestInfo.storageAccount = value;
+                    else if (key === 'Container/Vhd') result.requestInfo.containerVhd = value;
+                    else if (key === 'Manifest requested') result.requestInfo.manifest = value;
+                    else if (key.includes('Operational ID')) result.requestInfo.operationalId = value;
+                    else if (key.includes('Guestfish')) result.requestInfo.guestfishVersion = value;
+                }
+                continue;
+            }
+            
+            if (section === 'filesystemStatus') {
+                // Format: /dev/sda1: xfs [uuid=849d8772-...]
+                const fsMatch = trimmed.match(/^(\/dev\/\S+):\s+(\S+)\s+\[uuid=([^\]]*)\]/);
+                if (fsMatch) {
+                    result.filesystemStatus.push({
+                        device: fsMatch[1],
+                        type: fsMatch[2],
+                        uuid: fsMatch[3] || null
+                    });
+                } else if (trimmed === '' || trimmed.startsWith('Inspection')) {
+                    // End of filesystem status, re-check this line
+                    if (trimmed.startsWith('Inspection')) {
+                        section = 'inspectionMetadata';
+                        hasInspectionMetadata = true;
+                    } else {
+                        section = null;
+                    }
+                }
+                continue;
+            }
+            
+            if (section === 'inspectionMetadata') {
+                const typeMatch = trimmed.match(/^Type:\s+(.+)$/);
+                if (typeMatch) {
+                    result.inspectionMetadata.type = typeMatch[1].trim();
+                    continue;
+                }
+                const distroMatch = trimmed.match(/^Distribution:\s+(.+)$/);
+                if (distroMatch) {
+                    result.inspectionMetadata.distribution = distroMatch[1].trim();
+                    continue;
+                }
+                const productMatch = trimmed.match(/^Product Name:\s+(.+)$/);
+                if (productMatch) {
+                    result.inspectionMetadata.productName = productMatch[1].trim();
+                    continue;
+                }
+                if (trimmed === 'Mount Points:') {
+                    section = 'mountPoints';
+                    continue;
+                }
+            }
+            
+            if (section === 'mountPoints') {
+                // Format: /: /dev/rootvg/rootlv
+                const mpMatch = trimmed.match(/^(\/\S*)\s*:\s+(\/dev\/\S+)$/);
+                if (mpMatch) {
+                    result.mountPoints[mpMatch[1]] = mpMatch[2];
+                    continue;
+                }
+            }
+            
+            // Mount results can appear outside a section marker
+            const mountMatch = trimmed.match(/^Mounting\s+(\/dev\/\S+)\s+on\s+(\S+)\s+(SUCCEEDED|FAILED)\./);
+            if (mountMatch) {
+                const mountEntry = {
+                    device: mountMatch[1],
+                    mountPoint: mountMatch[2],
+                    status: mountMatch[3]
+                };
+                result.mountResults.push(mountEntry);
+                
+                if (mountEntry.status === 'FAILED') {
+                    result.warnings.push({
+                        type: 'inspect_disk_mount_failure',
+                        severity: 'error',
+                        message: `Mount failed: ${mountEntry.device} on ${mountEntry.mountPoint}`,
+                        recommendation: 'Check if the device exists and the filesystem is intact. Verify fstab entries and run fsck if needed.'
+                    });
+                }
+                continue;
+            }
+        }
+        
+        if (!hasRequestInfo && !hasInspectionMetadata) {
+            debugLog('[inspectDiskResults parser] Not an InspectIaaSDisk results.txt');
+            return { found: false };
+        }
+        
+        result.found = true;
+        result.isInspectDisk = true;
+        result.hasWarnings = result.warnings.length > 0;
+        
+        debugLog('[inspectDiskResults parser] Parsed:', {
+            filesystems: result.filesystemStatus.length,
+            mounts: result.mountResults.length,
+            distribution: result.inspectionMetadata.distribution,
+            product: result.inspectionMetadata.productName,
+            warnings: result.warnings.length
+        });
+        
+        return result;
+    }
+};
+
+const kernelTuningParser = {
+    filePattern: /sos_commands\/kernel\/sysctl_-a$|\/env\.txt$|\/etc\/sysctl\.conf$|\/sysctl\.d\/[^\/]*\.conf$/,
+    
+    parse: function(content, filename, _lines) {
         debugLog('[kernelTuning parser] Analyzing kernel parameters in:', filename);
         
         let sysctlContent = content;
         
+        // If this is a sysctl.conf / sysctl.d/*.conf static config file,
+        // parse directly — these use the same key=value format but only contain
+        // explicitly configured values (not the full sysctl -a runtime dump).
+        const isSysctlConf = /\/etc\/sysctl\.conf$|\/sysctl\.d\/[^\/]*\.conf$/.test(filename);
+        if (isSysctlConf) {
+            debugLog('[kernelTuning parser] Parsing static sysctl config file:', filename);
+            // Falls through to the common key=value parsing below
+        }
         // If this is SCC's env.txt, extract just the sysctl section
-        if (filename.includes('env.txt')) {
+        else if (filename.includes('env.txt')) {
             debugLog('[kernelTuning parser] Extracting sysctl from SCC env.txt');
             
             // Extract content between "# /sbin/sysctl -a" and next "#==[ Command ]" marker
-            const lines = content.split('\n');
+            const lines = _lines || content.split('\n');
             const extractedLines = [];
             let inSection = false;
             
@@ -689,6 +958,106 @@ const kernelTuningParser = {
             optionalNetworkInfo: optionalNetworkInfo,
             hasOptionalNetworkInfo: optionalNetworkInfo.length > 0
         };
+    },
+
+    /**
+     * Merge results from multiple sysctl files (e.g. sysctl.conf + sysctl.d/*.conf).
+     * Later file values override earlier ones for the same key.
+     * Warnings are recomputed from the merged parameter set.
+     */
+    mergeResults: function(accumulated, newResult) {
+        if (!newResult || !newResult.found) return;
+        accumulated.found = true;
+
+        // Merge parameters — later values override earlier ones
+        Object.assign(accumulated.parameters, newResult.parameters || {});
+
+        // Recompute all warnings from the merged parameter set
+        const parameters = accumulated.parameters;
+
+        // SAP HANA / high-performance warnings
+        const expectedValues = {
+            'vm.dirty_bytes': '629145600',
+            'vm.dirty_background_bytes': '314572800',
+            'vm.swappiness': '10'
+        };
+        const documentation = {
+            'vm.dirty_bytes': 'https://learn.microsoft.com/en-us/azure/sap/workloads/sap-hana-high-availability',
+            'vm.dirty_background_bytes': 'https://learn.microsoft.com/en-us/azure/sap/workloads/sap-hana-high-availability',
+            'vm.swappiness': 'https://learn.microsoft.com/en-us/azure/sap/workloads/sap-hana-high-availability'
+        };
+        const warnings = [];
+        for (const [param, expectedValue] of Object.entries(expectedValues)) {
+            if (parameters[param] && parameters[param] !== expectedValue) {
+                warnings.push({ parameter: param, expected: expectedValue, actual: parameters[param], documentationUrl: documentation[param] });
+            }
+        }
+
+        // Azure Network optimization warnings
+        const azureNetworkParams = {
+            'net.ipv4.tcp_mem': '4096\t87380\t67108864',
+            'net.ipv4.udp_mem': '4096\t87380\t33554432',
+            'net.ipv4.tcp_rmem': '4096\t87380\t67108864',
+            'net.ipv4.tcp_wmem': '4096\t65536\t67108864',
+            'net.core.rmem_default': '33554432',
+            'net.core.wmem_default': '33554432',
+            'net.ipv4.udp_wmem_min': '16384',
+            'net.ipv4.udp_rmem_min': '16384',
+            'net.core.wmem_max': '134217728',
+            'net.core.rmem_max': '134217728',
+            'net.core.busy_poll': '50',
+            'net.core.busy_read': '50',
+            'net.ipv4.tcp_congestion_control': 'bbr'
+        };
+        const azureNetworkDocUrl = 'https://learn.microsoft.com/en-us/azure/virtual-network/virtual-network-optimize-network-bandwidth#linux-virtual-machines';
+        const azureNetworkWarnings = [];
+        for (const [param, expectedValue] of Object.entries(azureNetworkParams)) {
+            if (parameters[param]) {
+                const normalizedActual = parameters[param].replace(/\s+/g, '\t');
+                const normalizedExpected = expectedValue.replace(/\s+/g, '\t');
+                if (normalizedActual !== normalizedExpected) {
+                    azureNetworkWarnings.push({ parameter: param, expected: expectedValue, actual: parameters[param], documentationUrl: azureNetworkDocUrl });
+                }
+            }
+        }
+
+        accumulated.warnings = warnings;
+        accumulated.hasWarnings = warnings.length > 0;
+        accumulated.azureNetworkWarnings = azureNetworkWarnings;
+        accumulated.hasAzureNetworkWarnings = azureNetworkWarnings.length > 0;
+        accumulated.azureNetworkTuned = azureNetworkWarnings.length === 0 && Object.keys(azureNetworkParams).every(p => parameters[p]);
+
+        // Optional network parameters (informational)
+        const optionalNetworkParams = {
+            'net.ipv4.tcp_timestamps': '1',
+            'net.ipv4.tcp_tw_reuse': '1',
+            'net.ipv4.ip_local_port_range': '1024\t65535',
+            'net.core.netdev_budget': '1000',
+            'net.core.optmem_max': '65535',
+            'net.ipv4.tcp_frto': '0',
+            'net.core.somaxconn': '32768',
+            'net.core.netdev_max_backlog': '32768',
+            'net.core.dev_weight': '64',
+            'net.core.default_qdisc': 'fq'
+        };
+        const optionalNetworkInfo = [];
+        for (const [param, expectedValue] of Object.entries(optionalNetworkParams)) {
+            if (parameters[param]) {
+                const normalizedActual = parameters[param].replace(/\s+/g, '\t');
+                const normalizedExpected = expectedValue.replace(/\s+/g, '\t');
+                optionalNetworkInfo.push({
+                    parameter: param,
+                    expected: expectedValue,
+                    actual: parameters[param],
+                    matches: normalizedActual === normalizedExpected,
+                    documentationUrl: azureNetworkDocUrl
+                });
+            }
+        }
+        accumulated.optionalNetworkInfo = optionalNetworkInfo;
+        accumulated.hasOptionalNetworkInfo = optionalNetworkInfo.length > 0;
+
+        debugLog('[kernelTuning parser] Merged result: parameters:', Object.keys(accumulated.parameters).length, 'warnings:', warnings.length);
     }
 };
 
@@ -702,7 +1071,7 @@ const kernelTuningParser = {
 const hugePagesParser = {
     filePattern: /\/proc\/meminfo$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[hugePages parser] Analyzing huge pages configuration in:', filename);
         
         const result = {
@@ -716,7 +1085,7 @@ const hugePagesParser = {
         
         // Parse /proc/meminfo for huge pages information
         debugLog('[hugePages parser] Parsing meminfo format');
-        const lines = content.split('\n');
+        const lines = _lines || content.split('\n');
             
             for (const line of lines) {
                 const trimmed = line.trim();
@@ -843,7 +1212,7 @@ const timeSyncParser = {
     // SCC: modules.txt (contains # /sbin/lsmod section)
     filePattern: /sos_commands\/kernel\/lsmod$|\/modules\.txt$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[timeSync parser] Analyzing time sync in:', filename);
         
         // For SCC modules.txt, extract just the lsmod section
@@ -954,7 +1323,7 @@ const ptpClockSourceParser = {
     // SCC: ntp.txt (contains # /usr/bin/chronyc -n sources -v and # /etc/chrony.conf sections)
     filePattern: /sos_commands\/chrony\/chronyc_sources$|\/etc\/chrony\.conf$|\/etc\/chrony\/chrony\.conf$|\/ntp\.txt$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[ptpClockSource parser] Analyzing in:', filename);
         
         // For SCC ntp.txt, try both chronyc sources and chrony.conf sections
@@ -1118,7 +1487,7 @@ const timeSyncServiceParser = {
     // SCC ntp.txt contains "# /bin/systemctl status chronyd.service" section
     filePattern: /sos_commands\/systemd\/systemctl_list-unit-files$|\/systemd-status\.txt$|\/ntp\.txt$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[timeSyncService parser] Analyzing:', filename);
         
         const result = {
@@ -1293,7 +1662,7 @@ const timeSyncServiceParser = {
             }
         } else if (!isSCCNtp) {
             // sosreport format: parse systemctl list-unit-files
-            const lines = content.split('\n');
+            const lines = _lines || content.split('\n');
             
             for (const line of lines) {
                 const trimmed = line.trim();
@@ -1412,7 +1781,7 @@ const timedatectlParser = {
     // SCC: ntp.txt (contains # /usr/bin/timedatectl section)
     filePattern: /sos_commands\/systemd\/timedatectl$|\/ntp\.txt$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[timedatectl parser] Analyzing:', filename);
         
         // For SCC ntp.txt, extract just the timedatectl section
@@ -1528,7 +1897,7 @@ const ptpDeviceParser = {
     // SCC: udev.txt (contains # /sbin/udevadm info -e section)
     filePattern: /sos_commands\/block\/ls_-lanR_\.dev$|\/udev\.txt$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[ptpDevice parser] Analyzing:', filename);
         
         const result = {
@@ -1628,7 +1997,7 @@ const ptpDeviceParser = {
             }
         } else {
             // sosreport format: parse ls -lanR /dev output
-            const lines = content.split('\n');
+            const lines = _lines || content.split('\n');
             
             for (const line of lines) {
                 const trimmed = line.trim();
@@ -1692,7 +2061,7 @@ const chronyTrackingParser = {
     // SCC: ntp.txt (contains # /usr/bin/chronyc -n tracking section)
     filePattern: /sos_commands\/chrony\/chronyc_tracking$|\/ntp\.txt$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[chronyTracking parser] Analyzing:', filename);
         
         // For SCC ntp.txt, extract just the chronyc tracking section
@@ -1856,7 +2225,7 @@ const chronyMakestepParser = {
     // SCC: ntp.txt (contains # /etc/chrony.conf section)
     filePattern: /\/etc\/chrony\.conf$|\/etc\/chrony\/chrony\.conf$|\/ntp\.txt$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[chronyMakestep parser] Analyzing:', filename);
         
         // For SCC ntp.txt, extract just the chrony.conf section
@@ -1974,7 +2343,7 @@ const chronyMakestepParser = {
  */
 const rhuiConfigParser = {
     filePattern: /\/(rh-cloud.*\.repo|rhui-.*\.repo|yum\.repos\.d\.txt|dnf\.repos\.d\.txt|yum\.repos\.d\/.*\.repo)$/,
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[RHUI parser] Analyzing:', filename);
         const result = {
             found: false,
@@ -1984,7 +2353,7 @@ const rhuiConfigParser = {
             warnings: [],
             recommendations: []
         };
-        const lines = content.split('\n');
+        const lines = _lines || content.split('\n');
         let currentRepo = null;
         const rhuiRepoPattern = /^(rhui-)?microsoft.*/i;
         const eusRepoPattern = /.*-(eus|e4s)-.*/i;
@@ -2053,7 +2422,7 @@ const rhuiConfigParser = {
  */
 const eusVersionLockParser = {
     filePattern: /\/(releasever|yum-vars\.txt|dnf-vars\.txt|etc\/yum\/vars|etc\/dnf\/vars|dnf\/vars\/releasever|yum\/vars\/releasever)$/,
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[EUS Version Lock parser] Analyzing:', filename);
         const result = {
             found: false,
@@ -2089,7 +2458,7 @@ const eusVersionLockParser = {
  */
 const rhelRhuiCheckParser = {
     filePattern: /\/(installed-rpms|rpm-qa\.txt|rpm_-qa|package-data)$/,
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[RHEL RHUI Check parser] Analyzing:', filename);
         const result = {
             found: false,
@@ -2101,7 +2470,7 @@ const rhelRhuiCheckParser = {
             warnings: [],
             recommendations: []
         };
-        const lines = content.split('\n');
+        const lines = _lines || content.split('\n');
         const rhuiPackagePattern = /^(rhui-[a-zA-Z0-9\-\.]+)/;
         const eusPattern = /-eus-|-e4s-/i;
         const sapPattern = /-sap-/i;
@@ -2146,7 +2515,7 @@ const rhelRhuiCheckParser = {
  */
 const cryptoPoliciesParser = {
     filePattern: /\/crypto-policies\/(config|state\/current)$/,
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[Crypto Policies parser] Analyzing:', filename);
         const result = {
             found: false,
@@ -2182,7 +2551,7 @@ const cryptoPoliciesParser = {
 const rhuiErrorsParser = {
     filePattern: /\/(dnf\.log|yum\.log|rhsm\.log)(\.\d+)?$/,
     processAllRotations: true,
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[RHUI Errors parser] Analyzing:', filename);
         const result = {
             found: false,
@@ -2195,7 +2564,7 @@ const rhuiErrorsParser = {
             warnings: [],
             recommendations: []
         };
-        const lines = content.split('\n');
+        const lines = _lines || content.split('\n');
         const certExpirationPatterns = [
             /SSL certificate problem.*expired/i,
             /certificate has expired/i,
@@ -2397,7 +2766,7 @@ const rhuiErrorsParser = {
 const leappReportParser = {
     filePattern: /var\/log\/leapp\/leapp-report\.txt$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[leappReport parser] Analyzing:', filename);
         
         const result = {
@@ -2595,7 +2964,7 @@ const leappReportParser = {
 const leappLogParser = {
     filePattern: /var\/log\/leapp\/leapp-(preupgrade|upgrade)\.log$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[leappLog parser] Analyzing:', filename);
         
         const result = {
@@ -2616,7 +2985,7 @@ const leappLogParser = {
             detectionFile: filename
         };
         
-        const lines = content.split('\n');
+        const lines = _lines || content.split('\n');
         const seenErrors = new Set();
         
         // Patterns for different error types

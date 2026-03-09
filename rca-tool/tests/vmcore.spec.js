@@ -59,4 +59,38 @@ test.describe('Vmcore Parser', () => {
     // Should link to documentation
     expect(resultHTML).toContain('troubleshoot-kdump');
   });
+
+  test('handles edge cases: no-date crash, empty kdump status, empty listing', async ({ page }) => {
+    const resultHTML = await uploadAndWaitForAnalysis(page, 'scc_test-vmcore-edge-cases.tar.xz');
+
+    // Should still detect kernel crash dumps
+    expect(resultHTML).toContain('Kernel Crash Dumps');
+
+    // Should show 2 crashes (one with date, one without)
+    expect(resultHTML).toContain('2 vmcores');
+
+    // Crash without date in directory path (nodate-crash) — covers null date sort guards
+    expect(resultHTML).toContain('VFS: Unable to mount root fs');
+
+    // Crash with valid date — covers dated crash + sort with null-date crash
+    expect(resultHTML).toContain('Fatal exception in interrupt');
+    expect(resultHTML).toContain('2026-01-20');
+
+    // Call trace from no-timestamp dmesg terminated by ---[ end ... ]--- line
+    expect(resultHTML).toContain('mount_block_root');
+    expect(resultHTML).toContain('kernel_init');
+
+    // Empty kdump status → parseKdumpStatus returns null, no status shown
+    expect(resultHTML).not.toContain('Kdump is operational');
+
+    // Empty crash listing → parseCrashListing returns null, no sizes shown
+    expect(resultHTML).not.toContain('Total vmcore disk usage');
+
+    // kdump.conf should still be parsed
+    expect(resultHTML).toContain('Kdump Configuration');
+    expect(resultHTML).toContain('/var/crash');
+
+    // failure_action = reboot (using 'default' keyword in conf)
+    expect(resultHTML).toContain('reboot');
+  });
 });

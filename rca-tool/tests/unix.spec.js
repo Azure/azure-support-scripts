@@ -6,7 +6,8 @@
  * parameter validation and warnings, huge-pages configuration and
  * SAP recommendations, fstab rendering, Azure network-tuning
  * optimisation (correct, warnings, optional, complete, whitespace),
- * and chronyd time-sync service detection.
+ * chronyd time-sync service detection, and InspectIaaSDisk integration
+ * for both RHEL and SLES archives (SLES 15 SP6 with SAP HANA mounts).
  */
 import { test, expect } from './coverage-fixture.js';
 import { uploadAndWaitForAnalysis, getResultText, navigateToApp, fixturePath } from './test-helpers.js';
@@ -153,18 +154,18 @@ test.describe('Unix Parsers', () => {
     // Use fstab fixture
     await fileInput.setInputFiles(fixturePath('scc_test-fstab.tar.xz'));
     
-    // Wait for analysis to complete
+    // Wait for analysis to complete - fstab is now in the Storage section
     await page.waitForFunction(
       () => {
         const output = document.getElementById('output');
-        return output && output.textContent.includes('Kernel and System Parameters');
+        return output && output.textContent.includes('Storage');
       },
       { timeout: 60000 }
     );
     
-    // Check that section exists
+    // Check that Storage section exists
     const content = await page.locator('#output').textContent();
-    expect(content).toContain('Kernel and System Parameters');
+    expect(content).toContain('Storage');
     
     // Verify fstab subsection exists
     expect(content).toContain('Filesystem Table (/etc/fstab)');
@@ -378,5 +379,306 @@ test.describe('Unix Parsers', () => {
     if (resultText.includes('chrony') && resultText.includes('enabled')) {
       expect(resultText).not.toMatch(/chrony.*not running|service.*not.*running.*chrony/i);
     }
+  });
+
+  // ── InspectIaaSDisk tests ──────────────────────────────────────────
+
+  test('parses InspectIaaSDisk results.txt from ZIP', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk.zip'));
+
+    // Wait for the InspectIaaSDisk Results section to render
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('InspectIaaSDisk Results');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+
+    // Should show the InspectIaaSDisk Results section
+    expect(content).toContain('InspectIaaSDisk Results');
+
+    // Request Info subsection
+    expect(content).toContain('md-testaccount.z45.blob.storage.azure.net');
+    expect(content).toContain('/testcontainer/abcd');
+    expect(content).toContain('117c4d70-8c42-44c5-9f3e-cddeb3eb4264');
+
+    // Inspection Metadata
+    expect(content).toContain('Red Hat Enterprise Linux release 8.8 (Ootpa)');
+    expect(content).toContain('rhel');
+
+    // Filesystem Status table
+    expect(content).toContain('Filesystem Status');
+    expect(content).toContain('/dev/sda1');
+    expect(content).toContain('xfs');
+    expect(content).toContain('vfat');
+
+    // Mount Results table
+    expect(content).toContain('Mount Results');
+    expect(content).toContain('/dev/rootvg/rootlv');
+    expect(content).toContain('SUCCEEDED');
+    expect(content).toContain('FAILED');
+  });
+
+  test('detects mount failures and shows warnings for InspectIaaSDisk', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk.zip'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('InspectIaaSDisk Results');
+      },
+      { timeout: 60000 }
+    );
+
+    const resultHTML = await page.locator('#output').innerHTML();
+
+    // Should show mount failure warning
+    expect(resultHTML).toContain('Mount failed');
+    expect(resultHTML).toContain('/dev/disk/cloud/azure_resource-part1');
+    expect(resultHTML).toContain('/mnt');
+
+    // Section should open with danger styling when mounts failed
+    expect(resultHTML).toContain('danger');
+  });
+
+  test('detects OS from redhat-release in InspectIaaSDisk ZIP', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk.zip'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('InspectIaaSDisk Results');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+
+    // Should detect RHEL 8.8 from device_0/etc/redhat-release
+    expect(content).toContain('Red Hat Enterprise Linux');
+    expect(content).toContain('8.8');
+  });
+
+  test('parses fstab from InspectIaaSDisk ZIP', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk.zip'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('InspectIaaSDisk Results');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+
+    // Should detect fstab entries from device_0/etc/fstab
+    expect(content).toContain('/dev/mapper/rootvg-rootlv');
+    expect(content).toContain('/boot');
+    expect(content).toContain('/boot/efi');
+    expect(content).toContain('azure_resource-part1');
+  });
+
+  // ── InspectIaaSDisk SLES tests ─────────────────────────────────────
+
+  test('parses InspectIaaSDisk results.txt from SLES ZIP', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk-sles.zip'));
+
+    // Wait for the InspectIaaSDisk Results section to render
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('InspectIaaSDisk Results');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+
+    // Should show the InspectIaaSDisk Results section
+    expect(content).toContain('InspectIaaSDisk Results');
+
+    // Request Info subsection
+    expect(content).toContain('md-djzwkqttxnxb.z50.blob.storage.azure.net');
+    expect(content).toContain('/jhfcb3s4xnxv/abcd');
+    expect(content).toContain('fc5d80d2-86aa-4b1f-a601-1d59ae66eba7');
+    expect(content).toContain('1.57.5');
+
+    // Inspection Metadata — SLES distribution
+    expect(content).toContain('SUSE Linux Enterprise Server 15 SP6');
+    expect(content).toContain('sles');
+
+    // Filesystem Status table
+    expect(content).toContain('Filesystem Status');
+    expect(content).toContain('/dev/sda1');
+    expect(content).toContain('/dev/sda4');
+    expect(content).toContain('xfs');
+    expect(content).toContain('vfat');
+
+    // Mount Results table
+    expect(content).toContain('Mount Results');
+    expect(content).toContain('/dev/sda4');
+    expect(content).toContain('SUCCEEDED');
+    expect(content).toContain('FAILED');
+  });
+
+  test('detects mount failures and shows warnings for SLES InspectIaaSDisk', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk-sles.zip'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('InspectIaaSDisk Results');
+      },
+      { timeout: 60000 }
+    );
+
+    const resultHTML = await page.locator('#output').innerHTML();
+
+    // Should show mount failure warning for /mnt
+    expect(resultHTML).toContain('Mount failed');
+    expect(resultHTML).toContain('/dev/disk/cloud/azure_resource-part1');
+    expect(resultHTML).toContain('/mnt');
+
+    // Section should open with danger styling when mounts failed
+    expect(resultHTML).toContain('danger');
+  });
+
+  test('detects SLES OS from os-release in InspectIaaSDisk ZIP', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk-sles.zip'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('InspectIaaSDisk Results');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+
+    // Should detect SLES 15 SP6 from device_0/etc/os-release
+    expect(content).toContain('SUSE Linux Enterprise Server 15 SP6');
+    expect(content).toContain('Operating System');
+  });
+
+  test('parses fstab with HANA mounts from SLES InspectIaaSDisk ZIP', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk-sles.zip'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('InspectIaaSDisk Results');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+
+    // Should detect fstab entries including SAP HANA mount points
+    expect(content).toContain('/boot');
+    expect(content).toContain('/boot/efi');
+    expect(content).toContain('/hana/data');
+    expect(content).toContain('/hana/log');
+    expect(content).toContain('/hana/shared');
+    expect(content).toContain('/usr/sap');
+    expect(content).toContain('azure_resource-part1');
+  });
+
+  test('detects Azure extensions from SLES InspectIaaSDisk ZIP', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk-sles.zip'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('InspectIaaSDisk Results');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+
+    // Should detect Azure extensions from waagent handler status files
+    expect(content).toContain('MDE');
+    expect(content).toContain('VMSnapshot');
+    expect(content).toContain('LinuxPatchExtension');
+    expect(content).toContain('RunCommand');
+  });
+
+  test('parses sysctl.conf and sysctl.d files from SLES InspectIaaSDisk ZIP', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk-sles.zip'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('InspectIaaSDisk Results');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+
+    // Parameters from device_0/etc/sysctl.conf should be detected
+    expect(content).toContain('net.core.rmem_max');
+    expect(content).toContain('net.core.wmem_max');
+
+    // SAP parameters from device_0/etc/sysctl.d/sap_hdb_sysctl.conf
+    expect(content).toContain('vm.swappiness');
+    expect(content).toContain('vm.dirty_bytes');
+
+    // vm.swappiness=15 (expected 10) should generate a warning
+    const html = await page.locator('#output').innerHTML();
+    expect(html).toContain('vm.swappiness');
+    // The kernel parameters section should appear
+    expect(content).toContain('Kernel and System Parameters');
+  });
+
+  test('parses waagent.log and categorises errors from SLES InspectIaaSDisk ZIP', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk-sles.zip'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('Azure Linux Agent Log');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+    const html = await page.locator('#output').innerHTML();
+
+    // Should detect agent version
+    expect(content).toContain('2.14.0.1');
+
+    // Should show error count badges
+    // Fixture has: 2 goal state errors, 1 extension error, 1 resource disk error = 4 errors
+    // And: 1 IMDS warning, 2 status file warnings (lines 11-12), 1 resource disk warning = 4 warnings
+    expect(html).toContain('error');
+
+    // Goal state errors should be categorised
+    expect(content).toContain('Goal State');
+
+    // Extension error (MDE) should be detected
+    expect(content).toContain('MDE');
+
+    // Resource disk errors should be detected
+    expect(content).toContain('Resource Disk');
+
+    // IMDS connection error should be detected
+    expect(content).toContain('IMDS');
   });
 });

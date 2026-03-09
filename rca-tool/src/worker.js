@@ -17,7 +17,7 @@
  * @see {@link module:utils} for shared helper functions
  */
 
-console.log('[Worker] Loading version: 2025-12-23-nested-gzip');
+// Version is only logged when debug mode is enabled\nconst WORKER_VERSION = '2025-12-23-nested-gzip';
 
 // Global error handler to catch uncaught exceptions
 self.onerror = function(message, source, lineno, colno, error) {
@@ -38,44 +38,20 @@ self.onerror = function(message, source, lineno, colno, error) {
     return true; // Prevent default error handling
 };
 
-// Import utility functions (only in Web Worker context)
-if (typeof importScripts === 'function') {
-    // Import pako for gzip decompression of nested .gz files
-    try {
-        importScripts('https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js');
-        console.log('[Worker] pako library loaded for nested .gz decompression');
-    } catch (e) {
-        console.warn('[Worker] Failed to load pako library:', e);
-        console.warn('[Worker] Nested .gz file decompression will not be available');
-    }
-    
-    importScripts('utils.js');
-    // Import external parser modules
-    importScripts('parsers/packages.js');
-    importScripts('parsers/unix.js');
-    importScripts('parsers/services.js');
-    importScripts('parsers/events.js');
-    importScripts('parsers/azure.js');
-    importScripts('parsers/cluster.js');
-    importScripts('parsers/storage.js');
-    importScripts('parsers/networking.js');
-    importScripts('parsers/network-interfaces.js');
-    importScripts('parsers/vmcore.js');
-    console.log('[Worker] Running in Web Worker context');
-    console.log('[Worker] Browser:', typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown');
-}
-
 // Debug flag - will be set from main thread via message
 // Debug configuration - set specific parsers to true to enable their debug logging
 const DEBUG_CONFIG = {
     automation: false,
     azure: false,
     cluster: false,
-    networking: false,
-    unix: false,
     events: false,
+    networking: false,
     packages: false,
+    performance: false,
     services: false,
+    storage: false,
+    unix: false,
+    vmcore: false,
     worker: false
 };
 
@@ -96,6 +72,44 @@ function debugLog(...args) {
             console.log(...args);
         }
     }
+}
+
+// Import utility functions (only in Web Worker context)
+if (typeof importScripts === 'function') {
+    // Import pako for gzip decompression of nested .gz files
+    try {
+        importScripts('https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js');
+        debugLog('[Worker] pako library loaded for nested .gz decompression');
+    } catch (e) {
+        // Non-critical: nested .gz decompression will not be available
+        // Only log in debug mode to avoid console noise
+        debugLog('[Worker] Failed to load pako library:', e);
+    }
+    
+    // Import fflate for ZIP archive decompression
+    try {
+        importScripts('https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js');
+        debugLog('[Worker] fflate library loaded for ZIP decompression');
+    } catch (e) {
+        // Non-critical: ZIP decompression will not be available
+        debugLog('[Worker] Failed to load fflate library:', e);
+    }
+    
+    importScripts('utils.js');
+    importScripts('performance.js');
+    // Import external parser modules
+    importScripts('parsers/packages.js');
+    importScripts('parsers/unix.js');
+    importScripts('parsers/services.js');
+    importScripts('parsers/events.js');
+    importScripts('parsers/azure.js');
+    importScripts('parsers/cluster.js');
+    importScripts('parsers/storage.js');
+    importScripts('parsers/networking.js');
+    importScripts('parsers/network-interfaces.js');
+    importScripts('parsers/vmcore.js');
+    debugLog('[Worker] Running in Web Worker context');
+    debugLog('[Worker] Browser:', typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown');
 }
 
 // ============================================================================
@@ -158,21 +172,35 @@ const SCC_RULES = {
             return RCA_UTILITIES.deduplicateEvents(existingEvents, newEvents, comparisonFields, debugLog);
         }
         
-        // Inline fallback
+        // Inline fallback — Set-based O(N+M) dedup
+        const keySet = new Set();
+        for (let i = 0; i < existingEvents.length; i++) {
+            const evt = existingEvents[i];
+            let key = '';
+            for (let f = 0; f < comparisonFields.length; f++) {
+                if (f > 0) key += '\0';
+                key += evt[comparisonFields[f]];
+            }
+            keySet.add(key);
+        }
+        
         const addedEvents = [];
         let duplicateCount = 0;
         
-        newEvents.forEach(newEvent => {
-            const isDuplicate = existingEvents.some(existingEvent => {
-                return comparisonFields.every(field => existingEvent[field] === newEvent[field]);
-            });
-            
-            if (!isDuplicate) {
-                addedEvents.push(newEvent);
-            } else {
-                duplicateCount++;
+        for (let i = 0; i < newEvents.length; i++) {
+            const newEvent = newEvents[i];
+            let key = '';
+            for (let f = 0; f < comparisonFields.length; f++) {
+                if (f > 0) key += '\0';
+                key += newEvent[comparisonFields[f]];
             }
-        });
+            if (keySet.has(key)) {
+                duplicateCount++;
+            } else {
+                keySet.add(key);
+                addedEvents.push(newEvent);
+            }
+        }
         
         return { addedEvents, duplicateCount };
     },
@@ -189,7 +217,7 @@ const SCC_RULES = {
     // DETECTION RULES
     // ========================================================================
     
-    // Rule: Detect if archive is an SCC report, hb_report, crm_report, or sosreport
+    // Rule: Detect if archive is an SCC report, hb_report, crm_report, sosreport, or InspectIaaSDisk
     detection: {
         // Patterns to identify reports by filename
         filenamePatterns: [
@@ -197,7 +225,8 @@ const SCC_RULES = {
             /^nts_/,           // NTS reports
             /^hb_report/,      // hb_report archives (older Pacemaker)
             /^crm_report/,     // crm_report archives (newer Pacemaker)
-            /^sosreport-/      // sosreport archives
+            /^sosreport-/,     // sosreport archives
+            /^device_\d+\//    // InspectIaaSDisk reports
         ],
         
         // Check if filename matches any report pattern
@@ -225,8 +254,8 @@ const SCC_RULES = {
         // - "chef-apply: " (Chef apply executions)
         // Future: SaltStack, etc.
         // Returns array of detected automation events with timestamps and full command lines
-        parse: function(content, filename) {
-            const lines = content.split('\n');
+        parse: function(content, filename, _lines) {
+            const lines = _lines || content.split('\n');
             const automationEvents = [];
             
             debugLog('[automation parser] Analyzing', lines.length, 'lines for automation tool usage');
@@ -430,12 +459,14 @@ const SCC_RULES = {
         // supportconfig: */rpm.txt
         // sosreport (RHEL/SLES): */installed-rpms or */sos_commands/rpm/package-data or */sos_commands/dnf/dnf_list_installed or */sos_commands/yum/yum_list_installed
         // sosreport (Debian/Ubuntu): */sos_commands/dpkg/dpkg_-l (installed-debs is a symlink)
-        filePattern: /\/(rpm\.txt|installed-rpms|package-data|dpkg_-l|dnf[_-]list[_-]installed|yum[_-]list[_-]installed)$/,
+        // InspectIaaSDisk (SUSE): device_0/var/log/zypp/history
+        // InspectIaaSDisk (RHEL): device_0/var/log/dnf.log, device_0/var/log/yum.log
+        filePattern: /\/(rpm\.txt|installed-rpms|package-data|dpkg_-l|dnf[_-]list[_-]installed|yum[_-]list[_-]installed|var\/log\/zypp\/history|var\/log\/(?:dnf|yum)\.log)$/,
         
         // Parse function receives package list content
         // Validates Azure-required packages with specific version requirements
-        parse: function(content, filename) {
-            const lines = content.split('\n');
+        parse: function(content, filename, _lines) {
+            const lines = _lines || content.split('\n');
             
             debugLog('[distroPackages parser] Analyzing', lines.length, 'lines from', filename);
             
@@ -619,7 +650,7 @@ const SCC_RULES = {
     azureSiteRecovery: {
         filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
         
-        parse: function(content, filename) {
+        parse: function(content, filename, _lines) {
             debugLog('[azureSiteRecovery parser] Analyzing for Azure Site Recovery in:', filename);
             
             return SCC_RULES.detectSystemdService(
@@ -636,7 +667,7 @@ const SCC_RULES = {
     puppetAgent: {
         filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
         
-        parse: function(content, filename) {
+        parse: function(content, filename, _lines) {
             debugLog('[puppetAgent parser] Analyzing for Puppet agent in:', filename);
             
             return SCC_RULES.detectSystemdService(
@@ -653,7 +684,7 @@ const SCC_RULES = {
     chefClient: {
         filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
         
-        parse: function(content, filename) {
+        parse: function(content, filename, _lines) {
             debugLog('[chefClient parser] Analyzing for Chef client in:', filename);
             
             return SCC_RULES.detectSystemdService(
@@ -670,7 +701,7 @@ const SCC_RULES = {
     nvmeList: {
         filePattern: /sos_commands\/nvme\/nvme_list$/,
         
-        parse: function(content, filename) {
+        parse: function(content, filename, _lines) {
             debugLog('[nvmeList parser] Analyzing NVMe drives in:', filename);
             
             // Count non-empty lines
@@ -730,6 +761,9 @@ if (typeof osReleaseParser !== 'undefined') {
 }
 if (typeof fstabParser !== 'undefined') {
     SCC_RULES.fstab = fstabParser;
+}
+if (typeof inspectDiskResultsParser !== 'undefined') {
+    SCC_RULES.inspectDiskResults = inspectDiskResultsParser;
 }
 if (typeof kernelTuningParser !== 'undefined') {
     SCC_RULES.kernelTuning = kernelTuningParser;
@@ -796,6 +830,9 @@ if (typeof involfltVersionParser !== 'undefined') {
 if (typeof involfltKernelVersionParser !== 'undefined') {
     SCC_RULES.involfltKernelVersion = involfltKernelVersionParser;
 }
+if (typeof azureExtensionsParser !== 'undefined') {
+    SCC_RULES.azureExtensions = azureExtensionsParser;
+}
 
 // From parsers/events.js  
 if (typeof emergencyModeParser !== 'undefined') {
@@ -817,6 +854,12 @@ if (typeof azureVMPropertiesParser !== 'undefined') {
 }
 if (typeof suseCloudRegisterParser !== 'undefined') {
     SCC_RULES.suseCloudRegister = suseCloudRegisterParser;
+}
+if (typeof waagentConfigParser !== 'undefined') {
+    SCC_RULES.waagentConfig = waagentConfigParser;
+}
+if (typeof waagentLogParser !== 'undefined') {
+    SCC_RULES.waagentLog = waagentLogParser;
 }
 
 // From parsers/cluster.js
@@ -888,7 +931,7 @@ if (typeof leappLogParser !== 'undefined') {
 // From parsers/networking.js
 if (typeof firewallRulesParser !== 'undefined') {
     SCC_RULES.firewallRules = firewallRulesParser;
-    console.log('[Worker] firewallRulesParser registered successfully, filePattern:', firewallRulesParser.filePattern);
+    debugLog('[Worker] firewallRulesParser registered successfully, filePattern:', firewallRulesParser.filePattern);
 } else {
     console.warn('[Worker] firewallRulesParser is NOT defined - networking.js may have failed to load');
 }
@@ -896,7 +939,7 @@ if (typeof firewallRulesParser !== 'undefined') {
 // From parsers/network-interfaces.js
 if (typeof networkInterfacesParser !== 'undefined') {
     SCC_RULES.networkInterfaces = networkInterfacesParser;
-    console.log('[Worker] networkInterfacesParser registered successfully, filePattern:', networkInterfacesParser.filePattern);
+    debugLog('[Worker] networkInterfacesParser registered successfully, filePattern:', networkInterfacesParser.filePattern);
 } else {
     console.warn('[Worker] networkInterfacesParser is NOT defined - network-interfaces.js may have failed to load');
 }
@@ -904,7 +947,7 @@ if (typeof networkInterfacesParser !== 'undefined') {
 // From parsers/vmcore.js
 if (typeof vmcoreParser !== 'undefined') {
     SCC_RULES.vmcore = vmcoreParser;
-    console.log('[Worker] vmcoreParser registered successfully, filePattern:', vmcoreParser.filePattern);
+    debugLog('[Worker] vmcoreParser registered successfully, filePattern:', vmcoreParser.filePattern);
 } else {
     console.warn('[Worker] vmcoreParser is NOT defined - vmcore.js may have failed to load');
 }
@@ -966,6 +1009,8 @@ LZMA_XZ_Streaming_Module({
 class IncrementalTARParser {
     constructor() {
         this.buffer = new Uint8Array(0);
+        this.pendingChunks = [];   // Chunks waiting to be merged into buffer
+        this.pendingLength = 0;    // Total bytes in pendingChunks
         this.files = [];
         this.directories = new Set();
         this.fileTypes = {};
@@ -977,10 +1022,14 @@ class IncrementalTARParser {
         this.isSCCReport = false;
         this.sccReportName = null;
         this.analysisResults = {}; // Stores parsed results by rule name (no raw file content)
+        this.perfTracker = null; // Lazy-init when performance debug is enabled
         this.nextLongFilename = null; // For GNU TAR long filename extension
         this.paxExtendedHeaders = {};  // For PAX extended attributes
         this.usedPaxFormat = false;  // Track if PAX extended headers were used
         this.processedLogFiles = {}; // Track processed log files to limit rotations (performance optimization)
+        
+        // Current file being processed (for progress reporting)
+        this.currentFile = '';
         
         // Nested compression statistics
         this.nestedGzipTotalCount = 0; // Total .gz files found in archive
@@ -992,18 +1041,60 @@ class IncrementalTARParser {
 
     // Add decompressed chunk to buffer and parse what we can
     addChunk(chunk) {
-        // Append to buffer
-        const newBuffer = new Uint8Array(this.buffer.length + chunk.length);
-        newBuffer.set(this.buffer);
-        newBuffer.set(chunk, this.buffer.length);
-        this.buffer = newBuffer;
+        // Defer buffer concatenation: just queue the chunk
+        this.pendingChunks.push(chunk);
+        this.pendingLength += chunk.length;
+
+        // Only flatten when we might have a complete TAR entry to process.
+        // A TAR header is 512 bytes; we need at least header + data to proceed.
+        // Flatten when total available data (buffer remainder + pending) could
+        // contain a new entry or when pending data exceeds 4 MB (avoid unbounded queue).
+        const available = (this.buffer.length - this.offset) + this.pendingLength;
+        if (available >= 512 || this.pendingLength >= 4 * 1024 * 1024) {
+            this.flushPendingChunks();
+        }
 
         // Parse complete TAR entries
         this.parseAvailableEntries();
     }
 
+    // Merge pending chunks into the main buffer in one copy
+    flushPendingChunks() {
+        if (this.pendingChunks.length === 0) return;
+
+        const remaining = this.buffer.length - this.offset;
+        const newLen = remaining + this.pendingLength;
+        const merged = new Uint8Array(newLen);
+
+        // Copy unprocessed portion of old buffer
+        if (remaining > 0) {
+            merged.set(this.buffer.subarray(this.offset), 0);
+        }
+
+        // Append all pending chunks
+        let pos = remaining;
+        for (const c of this.pendingChunks) {
+            merged.set(c, pos);
+            pos += c.length;
+        }
+
+        this.buffer = merged;
+        this.offset = 0;
+        this.pendingChunks = [];
+        this.pendingLength = 0;
+    }
+
     parseAvailableEntries() {
-        while (this.buffer.length - this.offset >= 512) {
+        while (true) {
+            // Ensure pending data is merged before checking available bytes
+            const available = (this.buffer.length - this.offset) + this.pendingLength;
+            if (available < 512) break;
+
+            // Flush pending chunks if buffer doesn't have enough for header check
+            if (this.buffer.length - this.offset < 512 && this.pendingLength > 0) {
+                this.flushPendingChunks();
+            }
+
             // Check for end marker (two consecutive zero blocks)
             if (this.isEndMarker(this.offset)) {
                 this.foundEndMarker = true;
@@ -1018,10 +1109,16 @@ class IncrementalTARParser {
             }
 
             const entrySize = 512 + Math.ceil(header.size / 512) * 512;
-            
-            // Check if we have the complete entry
-            if (this.buffer.length - this.offset < entrySize) {
-                break; // Wait for more data
+
+            // Check if we have the complete entry (including pending data)
+            const buffered = this.buffer.length - this.offset;
+            if (buffered < entrySize) {
+                if (buffered + this.pendingLength >= entrySize) {
+                    // We have enough in pending chunks — flush and retry
+                    this.flushPendingChunks();
+                } else {
+                    break; // Wait for more data
+                }
             }
 
             // Process entry
@@ -1033,9 +1130,8 @@ class IncrementalTARParser {
         }
 
         // Trim processed data from buffer to keep memory low
-        // Be aggressive about trimming - keep only 512KB of unprocessed data
         if (this.offset > 512 * 1024) {
-            this.buffer = this.buffer.slice(this.offset);
+            this.buffer = this.buffer.subarray(this.offset);
             this.offset = 0;
         }
     }
@@ -1106,6 +1202,9 @@ class IncrementalTARParser {
 
     processEntry(header) {
         const { filename, size, typeflag, offset } = header;
+        
+        // Track current file for progress reporting
+        this.currentFile = filename;
 
         // Handle GNU TAR long filename extension (typeflag='L' or 76)
         if (typeflag === 76 || typeflag === 'L'.charCodeAt(0)) {
@@ -1293,6 +1392,21 @@ class IncrementalTARParser {
         }
         
         // Iterate through all rules (except detection)
+        // Performance: extract file content ONCE and reuse across all matching parsers
+        // instead of re-slicing and re-decoding the buffer for each parser
+        const dataOffset = offset + 512;
+        let cachedContent = null;          // Full content (decoded once, reused)
+        let cachedLines = null;            // Pre-split lines (shared across all parsers for same file)
+        let cachedContentSmall = null;     // Truncated content for suseCloudRegister
+
+        // Lazy-init performance tracker on first file if performance debug is on
+        const perfMode = DEBUG_CONFIG.performance;
+        if (perfMode && !this.perfTracker && typeof PerformanceTracker !== 'undefined') {
+            this.perfTracker = new PerformanceTracker();
+        }
+        const pt = this.perfTracker;
+        let fileParserCount = 0;
+        
         for (const [ruleName, rule] of Object.entries(SCC_RULES)) {
             if (ruleName === 'detection' || !rule.filePattern) continue;
             
@@ -1303,44 +1417,84 @@ class IncrementalTARParser {
             // Check if filename matches rule pattern
             if (rule.filePattern.test(filename)) {
                 debugLog(`[TAR Parser] Matched rule '${ruleName}' for file:`, filename);
-                
-                // Extract file content
-                const dataOffset = offset + 512;
+
+                // Start per-file timing on first matching rule
+                if (pt && fileParserCount === 0) {
+                    pt.startFile();
+                }
+                fileParserCount++;
                 
                 // Special case: cloudregister.txt can be huge (1GB+), only extract first 100KB
-                let extractSize = size;
+                let content;
                 if (ruleName === 'suseCloudRegister') {
                     const maxSize = 100 * 1024; // 100 KB
-                    extractSize = Math.min(size, maxSize);
+                    const extractSize = Math.min(size, maxSize);
                     debugLog(`[TAR Parser] cloudregister.txt size ${size} bytes, extracting first ${extractSize} bytes`);
+                    if (this.buffer.length >= dataOffset + extractSize) {
+                        if (!cachedContentSmall) {
+                            cachedContentSmall = this.extractFileContent(dataOffset, extractSize, filename);
+                        }
+                        content = cachedContentSmall;
+                    }
+                } else {
+                    if (this.buffer.length >= dataOffset + size) {
+                        if (!cachedContent) {
+                            cachedContent = this.extractFileContent(dataOffset, size, filename);
+                        }
+                        content = cachedContent;
+                    }
                 }
                 
-                if (this.buffer.length >= dataOffset + extractSize) {
-                    const content = this.extractFileContent(dataOffset, extractSize, filename);
-                    if (content) {
-                        // For rules that process multiple files (like liveMigration, kernelReboots, oomKiller, xfsErrors, emergencyMode, sshService, automation, clusterEvents, rhuiErrors, blockDevices, sapInstanceErrors, and firewallRules)
+                if (content) {
+                        // Split lines ONCE and share across all matching parsers
+                        // Avoids each parser re-splitting the same content (e.g. 10 parsers × 44MB = 10 redundant splits)
+                        if (!cachedLines) {
+                            cachedLines = content.split('\n');
+                        }
+                        
+                        // For rules that process multiple files (like liveMigration, kernelReboots, oomKiller, xfsErrors, emergencyMode, sshService, automation, clusterEvents, rhuiErrors, blockDevices, sapInstanceErrors, firewallRules, azureExtensions, and kernelTuning)
                         // we need to accumulate results instead of replacing
-                        const isMultiFileRule = ruleName === 'liveMigration' || ruleName === 'kernelReboots' || ruleName === 'oomKiller' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation' || ruleName === 'clusterEvents' || ruleName === 'rhuiErrors' || ruleName === 'blockDevices' || ruleName === 'sapInstanceErrors' || ruleName === 'firewallRules' || ruleName === 'networkInterfaces' || ruleName === 'vmcore';
+                        const isMultiFileRule = ruleName === 'liveMigration' || ruleName === 'kernelReboots' || ruleName === 'oomKiller' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation' || ruleName === 'clusterEvents' || ruleName === 'rhuiErrors' || ruleName === 'blockDevices' || ruleName === 'sapInstanceErrors' || ruleName === 'firewallRules' || ruleName === 'networkInterfaces' || ruleName === 'vmcore' || ruleName === 'azureExtensions' || ruleName === 'lvmConfig' || ruleName === 'kernelTuning';
                         
                         // NOTE: We don't store file content in extractedFiles anymore to save memory
                         // Content is parsed immediately and discarded
                         
                         // Parse using rule's parse function (pass filename for format detection)
                         try {
-                            const result = rule.parse(content, filename);
+                            const parseStart = pt ? performance.now() : 0;
+                            const result = rule.parse(content, filename, cachedLines);
+                            if (pt) {
+                                pt.recordParser(filename, ruleName, performance.now() - parseStart, result, this.analysisResults[ruleName]);
+                            }
                             
                             if (isMultiFileRule) {
                                 // Accumulate results for multi-file rules
-                                // rhuiErrors, blockDevices, sapInstanceErrors, and firewallRules have different structures, so initialize separately
-                                if (!this.analysisResults[ruleName] && ruleName !== 'rhuiErrors' && ruleName !== 'blockDevices' && ruleName !== 'sapInstanceErrors' && ruleName !== 'firewallRules' && ruleName !== 'networkInterfaces' && ruleName !== 'vmcore') {
+                                // rhuiErrors, blockDevices, sapInstanceErrors, firewallRules, lvmConfig, and kernelTuning have different structures, so initialize separately
+                                if (!this.analysisResults[ruleName] && ruleName !== 'rhuiErrors' && ruleName !== 'blockDevices' && ruleName !== 'sapInstanceErrors' && ruleName !== 'firewallRules' && ruleName !== 'networkInterfaces' && ruleName !== 'vmcore' && ruleName !== 'lvmConfig' && ruleName !== 'kernelTuning') {
                                     this.analysisResults[ruleName] = {
                                         count: 0,
                                         events: []
                                     };
                                 }
                                 
+                                // Handle kernelTuning accumulation - merges sysctl parameters across sysctl.conf + sysctl.d/*.conf files
+                                if (ruleName === 'kernelTuning') {
+                                    if (!this.analysisResults[ruleName]) {
+                                        this.analysisResults[ruleName] = { found: false, parameters: {}, warnings: [], hasWarnings: false, azureNetworkWarnings: [], hasAzureNetworkWarnings: false, optionalNetworkInfo: [], hasOptionalNetworkInfo: false };
+                                    }
+                                    kernelTuningParser.mergeResults(this.analysisResults[ruleName], result);
+                                    debugLog(`[TAR Parser] Rule 'kernelTuning' accumulated from ${filename} (parameters: ${Object.keys(this.analysisResults[ruleName].parameters).length})`);
+                                }
+                                // Handle lvmConfig accumulation - merges PVs, VGs, LVs across separate files
+                                else if (ruleName === 'lvmConfig') {
+                                    if (!this.analysisResults[ruleName]) {
+                                        this.analysisResults[ruleName] = { found: false, pvs: [], vgs: [], lvs: [], warnings: [], rawOutput: {} };
+                                    }
+                                    lvmConfigParser.mergeResults(this.analysisResults[ruleName], result);
+                                    debugLog(`[TAR Parser] Rule 'lvmConfig' accumulated from ${filename} (pvs: ${this.analysisResults[ruleName].pvs.length}, vgs: ${this.analysisResults[ruleName].vgs.length}, lvs: ${this.analysisResults[ruleName].lvs.length})`);
+                                }
                                 // Handle blockDevices accumulation - merges disks, partitions, and UUID maps
-                                if (ruleName === 'blockDevices') {
+                                else if (ruleName === 'blockDevices') {
                                     if (!this.analysisResults[ruleName]) {
                                         this.analysisResults[ruleName] = result;
                                     } else {
@@ -1363,8 +1517,8 @@ class IncrementalTARParser {
                                     vmcoreParser.mergeResults(this.analysisResults[ruleName], result);
                                     debugLog(`[TAR Parser] Rule 'vmcore' accumulated from ${filename} (crashes: ${this.analysisResults[ruleName].crashes.length})`);
                                 }
-                                // For kernelReboots, xfsErrors, emergencyMode, sshService, automation, clusterEvents, rhuiErrors, sapInstanceErrors, firewallRules, and networkInterfaces, deduplicate events based on timestamp and relevant fields
-                                else if (ruleName === 'kernelReboots' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation' || ruleName === 'clusterEvents' || ruleName === 'rhuiErrors' || ruleName === 'sapInstanceErrors' || ruleName === 'firewallRules' || ruleName === 'networkInterfaces') {
+                                // For kernelReboots, xfsErrors, emergencyMode, sshService, automation, clusterEvents, rhuiErrors, sapInstanceErrors, firewallRules, networkInterfaces, and azureExtensions, deduplicate events based on timestamp and relevant fields
+                                else if (ruleName === 'kernelReboots' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation' || ruleName === 'clusterEvents' || ruleName === 'rhuiErrors' || ruleName === 'sapInstanceErrors' || ruleName === 'firewallRules' || ruleName === 'networkInterfaces' || ruleName === 'azureExtensions') {
                                     // Define comparison fields for each rule type
                                     const comparisonFields = ruleName === 'kernelReboots' 
                                         ? ['timestamp', 'type', 'kernelVersion']
@@ -1376,6 +1530,8 @@ class IncrementalTARParser {
                                         ? ['timestamp', 'issueType', 'message']
                                         : ruleName === 'automation'
                                         ? ['timestamp', 'toolType', 'command']
+                                        : ruleName === 'azureExtensions'
+                                        ? ['name']
                                         : null; // clusterEvents handled separately below
                                     
                                     if (ruleName === 'clusterEvents') {
@@ -1386,6 +1542,16 @@ class IncrementalTARParser {
                                         if (!this.analysisResults[ruleName].fencingEvents) {
                                             this.analysisResults[ruleName].fencingEvents = [];
                                         }
+                                        // Initialize total counters (track all events even if arrays are capped)
+                                        if (this.analysisResults[ruleName].totalResourceMigrations === undefined) {
+                                            this.analysisResults[ruleName].totalResourceMigrations = 0;
+                                        }
+                                        if (this.analysisResults[ruleName].totalFencingEvents === undefined) {
+                                            this.analysisResults[ruleName].totalFencingEvents = 0;
+                                        }
+                                        
+                                        // Cap stored events to prevent OOM while keeping accurate counts
+                                        const MAX_STORED_EVENTS = 5000;
                                         
                                         // Deduplicate resource migrations
                                         const migrationFields = ['timestamp', 'resource', 'fromNode', 'toNode', 'action'];
@@ -1394,7 +1560,15 @@ class IncrementalTARParser {
                                             result.resourceMigrations || [],
                                             migrationFields
                                         );
-                                        this.analysisResults[ruleName].resourceMigrations.push(...migrationResult.addedEvents);
+                                        // Count all unique events
+                                        this.analysisResults[ruleName].totalResourceMigrations += migrationResult.addedEvents.length;
+                                        // Only store up to the cap
+                                        const migrationRoom = MAX_STORED_EVENTS - this.analysisResults[ruleName].resourceMigrations.length;
+                                        if (migrationRoom > 0) {
+                                            this.analysisResults[ruleName].resourceMigrations.push(
+                                                ...migrationResult.addedEvents.slice(0, migrationRoom)
+                                            );
+                                        }
                                         
                                         // Deduplicate fencing events
                                         const fencingFields = ['timestamp', 'targetNode', 'action', 'status'];
@@ -1403,11 +1577,19 @@ class IncrementalTARParser {
                                             result.fencingEvents || [],
                                             fencingFields
                                         );
-                                        this.analysisResults[ruleName].fencingEvents.push(...fencingResult.addedEvents);
+                                        // Count all unique events
+                                        this.analysisResults[ruleName].totalFencingEvents += fencingResult.addedEvents.length;
+                                        // Only store up to the cap
+                                        const fencingRoom = MAX_STORED_EVENTS - this.analysisResults[ruleName].fencingEvents.length;
+                                        if (fencingRoom > 0) {
+                                            this.analysisResults[ruleName].fencingEvents.push(
+                                                ...fencingResult.addedEvents.slice(0, fencingRoom)
+                                            );
+                                        }
                                         
-                                        this.analysisResults[ruleName].count = this.analysisResults[ruleName].resourceMigrations.length + this.analysisResults[ruleName].fencingEvents.length;
+                                        this.analysisResults[ruleName].count = this.analysisResults[ruleName].totalResourceMigrations + this.analysisResults[ruleName].totalFencingEvents;
                                         
-                                        debugLog(`[TAR Parser] Rule 'clusterEvents' accumulated ${migrationResult.addedEvents.length} migrations, ${fencingResult.addedEvents.length} fencing events (${migrationResult.duplicateCount + fencingResult.duplicateCount} duplicates skipped, total: ${this.analysisResults[ruleName].count})`);
+                                        debugLog(`[TAR Parser] Rule 'clusterEvents' accumulated ${migrationResult.addedEvents.length} migrations, ${fencingResult.addedEvents.length} fencing events (${migrationResult.duplicateCount + fencingResult.duplicateCount} duplicates skipped, total: ${this.analysisResults[ruleName].count}, stored: ${this.analysisResults[ruleName].resourceMigrations.length}+${this.analysisResults[ruleName].fencingEvents.length})`);
                                     } else if (ruleName === 'rhuiErrors') {
                                         // RHUI errors rule has special structure - merge boolean flags and arrays
                                         if (!this.analysisResults[ruleName]) {
@@ -1794,11 +1976,310 @@ class IncrementalTARParser {
                                 }
                             }
                         } catch (e) {
-                            console.error(`[TAR Parser] Rule '${ruleName}' parse failed:`, e);
+                            debugLog(`[TAR Parser] Rule '${ruleName}' parse failed:`, e);
                         }
                     }
                 }
             }
+
+            // End per-file timing if any parsers matched
+            if (pt && fileParserCount > 0) {
+                const contentLen = cachedContent ? cachedContent.length : (cachedContentSmall ? cachedContentSmall.length : 0);
+                pt.endFile(filename, contentLen, fileParserCount);
+            }
+        }
+
+    /**
+     * Process a pre-extracted file (e.g. from a ZIP archive) through all SCC parsers.
+     * This reuses the same parser matching and result accumulation logic as processSCCRules
+     * but accepts already-decoded string content instead of reading from the TAR buffer.
+     * @param {string} filename - The file path within the archive
+     * @param {Uint8Array} contentBytes - Raw file bytes
+     */
+    processExtractedFile(filename, contentBytes) {
+        // Track current file for progress reporting
+        this.currentFile = filename;
+
+        const size = contentBytes.length;
+
+        // Detect SCC report
+        if (!this.isSCCReport && SCC_RULES.detection.isSCCReport(filename)) {
+            this.isSCCReport = true;
+            this.sccReportName = filename.split('/')[0];
+            debugLog('[ZIP Parser] Detected SCC report:', this.sccReportName);
+        }
+
+        // Track directories
+        if (filename.includes('/')) {
+            const parts = filename.split('/');
+            let path = '';
+            for (let i = 0; i < parts.length - 1; i++) {
+                path += parts[i] + '/';
+                this.directories.add(path);
+            }
+        }
+
+        // Track file types
+        const ext = filename.includes('.') ? filename.split('.').pop().toLowerCase() : 'none';
+        this.fileTypes[ext] = (this.fileTypes[ext] || 0) + 1;
+
+        // Store file entry
+        this.files.push({
+            name: filename,
+            size: size,
+            type: filename.endsWith('/') ? 'dir' : 'file'
+        });
+
+        // Skip directories and empty files
+        if (size === 0 || filename.endsWith('/')) return;
+
+        // Only process if this is an SCC/sosreport
+        if (!this.isSCCReport) return;
+
+        // Normalize sos_strings tailed file paths (same logic as processSCCRules)
+        let matchFilename = filename;
+        const tailedMatch = filename.match(/sos_strings\/[^\/]+\/(.+)\.tailed$/);
+        if (tailedMatch) {
+            const dottedPath = tailedMatch[1];
+            let originalPath;
+            const extMatch = dottedPath.match(/^(.+)\.((log|conf|txt|xml)(?:[.-].+)?)$/);
+            if (extMatch) {
+                const segments = extMatch[1].split('.');
+                const fileBase = segments.pop();
+                const dirPath = segments.join('/');
+                originalPath = dirPath + '/' + fileBase + '.' + extMatch[2];
+            } else {
+                const segments = dottedPath.split('.');
+                const fileName = segments.pop();
+                const dirPath = segments.join('/');
+                originalPath = dirPath + '/' + fileName;
+            }
+            const reportPrefix = filename.substring(0, filename.indexOf('sos_strings'));
+            matchFilename = reportPrefix + originalPath;
+            debugLog('[ZIP Parser] Normalized sos_strings tailed path to:', matchFilename);
+        }
+
+        // Compressed log rotation limiter (same logic as processSCCRules)
+        if (!this.processedLogFiles) {
+            this.processedLogFiles = {};
+        }
+        const compressedRotationMatch = matchFilename.match(/\/(messages|localmessages|journalctl[^/]*|pacemaker\.log|corosync\.log)([.-]\d+)?(?:\.gz|\.bz2|\.xz)$/);
+        if (compressedRotationMatch) {
+            const baseFile = compressedRotationMatch[1];
+            const rotation = compressedRotationMatch[2] || '.current';
+            if (!this.processedLogFiles[baseFile]) this.processedLogFiles[baseFile] = [];
+            const needsAllRotations = Object.values(SCC_RULES).some(rule =>
+                rule.processAllRotations && rule.filePattern && rule.filePattern.test(matchFilename)
+            );
+            if (!needsAllRotations && this.processedLogFiles[baseFile].length >= 3) {
+                debugLog('[ZIP Parser] Skipping compressed rotated log (limit reached):', matchFilename);
+                return;
+            }
+            this.processedLogFiles[baseFile].push(rotation);
+        }
+
+        // Track .gz files
+        if (matchFilename.toLowerCase().endsWith('.gz')) {
+            this.nestedGzipTotalCount++;
+            this.nestedGzipTotalCompressedBytes += size;
+        }
+
+        // Decode content - handle nested gzip if applicable
+        let content;
+        const isGzipped = contentBytes.length >= 2 && contentBytes[0] === 0x1f && contentBytes[1] === 0x8b;
+        if (isGzipped && typeof pako !== 'undefined') {
+            try {
+                const decompressed = pako.ungzip(contentBytes);
+                content = new TextDecoder('utf-8').decode(decompressed);
+                this.nestedGzipCount++;
+                this.nestedGzipCompressedBytes += size;
+                this.nestedGzipDecompressedBytes += decompressed.length;
+                debugLog('[ZIP Parser] Decompressed nested .gz file:', matchFilename, size, '->', decompressed.length);
+            } catch (e) {
+                debugLog('[ZIP Parser] Failed to decompress .gz file:', matchFilename, e);
+                try { content = new TextDecoder('utf-8').decode(contentBytes); } catch (e2) { return; }
+            }
+        } else {
+            try {
+                content = new TextDecoder('utf-8').decode(contentBytes);
+            } catch (e) {
+                debugLog('[ZIP Parser] Failed to decode file:', matchFilename, e);
+                return;
+            }
+        }
+
+        if (!content) return;
+
+        // Performance tracking
+        const perfMode = DEBUG_CONFIG.performance;
+        if (perfMode && !this.perfTracker && typeof PerformanceTracker !== 'undefined') {
+            this.perfTracker = new PerformanceTracker();
+        }
+        const pt = this.perfTracker;
+        let fileParserCount = 0;
+        let cachedLines = null;
+
+        // Run all matching parsers (same accumulation logic as processSCCRules)
+        for (const [ruleName, rule] of Object.entries(SCC_RULES)) {
+            if (ruleName === 'detection' || !rule.filePattern) continue;
+            if (!rule.filePattern.test(matchFilename)) continue;
+
+            debugLog('[ZIP Parser] Matched rule', ruleName, 'for file:', matchFilename);
+
+            if (pt && fileParserCount === 0) pt.startFile();
+            fileParserCount++;
+
+            let fileContent = content;
+            // Special case: cloudregister.txt truncation
+            if (ruleName === 'suseCloudRegister') {
+                const maxSize = 100 * 1024;
+                if (content.length > maxSize) fileContent = content.substring(0, maxSize);
+            }
+
+            if (!cachedLines) cachedLines = content.split('\n');
+
+            const isMultiFileRule = ruleName === 'liveMigration' || ruleName === 'kernelReboots' || ruleName === 'oomKiller' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation' || ruleName === 'clusterEvents' || ruleName === 'rhuiErrors' || ruleName === 'blockDevices' || ruleName === 'sapInstanceErrors' || ruleName === 'firewallRules' || ruleName === 'networkInterfaces' || ruleName === 'vmcore' || ruleName === 'azureExtensions' || ruleName === 'lvmConfig' || ruleName === 'kernelTuning';
+
+            try {
+                const parseStart = pt ? performance.now() : 0;
+                const result = rule.parse(fileContent, matchFilename, cachedLines);
+                if (pt) pt.recordParser(matchFilename, ruleName, performance.now() - parseStart, result, this.analysisResults[ruleName]);
+
+                if (isMultiFileRule) {
+                    if (!this.analysisResults[ruleName] && ruleName !== 'rhuiErrors' && ruleName !== 'blockDevices' && ruleName !== 'sapInstanceErrors' && ruleName !== 'firewallRules' && ruleName !== 'networkInterfaces' && ruleName !== 'vmcore' && ruleName !== 'lvmConfig' && ruleName !== 'kernelTuning') {
+                        this.analysisResults[ruleName] = { count: 0, events: [] };
+                    }
+
+                    if (ruleName === 'kernelTuning') {
+                        if (!this.analysisResults[ruleName]) {
+                            this.analysisResults[ruleName] = { found: false, parameters: {}, warnings: [], hasWarnings: false, azureNetworkWarnings: [], hasAzureNetworkWarnings: false, optionalNetworkInfo: [], hasOptionalNetworkInfo: false };
+                        }
+                        kernelTuningParser.mergeResults(this.analysisResults[ruleName], result);
+                    } else if (ruleName === 'lvmConfig') {
+                        if (!this.analysisResults[ruleName]) {
+                            this.analysisResults[ruleName] = { found: false, pvs: [], vgs: [], lvs: [], warnings: [], rawOutput: {} };
+                        }
+                        lvmConfigParser.mergeResults(this.analysisResults[ruleName], result);
+                    } else if (ruleName === 'blockDevices') {
+                        if (!this.analysisResults[ruleName]) {
+                            this.analysisResults[ruleName] = result;
+                        } else {
+                            this.mergeBlockDevicesResult(this.analysisResults[ruleName], result);
+                        }
+                    } else if (ruleName === 'vmcore') {
+                        if (!this.analysisResults[ruleName]) {
+                            this.analysisResults[ruleName] = { found: false, crashes: [], kdumpStatus: null, crashListing: null, kdumpConf: null };
+                        }
+                        vmcoreParser.mergeResults(this.analysisResults[ruleName], result);
+                    } else if (ruleName === 'clusterEvents') {
+                        if (!this.analysisResults[ruleName].resourceMigrations) this.analysisResults[ruleName].resourceMigrations = [];
+                        if (!this.analysisResults[ruleName].fencingEvents) this.analysisResults[ruleName].fencingEvents = [];
+                        if (result && result.resourceMigrations) {
+                            const dedup = SCC_RULES.deduplicateEvents(this.analysisResults[ruleName].resourceMigrations, result.resourceMigrations, ['timestamp', 'resource', 'action'], debugLog);
+                            this.analysisResults[ruleName].resourceMigrations.push(...dedup.addedEvents);
+                        }
+                        if (result && result.fencingEvents) {
+                            const dedup = SCC_RULES.deduplicateEvents(this.analysisResults[ruleName].fencingEvents, result.fencingEvents, ['timestamp', 'node', 'action'], debugLog);
+                            this.analysisResults[ruleName].fencingEvents.push(...dedup.addedEvents);
+                        }
+                        this.analysisResults[ruleName].count = (this.analysisResults[ruleName].resourceMigrations?.length || 0) + (this.analysisResults[ruleName].fencingEvents?.length || 0);
+                    } else if (ruleName === 'networkInterfaces') {
+                        // networkInterfaces: merge interfaces/raw using parser's mergeResults (same as TAR path)
+                        if (!this.analysisResults[ruleName]) {
+                            this.analysisResults[ruleName] = result;
+                        } else {
+                            networkInterfacesParser.mergeResults(this.analysisResults[ruleName], result);
+                        }
+                        debugLog(`[ZIP Parser] Rule 'networkInterfaces' accumulated from ${matchFilename} (interfaces: ${Object.keys(this.analysisResults[ruleName].interfaces || {}).length})`);
+                    } else if (ruleName === 'firewallRules') {
+                        // firewallRules: merge firewall config using same logic as TAR path
+                        if (!this.analysisResults[ruleName]) {
+                            this.analysisResults[ruleName] = result;
+                        } else {
+                            const existing = this.analysisResults[ruleName];
+                            existing.found = existing.found || result.found;
+                            existing.firewalld.detected = existing.firewalld.detected || result.firewalld.detected;
+                            existing.firewalld.running = existing.firewalld.running || result.firewalld.running;
+                            if (result.firewalld.config) existing.firewalld.config = result.firewalld.config;
+                            if (result.firewalld.zones) existing.firewalld.zones = result.firewalld.zones;
+                            if (result.firewalld.directRules) existing.firewalld.directRules = (existing.firewalld.directRules || '') + result.firewalld.directRules;
+                            if (result.firewalld.passthroughs) existing.firewalld.passthroughs = (existing.firewalld.passthroughs || '') + result.firewalld.passthroughs;
+                            if (result.firewalld.chains) existing.firewalld.chains = (existing.firewalld.chains || '') + result.firewalld.chains;
+                            if (result.firewalld.logDenied) existing.firewalld.logDenied = result.firewalld.logDenied;
+                            if (result.firewalld.backend) existing.firewalld.backend = result.firewalld.backend;
+                            existing.iptables.detected = existing.iptables.detected || result.iptables.detected;
+                            existing.iptables.rules.push(...result.iptables.rules);
+                            existing.iptables.modules.push(...result.iptables.modules);
+                            existing.ip6tables.detected = existing.ip6tables.detected || result.ip6tables.detected;
+                            existing.ip6tables.rules.push(...result.ip6tables.rules);
+                            existing.ip6tables.modules.push(...result.ip6tables.modules);
+                            existing.ebtables.detected = existing.ebtables.detected || result.ebtables.detected;
+                            if (result.ebtables.config) existing.ebtables.config = result.ebtables.config;
+                            existing.nftables.detected = existing.nftables.detected || result.nftables.detected;
+                            if (result.nftables.ruleset) existing.nftables.ruleset = result.nftables.ruleset;
+                            if (result.nftables.tables) existing.nftables.tables = result.nftables.tables;
+                            existing.warnings.push(...result.warnings.filter(w => !existing.warnings.includes(w)));
+                            Object.assign(existing.rawSections, result.rawSections);
+                            existing.activeFirewall = firewallRulesParser.determineActiveFirewall(existing);
+                        }
+                        debugLog(`[ZIP Parser] Rule 'firewallRules' accumulated from ${matchFilename} (active: ${this.analysisResults[ruleName].activeFirewall})`);
+                    } else if (['rhuiErrors', 'sapInstanceErrors'].includes(ruleName)) {
+                        if (!this.analysisResults[ruleName]) {
+                            this.analysisResults[ruleName] = result;
+                        } else if (result && result.found !== false) {
+                            // Merge events/data from result into existing
+                            if (result.events && Array.isArray(result.events)) {
+                                if (!this.analysisResults[ruleName].events) this.analysisResults[ruleName].events = [];
+                                const compFields = ['timestamp', 'message'];
+                                const dedup = SCC_RULES.deduplicateEvents(this.analysisResults[ruleName].events, result.events, compFields, debugLog);
+                                this.analysisResults[ruleName].events.push(...dedup.addedEvents);
+                            }
+                            this.analysisResults[ruleName].found = this.analysisResults[ruleName].found || result.found;
+                            this.analysisResults[ruleName].count = this.analysisResults[ruleName].events?.length || 0;
+                        }
+                    } else {
+                        // Standard event accumulation (liveMigration, kernelReboots, oomKiller, etc.)
+                        if (result && result.events && Array.isArray(result.events) && result.events.length > 0) {
+                            const compFields = ruleName === 'kernelReboots' ? ['timestamp', 'type', 'kernelVersion']
+                                : ruleName === 'xfsErrors' ? ['timestamp', 'device', 'message']
+                                : ruleName === 'emergencyMode' ? ['timestamp', 'lineNumber']
+                                : ruleName === 'sshService' ? ['timestamp', 'issueType', 'message']
+                                : ruleName === 'automation' ? ['timestamp', 'toolType', 'command']
+                                : ruleName === 'azureExtensions' ? ['name']
+                                : ['timestamp', 'message'];
+                            const dedup = SCC_RULES.deduplicateEvents(this.analysisResults[ruleName].events, result.events, compFields, debugLog);
+                            this.analysisResults[ruleName].events.push(...dedup.addedEvents);
+                            this.analysisResults[ruleName].count = this.analysisResults[ruleName].events.length;
+                            if (result.found) this.analysisResults[ruleName].found = true;
+                        }
+                    }
+                } else if (ruleName === 'iscsiConfig') {
+                    const existing = this.analysisResults[ruleName];
+                    if (!existing || !existing.found) {
+                        this.analysisResults[ruleName] = result;
+                    } else if (result.found) {
+                        result.sessions.forEach(ns => {
+                            const key = `${ns.ip}:${ns.port}:${ns.iqn}`;
+                            if (!existing.sessions.find(s => `${s.ip}:${s.port}:${s.iqn}` === key)) existing.sessions.push(ns);
+                        });
+                        result.discoveryServers.forEach(ns => {
+                            const key = `${ns.ip}:${ns.port}`;
+                            if (!existing.discoveryServers.find(s => `${s.ip}:${s.port}` === key)) existing.discoveryServers.push(ns);
+                        });
+                        result.targets.forEach(nt => { if (!existing.targets.find(t => t.iqn === nt.iqn)) existing.targets.push(nt); });
+                        result.warnings.forEach(w => { if (!existing.warnings.find(ew => ew.type === w.type && ew.message === w.message)) existing.warnings.push(w); });
+                    }
+                } else {
+                    this.analysisResults[ruleName] = result;
+                    debugLog('[ZIP Parser] Rule', ruleName, 'parsed successfully');
+                }
+            } catch (e) {
+                debugLog('[ZIP Parser] Rule', ruleName, 'parse failed:', e);
+            }
+        }
+
+        if (pt && fileParserCount > 0) {
+            pt.endFile(matchFilename, content.length, fileParserCount);
         }
     }
 
@@ -1809,12 +2290,12 @@ class IncrementalTARParser {
         const isGzipped = contentBytes.length >= 2 && contentBytes[0] === 0x1f && contentBytes[1] === 0x8b;
         
         if (isGzipped) {
-            console.log(`[TAR Parser] Detected gzipped file: ${filename} (${size} bytes)`);
+            debugLog(`[TAR Parser] Detected gzipped file: ${filename} (${size} bytes)`);
             try {
                 debugLog(`[TAR Parser] Decompressing nested .gz file: ${filename} (${size} bytes compressed)`);
                 
                 // Send progress update for nested decompression
-                console.log(`[TAR Parser] Sending nested decompression progress message for: ${filename}`);
+                debugLog(`[TAR Parser] Sending nested decompression progress message for: ${filename}`);
                 self.postMessage({
                     progress: true,
                     message: `Decompressing nested file: ${filename.split('/').pop()}`
@@ -1830,7 +2311,7 @@ class IncrementalTARParser {
                 // Use pako library for gzip decompression (synchronous)
                 // pako.inflate returns Uint8Array
                 if (typeof pako !== 'undefined' && pako.inflate) {
-                    console.log(`[TAR Parser] Using pako to decompress ${filename}`);
+                    debugLog(`[TAR Parser] Using pako to decompress ${filename}`);
                     const decompressed = pako.inflate(contentBytes);
                     const decodedText = new TextDecoder('utf-8').decode(decompressed);
                     
@@ -1839,18 +2320,16 @@ class IncrementalTARParser {
                     this.nestedGzipCompressedBytes += size;
                     this.nestedGzipDecompressedBytes += decompressed.length;
                     
-                    console.log(`[TAR Parser] Successfully decompressed ${filename}: ${size} → ${decompressed.length} bytes`);
                     debugLog(`[TAR Parser] Successfully decompressed ${filename}: ${size} → ${decompressed.length} bytes`);
                     return decodedText;
                 } else {
-                    console.warn('[TAR Parser] pako library not available, cannot decompress .gz file:', filename);
-                    console.warn('[TAR Parser] pako object:', typeof pako);
+                    debugLog('[TAR Parser] pako library not available, cannot decompress .gz file:', filename);
                     debugLog('[TAR Parser] Attempting to decode as-is (will likely fail)');
                     // Fall through to regular decoding
                 }
             } catch (e) {
-                console.error('[TAR Parser] Failed to decompress gzipped file:', filename, e);
-                console.error('[TAR Parser] Attempting to decode as-is (will likely fail)');
+                debugLog('[TAR Parser] Failed to decompress gzipped file:', filename, e);
+                debugLog('[TAR Parser] Attempting to decode as-is (will likely fail)');
                 // Fall through to regular decoding attempt
             }
         }
@@ -1858,7 +2337,7 @@ class IncrementalTARParser {
         try {
             return new TextDecoder('utf-8').decode(contentBytes);
         } catch (e) {
-            console.error('[TAR Parser] Failed to decode file content:', filename, e);
+            debugLog('[TAR Parser] Failed to decode file content:', filename, e);
             return null;
         }
     }
@@ -2087,7 +2566,7 @@ class IncrementalTARParser {
         const clusterEventsData = this.analysisResults.clusterEvents || null;
         
         if (clusterEventsData && clusterEventsData.count > 0) {
-            console.log('[Analysis] Cluster Events:', clusterEventsData.count, 'total -', (clusterEventsData.resourceMigrations || []).length, 'resource events,', (clusterEventsData.fencingEvents || []).length, 'fencing events');
+            debugLog('[Analysis] Cluster Events:', clusterEventsData.count, 'total -', (clusterEventsData.resourceMigrations || []).length, 'resource events,', (clusterEventsData.fencingEvents || []).length, 'fencing events');
         }
         
         // Get OS information to filter distribution-specific checks
@@ -2370,11 +2849,13 @@ class IncrementalTARParser {
             fstab: this.analysisResults.fstab || null,
             blockDevices: this.analysisResults.blockDevices || null,
             fstabAnalysis: this.analysisResults.fstabAnalysis || null,
+            inspectDiskResults: this.analysisResults.inspectDiskResults || null,
             dfOutput: this.analysisResults.dfOutput || null,
             storageCorrelation: this.correlateFstabWithBlockDevices(),
             nvmeList: this.analysisResults.nvmeList || null,
             involfltVersion: this.analysisResults.involfltVersion || null,
             involfltKernelVersion: this.analysisResults.involfltKernelVersion || null,
+            azureExtensions: this.analysisResults.azureExtensions || null,
             emergencyMode: this.analysisResults.emergencyMode || null,
             sshService: this.analysisResults.sshService || null,
             automation: this.analysisResults.automation || null,
@@ -2394,6 +2875,8 @@ class IncrementalTARParser {
             firewallRules: this.analysisResults.firewallRules || null,
             networkInterfaces: this.analysisResults.networkInterfaces || null,
             vmcore: this.analysisResults.vmcore || null,
+            waagentConfig: this.analysisResults.waagentConfig || null,
+            waagentLog: this.analysisResults.waagentLog || null,
             usedPaxFormat: this.usedPaxFormat || false,  // Flag if PAX format was detected
             // Cross-validation results
             nodesInHosts: nodesInHosts,
@@ -2492,7 +2975,21 @@ class IncrementalTARParser {
     finish() {
         // Parse any remaining complete entries
         this.parseAvailableEntries();
-        return this.getAnalysis();
+        const analysis = this.getAnalysis();
+
+        // Output performance report once at the end
+        if (this.perfTracker && DEBUG_CONFIG.performance) {
+            const report = this.perfTracker.getReport();
+            // Get memory info if available (Chrome/Edge only)
+            let memoryMB = null;
+            if (typeof performance !== 'undefined' && performance.memory) {
+                memoryMB = performance.memory.usedJSHeapSize / (1024 * 1024);
+            }
+            const text = formatPerformanceReport(report, memoryMB);
+            console.log(text);
+        }
+
+        return analysis;
     }
 }
 
@@ -2501,44 +2998,45 @@ self.onmessage = async function(e) {
     // Handle debug mode setting
     if (e.data.command === 'set_debug') {
         const mode = e.data.enabled;
-        // Update DEBUG_CONFIG based on the debug mode
-        if (mode === 'cluster') {
-            DEBUG_CONFIG.cluster = true;
-            DEBUG_CONFIG.worker = true;
-            console.log('[Worker] Cluster debug mode enabled');
-        } else if (mode === true || mode === 'on') {
+        // First disable all debug flags
+        Object.keys(DEBUG_CONFIG).forEach(key => DEBUG_CONFIG[key] = false);
+        
+        if (mode === true || mode === 'on' || mode === 'all') {
             // Enable all debug flags
             Object.keys(DEBUG_CONFIG).forEach(key => DEBUG_CONFIG[key] = true);
             console.log('[Worker] All debug modes enabled');
-        } else if (mode === 'app') {
-            DEBUG_CONFIG.azure = true;
-            DEBUG_CONFIG.services = true;
-            DEBUG_CONFIG.worker = true;
-            console.log('[Worker] App debug mode enabled');
-        } else {
-            // Disable all debug flags
-            Object.keys(DEBUG_CONFIG).forEach(key => DEBUG_CONFIG[key] = false);
-            console.log('[Worker] Debug mode disabled');
+        } else if (mode && mode !== 'off' && mode !== false) {
+            // Accept comma-separated parser names: ?debug=cluster,worker
+            const names = String(mode).split(',').map(s => s.trim().toLowerCase());
+            names.forEach(name => {
+                if (name in DEBUG_CONFIG) {
+                    DEBUG_CONFIG[name] = true;
+                }
+            });
+            // Always enable worker debug when any parser debug is on
+            if (names.some(n => n !== 'worker' && DEBUG_CONFIG[n])) {
+                DEBUG_CONFIG.worker = true;
+            }
+            console.log('[Worker] Debug enabled for:', names.filter(n => DEBUG_CONFIG[n]).join(', '));
         }
         return;
     }
     
     // Handle plain text console log analysis (no TAR, no compression)
     if (e.data.cmd === 'analyze_plaintext') {
-        console.log('[Worker] Received analyze_plaintext command');
+        debugLog('[Worker] Received analyze_plaintext command');
         try {
             const { textData, filename } = e.data;
-            console.log(`[Worker] Starting plain text analysis: ${filename}, ${textData.byteLength} bytes`);
             debugLog(`[Worker] Starting plain text analysis: ${filename}, ${textData.byteLength} bytes`);
             
             // Convert to text
-            console.log('[Worker] Converting to text...');
+            debugLog('[Worker] Converting to text...');
             const decoder = new TextDecoder('utf-8');
             const textContent = decoder.decode(new Uint8Array(textData));
-            console.log('[Worker] Text decoded, length:', textContent.length);
+            debugLog('[Worker] Text decoded, length:', textContent.length);
             
             // Create a synthetic analysis structure matching TAR analysis format
-            console.log('[Worker] Creating analysis structure...');
+            debugLog('[Worker] Creating analysis structure...');
             const analysis = {
                 reportType: 'console-log',
                 reportName: filename,
@@ -2557,10 +3055,10 @@ self.onmessage = async function(e) {
                 sshService: { found: false, events: [] },
                 automation: { found: false, events: [] }
             };
-            console.log('[Worker] Analysis structure created');
+            debugLog('[Worker] Analysis structure created');
             
             // Run event detection parsers that work on kernel logs
-            console.log('[Worker] Preparing event parsers...');
+            debugLog('[Worker] Preparing event parsers...');
             const eventParsers = {
                 oomKiller: SCC_RULES.oomKiller,
                 kernelReboots: SCC_RULES.kernelReboots,
@@ -2570,17 +3068,16 @@ self.onmessage = async function(e) {
                 sshService: SCC_RULES.sshService,
                 automation: SCC_RULES.automation
             };
-            console.log('[Worker] Event parsers ready, starting analysis...');
+            debugLog('[Worker] Event parsers ready, starting analysis...');
             
             let eventsFound = 0;
             
             for (const [parserName, parser] of Object.entries(eventParsers)) {
-                console.log(`[Worker] Checking parser: ${parserName}`);
+                debugLog(`[Worker] Checking parser: ${parserName}`);
                 if (parser && parser.parse) {
-                    console.log(`[Worker] Running parser: ${parserName}`);
                     debugLog(`[Worker] Running parser: ${parserName}`);
                     const result = parser.parse(textContent, filename);
-                    console.log(`[Worker] Parser ${parserName} completed`);
+                    debugLog(`[Worker] Parser ${parserName} completed`);
                     
                     if (result) {
                         // Add sourceFile to all events for plain text logs
@@ -2632,6 +3129,104 @@ self.onmessage = async function(e) {
         return;
     }
     
+    // Handle ZIP archive analysis
+    if (e.data.cmd === 'analyze_zip') {
+        try {
+            const { zipData } = e.data;
+            debugLog(`[Worker] Starting ZIP analysis: ${zipData.byteLength} bytes`);
+
+            if (typeof fflate === 'undefined' || !fflate.unzipSync) {
+                self.postMessage({ error: 'fflate library not loaded - ZIP support unavailable' });
+                return;
+            }
+
+            // Extract all files from the ZIP archive
+            const zipBytes = new Uint8Array(zipData);
+            let extracted;
+            try {
+                extracted = fflate.unzipSync(zipBytes);
+            } catch (unzipErr) {
+                self.postMessage({ error: 'Failed to extract ZIP archive: ' + unzipErr.message });
+                return;
+            }
+
+            const filenames = Object.keys(extracted);
+            debugLog(`[Worker] ZIP extracted ${filenames.length} entries`);
+
+            // Use IncrementalTARParser for its analysis infrastructure
+            // (parser matching, result accumulation, getAnalysis)
+            const parser = new IncrementalTARParser();
+            // Mark the end marker as found since ZIP doesn't have one
+            parser.foundEndMarker = true;
+
+            // Pre-scan filenames to detect report type before processing.
+            // This is necessary because ZIP entries are unordered - detection
+            // entries (e.g. device_0/...) may appear after parseable top-level
+            // files (e.g. results.txt) that would otherwise be skipped.
+            for (const fname of filenames) {
+                if (SCC_RULES.detection.isSCCReport(fname)) {
+                    parser.isSCCReport = true;
+                    parser.sccReportName = fname.split('/')[0];
+                    debugLog('[Worker] ZIP pre-scan detected report type:', parser.sccReportName);
+                    break;
+                }
+            }
+
+            let processedCount = 0;
+            for (const fname of filenames) {
+                const data = extracted[fname];
+                parser.processExtractedFile(fname, data);
+                processedCount++;
+
+                // Send progress updates every 50 files
+                if (processedCount % 50 === 0) {
+                    self.postMessage({
+                        progress: Math.floor((processedCount / filenames.length) * 100),
+                        currentFile: fname,
+                        analysis: { fileCount: processedCount }
+                    });
+                }
+            }
+
+            // Build final analysis using the same getAnalysis() logic
+            const analysis = parser.getAnalysis();
+            debugLog(`[Worker] ZIP analysis complete: ${analysis.fileCount} files`);
+
+            try {
+                self.postMessage({
+                    success: true,
+                    analysis: analysis,
+                    progress: 100
+                });
+            } catch (postErr) {
+                console.error('[Worker] postMessage failed for ZIP analysis:', postErr.message);
+                // Trim large arrays and retry
+                if (analysis.clusterEvents) {
+                    const ce = analysis.clusterEvents;
+                    if (ce.resourceMigrations && ce.resourceMigrations.length > 1000) {
+                        ce.resourceMigrations = ce.resourceMigrations.slice(0, 1000);
+                        ce.resourceMigrationsTrimmed = true;
+                    }
+                    if (ce.fencingEvents && ce.fencingEvents.length > 1000) {
+                        ce.fencingEvents = ce.fencingEvents.slice(0, 1000);
+                        ce.fencingEventsTrimmed = true;
+                    }
+                }
+                self.postMessage({
+                    success: true,
+                    analysis: analysis,
+                    progress: 100
+                });
+            }
+
+            return;
+        } catch (err) {
+            console.error('[Worker] ZIP analysis error:', err);
+            self.postMessage({ error: 'ZIP analysis failed: ' + err.message });
+            return;
+        }
+    }
+
     // Handle TAR-only analysis (for already decompressed data like from gzip)
     if (e.data.cmd === 'analyze_tar') {
         try {
@@ -2677,9 +3272,16 @@ self.onmessage = async function(e) {
             return;
         }
 
+        // Declare outside try so catch block can access for partial results
+        let tarParser = null;
+        let inputOffset = 0;
+        let totalDecompressed = 0;
+        let chunkCount = 0;
+        let inputSize = 0;
+
         try {
             const { compressedData, chunkSize } = e.data;
-            const inputSize = compressedData.byteLength;
+            inputSize = compressedData.byteLength;
             const effectiveChunkSize = chunkSize || (256 * 1024); // 256KB default
 
             debugLog(`[XZ Streaming Worker] Starting streaming decompression: ${inputSize} bytes input`);
@@ -2698,12 +3300,9 @@ self.onmessage = async function(e) {
             debugLog('[XZ Streaming Worker] Stream initialized');
 
             // Initialize TAR parser
-            const tarParser = new IncrementalTARParser();
+            tarParser = new IncrementalTARParser();
 
             // Process input in chunks
-            let inputOffset = 0;
-            let totalDecompressed = 0;
-            let chunkCount = 0;
             let streamComplete = false;
             let lastStatus = 0;
 
@@ -2757,12 +3356,13 @@ self.onmessage = async function(e) {
                     tarParser.addChunk(outputData);
                     totalDecompressed += outLen;
 
-                    // Send progress update
+                    // Send lightweight progress update (avoid cloning full analysis)
                     const progress = Math.floor((inputOffset / inputSize) * 100);
                     self.postMessage({
                         progress,
                         decompressed: totalDecompressed,
-                        analysis: tarParser.getAnalysis()
+                        currentFile: tarParser.currentFile,
+                        analysis: { fileCount: tarParser.files.length }
                     });
                     
                     // Hint to GC that outputData can be collected
@@ -2833,35 +3433,81 @@ self.onmessage = async function(e) {
 
             debugLog(`[XZ Streaming Worker] Complete: ${totalDecompressed} bytes decompressed, ${finalAnalysis.fileCount} files`);
 
-            self.postMessage({
-                success: true,
-                totalDecompressed,
-                analysis: finalAnalysis
-            });
+            try {
+                self.postMessage({
+                    success: true,
+                    totalDecompressed,
+                    analysis: finalAnalysis
+                });
+            } catch (postErr) {
+                console.error('[XZ Streaming Worker] postMessage failed (analysis too large), retrying with trimmed data:', postErr.message);
+                // Trim large event arrays to fit in structured clone
+                if (finalAnalysis.clusterEvents) {
+                    const ce = finalAnalysis.clusterEvents;
+                    if (ce.resourceMigrations && ce.resourceMigrations.length > 1000) {
+                        ce.resourceMigrations = ce.resourceMigrations.slice(0, 1000);
+                        ce.resourceMigrationsTrimmed = true;
+                    }
+                    if (ce.fencingEvents && ce.fencingEvents.length > 1000) {
+                        ce.fencingEvents = ce.fencingEvents.slice(0, 1000);
+                        ce.fencingEventsTrimmed = true;
+                    }
+                }
+                self.postMessage({
+                    success: true,
+                    totalDecompressed,
+                    analysis: finalAnalysis
+                });
+            }
 
         } catch (error) {
             console.error('[XZ Streaming Worker] Error:', error);
             
             // Check if we got partial data before the error
-            const partialAnalysis = tarParser ? tarParser.getAnalysis() : null;
+            let partialAnalysis = null;
+            try {
+                partialAnalysis = tarParser ? tarParser.getAnalysis() : null;
+            } catch (analysisErr) {
+                console.error('[XZ Streaming Worker] Failed to get partial analysis:', analysisErr.message);
+            }
             
             if (partialAnalysis && partialAnalysis.fileCount > 0) {
                 // We have partial data - report it along with the error
                 debugLog(`[XZ Streaming Worker] Partial success: ${totalDecompressed} bytes decompressed, ${partialAnalysis.fileCount} files before error`);
                 
-                self.postMessage({
-                    success: true,
-                    partialSuccess: true,
-                    totalDecompressed,
-                    analysis: {
-                        ...partialAnalysis,
-                        corruptionDetected: true,
-                        corruptionMessage: error.message || 'File appears to be corrupted or truncated',
-                        xzBlocksProcessed: chunkCount,
-                        bytesProcessed: inputOffset,
-                        totalInputBytes: inputSize
+                // Trim large arrays to prevent OOM on postMessage
+                if (partialAnalysis.clusterEvents) {
+                    const ce = partialAnalysis.clusterEvents;
+                    if (ce.resourceMigrations && ce.resourceMigrations.length > 1000) {
+                        ce.resourceMigrations = ce.resourceMigrations.slice(0, 1000);
+                        ce.resourceMigrationsTrimmed = true;
                     }
-                });
+                    if (ce.fencingEvents && ce.fencingEvents.length > 1000) {
+                        ce.fencingEvents = ce.fencingEvents.slice(0, 1000);
+                        ce.fencingEventsTrimmed = true;
+                    }
+                }
+                
+                try {
+                    self.postMessage({
+                        success: true,
+                        partialSuccess: true,
+                        totalDecompressed,
+                        analysis: {
+                            ...partialAnalysis,
+                            corruptionDetected: true,
+                            corruptionMessage: error.message || 'File appears to be corrupted or truncated',
+                            xzBlocksProcessed: chunkCount,
+                            bytesProcessed: inputOffset,
+                            totalInputBytes: inputSize
+                        }
+                    });
+                } catch (postErr) {
+                    console.error('[XZ Streaming Worker] Failed to send partial results:', postErr.message);
+                    self.postMessage({
+                        error: 'Analysis completed but results too large to transfer: ' + error.message
+                    });
+                }
             } else {
                 // Complete failure
                 self.postMessage({

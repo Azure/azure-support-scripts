@@ -56,14 +56,17 @@ const sshServiceParser = {
     // - "Failed to start OpenSSH server daemon."
     // - "/var/empty/sshd must be owned by root and not group or world-writable."
     // Returns array of detected SSH service issues with timestamps
-    parse: function(content, filename) {
-        const lines = content.split('\n');
+    parse: function(content, filename, _lines) {
+        const lines = _lines || content.split('\n');
         const sshIssues = [];
         
         debugLog('[sshService parser] Analyzing', lines.length, 'lines for SSH service issues');
         
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
+            
+            // Fast pre-filter: skip lines that can't match SSH patterns
+            if (!(line.includes('OpenSSH') || line.includes('/var/empty/sshd'))) continue;
             
             let issueType = null;
             let message = null;
@@ -109,7 +112,7 @@ const sshServiceParser = {
 const dlmServiceParser = {
     filePattern: /sos_commands\/systemd\/systemctl_list-unit-files$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[dlmService parser] Analyzing for DLM service in:', filename);
         
         const result = SCC_RULES.detectSystemdService(
@@ -132,7 +135,7 @@ const dlmServiceParser = {
 const azureSiteRecoveryParser = {
     filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[azureSiteRecovery parser] Analyzing for Azure Site Recovery in:', filename);
         
         return SCC_RULES.detectSystemdService(
@@ -148,7 +151,7 @@ const azureSiteRecoveryParser = {
 const guardicoreAgentParser = {
     filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[guardicoreAgent parser] Analyzing for Guardicore agent in:', filename);
         
         return SCC_RULES.detectSystemdService(
@@ -164,7 +167,7 @@ const guardicoreAgentParser = {
 const illumioParser = {
     filePattern: /sos_commands\/systemd\/systemctl_list-units_--all$/,
     
-    parse: function(content) {
+    parse: function(content, _filename, _lines) {
         debugLog('[illumio parser] Analyzing for Illumio');
         
         // Case-insensitive search for Illumio
@@ -187,7 +190,7 @@ const illumioParser = {
 const trendMicroParser = {
     filePattern: /sos_commands\/systemd\/systemctl_list-units_--all$/,
     
-    parse: function(content) {
+    parse: function(content, _filename, _lines) {
         debugLog('[trendMicro parser] Analyzing for Trend Micro');
         
         // Search for lines containing both ds_agent.service and Trend Micro
@@ -211,7 +214,7 @@ const falconSensorParser = {
     // Target file patterns - RPM list and process list
     filePattern: /\/(rpm\.txt|installed-rpms|package-data|ps\.txt|ps_.*\.txt)$/,
     
-    parse: function(content) {
+    parse: function(content, _filename, _lines) {
         return SCC_RULES.detectSecuritySoftware(
             content,
             'falconSensor parser',
@@ -226,7 +229,7 @@ const falconSensorParser = {
 const falconSensorConfigParser = {
     filePattern: /\/(falconctl|CrowdStrike.*config|falcon.*conf)$/i,
     
-    parse: function(content) {
+    parse: function(content, _filename, _lines) {
         return SCC_RULES.checkSAPExclusions(
             content,
             'falconSensorConfig parser',
@@ -238,7 +241,7 @@ const falconSensorConfigParser = {
 const msDefenderParser = {
     filePattern: /\/(rpm\.txt|installed-rpms|package-data|ps\.txt|ps_.*\.txt)$/,
     
-    parse: function(content) {
+    parse: function(content, _filename, _lines) {
         return SCC_RULES.detectSecuritySoftware(
             content,
             'msDefender parser',
@@ -253,7 +256,7 @@ const msDefenderParser = {
 const msDefenderConfigParser = {
     filePattern: /\/(mdatp.*|defender.*config)$/i,
     
-    parse: function(content) {
+    parse: function(content, _filename, _lines) {
         return SCC_RULES.checkSAPExclusions(
             content,
             'msDefenderConfig parser',
@@ -270,7 +273,7 @@ const msDefenderConfigParser = {
 const involfltVersionParser = {
     filePattern: /modules\.txt$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[involfltVersion parser] Analyzing involflt version in:', filename);
         
         let version = null;
@@ -280,7 +283,7 @@ const involfltVersionParser = {
         let loaded = false;
         
         // Extract modinfo involflt section from modules.txt
-        const lines = content.split('\n');
+        const lines = _lines || content.split('\n');
         const modinfoLines = [];
         let inSection = false;
         
@@ -370,9 +373,9 @@ const involfltVersionParser = {
  * Detects Azure Site Recovery filter driver version from kernel logs
  */
 const involfltKernelVersionParser = {
-    filePattern: /messages.*\.txt$|boot\.txt$/,
+    filePattern: /\/(messages|boot)(?:[.-]\d+)?(?:\.txt)?$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[involfltKernelVersion parser] Analyzing involflt kernel version in:', filename);
         debugLog('[involfltKernelVersion parser] Content length:', content.length);
         
@@ -395,6 +398,76 @@ const involfltKernelVersionParser = {
         debugLog('[involfltKernelVersion parser] No kernel version found in file');
         // Don't return {found: false} - return null so we don't overwrite a previous positive result
         return null;
+    }
+};
+
+/**
+ * Parser: azureExtensions
+ * Detects Azure VM extensions from waagent HandlerStatus files (InspectIaaSDisk).
+ * Reads JSON status for each extension: name, version, status (Ready/NotReady), code, message.
+ * Multi-file rule — accumulates one event per extension.
+ */
+const azureExtensionsParser = {
+    filePattern: /var\/lib\/waagent\/[^\/]+\/config\/HandlerStatus$/,
+
+    /**
+     * Extension display names for well-known Azure extensions.
+     */
+    _extensionLabels: {
+        'Microsoft.Azure.AzureDefenderForServers.MDE.Linux': 'Microsoft Defender for Endpoint',
+        'Microsoft.Azure.RecoveryServices.VMSnapshotLinux': 'Azure Backup – VM Snapshot',
+        'Microsoft.Azure.RecoveryServices.WorkloadBackup.AzureBackupLinuxWorkload': 'Azure Backup – Workload',
+        'Microsoft.CPlat.Core.LinuxPatchExtension': 'Azure Update Manager',
+        'Microsoft.CPlat.Core.RunCommandLinux': 'Run Command',
+        'Microsoft.Azure.RecoveryServices.SiteRecovery.Linux': 'Azure Site Recovery',
+        'Microsoft.OSTCExtensions.VMAccessForLinux': 'VM Access (Password Reset)',
+        'Microsoft.Azure.Monitor.AzureMonitorLinuxAgent': 'Azure Monitor Agent',
+        'Microsoft.Azure.Extensions.CustomScript': 'Custom Script Extension',
+        'Microsoft.EnterpriseCloud.Monitoring.OmsAgentForLinux': 'Log Analytics Agent'
+    },
+
+    parse: function(content, filename, _lines) {
+        debugLog('[azureExtensions parser] Analyzing HandlerStatus:', filename);
+
+        let status;
+        try {
+            status = JSON.parse(content.trim());
+        } catch (e) {
+            debugLog('[azureExtensions parser] Failed to parse JSON:', e.message);
+            return null;
+        }
+
+        if (!status || !status.name) {
+            debugLog('[azureExtensions parser] No valid extension name found');
+            return null;
+        }
+
+        const name = status.name;
+        const version = status.version || 'unknown';
+        const runtimeStatus = status.status || 'unknown';
+        const code = status.code !== undefined ? status.code : -1;
+        const message = status.message || '';
+        const label = this._extensionLabels[name] || name;
+        const isHealthy = runtimeStatus === 'Ready' && code === 0;
+
+        debugLog('[azureExtensions parser] Found:', label, version, runtimeStatus, 'code:', code);
+
+        const event = {
+            name: name,
+            label: label,
+            version: version,
+            status: runtimeStatus,
+            code: code,
+            message: message,
+            healthy: isHealthy,
+            sourceFile: filename
+        };
+
+        return {
+            found: true,
+            count: 1,
+            events: [event]
+        };
     }
 };
 

@@ -39,8 +39,10 @@
  * | SOS         | `sos_commands/networking/ethtool_-i_<iface>` |
  * | SOS / SCC   | `etc/sysconfig/network-scripts/ifcfg-<iface>` (RHEL) |
  * | SOS / SCC   | `etc/sysconfig/network/ifcfg-<iface>` (SUSE) |
+ * | InspectIaaSDisk | `etc/sysconfig/network/network/ifcfg-<iface>` (SUSE, doubled path) |
  * | SOS / SCC   | `etc/netplan/*.yaml` (Ubuntu) |
  * | SOS         | `sos_commands/networkmanager/nmcli_con_show_id_*` |
+ * | InspectIaaSDisk / SCC | `var/log/messages`, `var/log/cloud-init-output.log` (cloud-init ci-info) |
  *
  * ### Return Shape (per-file call, merged via `mergeResults`)
  *
@@ -76,6 +78,7 @@
  * | `parseNmcliConShow` | Parses `nmcli con show` key-value output; maps `ipv4.method` to bootproto |
  * | `parseWickedIfstatus` | Parses SUSE wicked output; extracts state and lease type (dhcp/static) |
  * | `parseNetplan` | Simple YAML parser for Ubuntu netplan; reads `dhcp4` and interface names |
+ * | `parseCloudInitCiInfo` | Parses cloud-init `ci-info` net device tables from log files; extracts IPs, MACs, state |
  * | `mergeResults` | Combines two result objects, deduplicating IPs and preferring non-null field values |
  * | `hasAcceleratedNetworking` | Returns true if any interface has `accelNet === true` |
  * | `getAccelNetLinked` | Finds the AccelNet-capable interface linked to a given master |
@@ -149,10 +152,10 @@ function classifyDriver(driverName) {
 // ============================================================================
 const networkInterfacesParser = {
     // Match the relevant files from SCC and SOS reports
-    filePattern: /(?:network\.txt$|sos_commands\/networking\/ip_-o_addr$|sos_commands\/networking\/ip_-s_-d_link$|sos_commands\/networking\/ethtool_-i_\w+|sos_commands\/networkmanager\/nmcli_con_show_id_|etc\/sysconfig\/network-scripts\/ifcfg-|etc\/sysconfig\/network\/ifcfg-|etc\/netplan\/)/,
+    filePattern: /(?:network\.txt$|sos_commands\/networking\/ip_-o_addr$|sos_commands\/networking\/ip_-s_-d_link$|sos_commands\/networking\/ethtool_-i_\w+|sos_commands\/networkmanager\/nmcli_con_show_id_|etc\/sysconfig\/network-scripts\/ifcfg-|etc\/sysconfig\/network\/(?:network\/)?ifcfg-|etc\/netplan\/|var\/log\/cloud-init-output\.log$|(?:^|\/)messages$)/,
     multiFile: true,
 
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         netIfDebugLog('[networkInterfaces] Analyzing:', filename, '(', content.length, 'bytes)');
 
         const result = {
@@ -186,6 +189,11 @@ const networkInterfacesParser = {
             }
         } else if (/etc\/netplan\//.test(filename)) {
             this.parseNetplan(content, result, filename);
+        } else if (/cloud-init-output\.log$|messages$/.test(filename)) {
+            // Only parse if the file actually contains cloud-init ci-info data
+            if (/ci-info:.*Net device info/i.test(content)) {
+                this.parseCloudInitCiInfo(content, result, filename);
+            }
         }
 
         netIfDebugLog('[networkInterfaces] Result found:', result.found, 'interfaces:', Object.keys(result.interfaces).length);
@@ -545,6 +553,141 @@ const networkInterfacesParser = {
             if (/^\s*dhcp4:\s*(false|no)/i.test(line)) { currentIface.bootproto = 'static'; }
             // Reset if we've left the section
             if (/^\S/.test(line) && !/^#/.test(line)) { inEthernets = false; currentIface = null; }
+        }
+    },
+
+    // =====================================================================
+    // Parse cloud-init ci-info net device tables from log files
+    // Supports both syslog format (messages) and plain format (cloud-init-output.log)
+    // If multiple boot cycles exist, only the LAST ci-info block is used.
+    // =====================================================================
+    parseCloudInitCiInfo: function(content, result, filename) {
+        netIfDebugLog('[networkInterfaces] Parsing cloud-init ci-info from:', filename);
+
+        // Find all "Net device info" blocks – take the last one
+        // Each block entry stores { text, lineNumber } for provenance tracking
+        const blocks = [];
+        const lines = content.split('\n');
+        let inBlock = false;
+        let currentBlock = [];
+
+        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+            const line = lines[lineIdx];
+            if (/ci-info:.*Net device info/i.test(line)) {
+                inBlock = true;
+                currentBlock = [];
+                continue;
+            }
+            if (inBlock) {
+                if (/ci-info:.*\|/.test(line)) {
+                    currentBlock.push({ text: line, lineNumber: lineIdx + 1 });
+                } else if (/ci-info:.*Route\s+(IPv[46])\s+info/i.test(line)) {
+                    // Route table follows device table – stop collecting device rows
+                    if (currentBlock.length > 0) blocks.push([...currentBlock]);
+                    inBlock = false;
+                } else if (/ci-info:.*\+[-+]+\+/.test(line)) {
+                    // Separator line (e.g. +--------+------+--...) – skip but stay in block
+                    continue;
+                } else {
+                    // Non-ci-info line or end of block
+                    if (currentBlock.length > 0) blocks.push([...currentBlock]);
+                    inBlock = false;
+                }
+            }
+        }
+        // Capture last block if still in progress
+        if (inBlock && currentBlock.length > 0) blocks.push(currentBlock);
+
+        if (blocks.length === 0) return;
+
+        // Use the last block (latest boot cycle)
+        const lastBlock = blocks[blocks.length - 1];
+        netIfDebugLog('[networkInterfaces] Found', blocks.length, 'cloud-init ci-info blocks, using the last one with', lastBlock.length, 'rows');
+
+        // Parse header row to find column indices
+        const headerEntry = lastBlock.find(e => /Device/.test(e.text));
+        if (!headerEntry) return;
+
+        // Extract the ci-info table portion after the ci-info: prefix
+        const extractRow = (line) => {
+            const m = line.match(/ci-info:\s*\|(.+)\|/);
+            if (!m) return null;
+            return m[1].split('|').map(c => c.trim());
+        };
+
+        const headerCols = extractRow(headerEntry.text);
+        if (!headerCols) return;
+
+        const colIdx = {};
+        headerCols.forEach((col, i) => {
+            const lc = col.toLowerCase().replace(/[-_\s]+/g, '');
+            if (lc === 'device') colIdx.device = i;
+            else if (lc === 'up') colIdx.up = i;
+            else if (lc === 'address') colIdx.address = i;
+            else if (lc === 'mask') colIdx.mask = i;
+            else if (lc === 'scope') colIdx.scope = i;
+            else if (lc === 'hwaddress') colIdx.hwaddress = i;
+        });
+
+        if (colIdx.device === undefined || colIdx.address === undefined) return;
+
+        // Parse data rows (skip header row)
+        for (const entry of lastBlock) {
+            if (/Device/.test(entry.text)) continue;  // skip header
+            const cols = extractRow(entry.text);
+            if (!cols) continue;
+
+            const device = cols[colIdx.device];
+            if (!device || device === '.' || device === 'lo') continue;
+
+            const address = cols[colIdx.address] || '.';
+            const mask = colIdx.mask !== undefined ? (cols[colIdx.mask] || '.') : '.';
+            const scope = colIdx.scope !== undefined ? (cols[colIdx.scope] || '.') : '.';
+            const hwAddr = colIdx.hwaddress !== undefined ? (cols[colIdx.hwaddress] || '.') : '.';
+
+            // Skip rows with no useful address
+            if (address === '.' || address === '') continue;
+
+            const iface = this._ensureIface(result, device);
+            result.found = true;
+
+            // Set MAC if available
+            if (hwAddr && hwAddr !== '.' && !iface.mac) {
+                iface.mac = hwAddr;
+            }
+
+            // Set state to UP
+            if (colIdx.up !== undefined) {
+                const up = cols[colIdx.up];
+                if (up && up.toLowerCase() === 'true') iface.state = 'UP';
+            }
+
+            // Source provenance for this IP entry
+            const ipSource = {
+                source: 'cloud-init',
+                sourceFile: filename,
+                lineNumber: entry.lineNumber
+            };
+
+            // Classify and add address
+            const isIPv6 = address.includes(':') && !address.startsWith('127.');
+            if (isIPv6) {
+                const addr = address.includes('/') ? address : address;
+                if (!iface.ipv6.some(a => a.address === addr)) {
+                    iface.ipv6.push({ address: addr, scope: scope !== '.' ? scope : 'link', ...ipSource });
+                }
+            } else {
+                // IPv4 — combine with mask
+                let addr = address;
+                if (mask && mask !== '.') {
+                    // Convert dotted mask to CIDR prefix if possible
+                    const cidr = mask.split('.').reduce((acc, octet) => acc + (parseInt(octet) >>> 0).toString(2).replace(/0/g, '').length, 0);
+                    addr = address + '/' + cidr;
+                }
+                if (!iface.ipv4.some(a => a.address.startsWith(address))) {
+                    iface.ipv4.push({ address: addr, scope: scope !== '.' ? scope : 'global', ...ipSource });
+                }
+            }
         }
     },
 

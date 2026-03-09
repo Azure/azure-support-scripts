@@ -825,6 +825,7 @@ Dec  2 15:07:10 testhost kernel: XFS (sda1): xfs_do_force_shutdown(0x1) called f
 Dec  2 15:07:11 testhost kernel: XFS (sdb2): Internal error xfs_trans_cancel at line 987 of file fs/xfs/xfs_trans.c. Caller xfs_create+0x456/0x789
 Dec  3 08:45:23 testhost kernel: XFS (sdc3): Corruption detected. Unmount and run xfs_repair
 Dec  3 08:45:24 testhost kernel: XFS (sdc3): corrupt dinode 123456, extent total = 1, nblocks = 10
+Dec  4 12:33:07 testhost kernel: XFS (sdk4): Found unrecovered unlinked inode 0xb75 in AG 0x4.  Initiating recovery.
 EOF
 
 # Create rotated log with duplicate entries (different day format to test normalization)
@@ -1087,6 +1088,70 @@ EOF
 tar -cJf "$FIXTURES_DIR/sosreport-deb-raw.tar.xz" sosreport-deb-raw
 rm -rf sosreport-deb-raw
 echo "✓ Created sosreport-deb-raw (22 packages)"
+
+################################################################################
+# RPM.txt (SUSE supportconfig format) – exercises rpm.txt parsing with
+# section headers (# rpm -qa --queryformat) and section terminators
+################################################################################
+echo ""
+echo "=== Creating sosreport-rpm-txt-scc.tar.xz ==="
+mkdir -p sosreport-rpm-txt-scc
+cat > sosreport-rpm-txt-scc/rpm.txt << 'RPMSCC'
+#==[ Command ]======================================#
+# rpm -qa --queryformat '%{NAME} - %{DISTRIBUTION} - %{VERSION}\n'
+NAME                                   DISTRIBUTION                       VERSION
+SUSE_SLE-15-SP5_Update                 (none)                             15.5
+aaa_base                               SUSE Linux Enterprise 15           84.87+git20180409
+bash                                   SUSE Linux Enterprise 15           4.4
+glibc                                  SUSE Linux Enterprise 15           2.31
+kernel-default                         SUSE Linux Enterprise 15           5.14.21
+cloud-netconfig-azure                  SUSE Linux Enterprise 15           1.5
+resource-agents                        SUSE Linux Enterprise 15           4.8.0
+fence-agents                           SUSE Linux Enterprise 15           4.10.0
+#==[ Command ]======================================#
+# rpm -qa --queryformat '%{NAME} %{SIGPGP:pgpsig}\n'
+some-other-section-data
+RPMSCC
+tar -cJf "$FIXTURES_DIR/sosreport-rpm-txt-scc.tar.xz" sosreport-rpm-txt-scc
+rm -rf sosreport-rpm-txt-scc
+echo "✓ Created sosreport-rpm-txt-scc (7 packages)"
+
+################################################################################
+# installed-rpms (RHEL sosreport format) – exercises RPM version validation:
+# version too old (fence-agents), problematic range (python3-azure-core),
+# valid packages, and missing packages
+################################################################################
+echo ""
+echo "=== Creating sosreport-installed-rpms.tar.xz ==="
+mkdir -p sosreport-installed-rpms/sos_commands/rpm
+cat > sosreport-installed-rpms/installed-rpms << 'RPMINST'
+fence-agents-4.2.1-30.el8.x86_64
+python3-azure-mgmt-compute-21.0.0-1.el8.noarch
+python3-azure-identity-1.5.0-2.el8.noarch
+python3-azure-core-1.15.0-1.el8.noarch
+resource-agents-4.9.0-12.el8.x86_64
+bash-4.4.20-4.el8.x86_64
+glibc-2.28-236.el8.x86_64
+kernel-4.18.0-553.89.1.el8_10.x86_64
+RPMINST
+# Include corosync.conf so the UI renders Azure package validation results
+mkdir -p sosreport-installed-rpms/etc/corosync
+cat > sosreport-installed-rpms/etc/corosync/corosync.conf << 'COROCONF'
+totem {
+    version: 2
+    transport: udpu
+}
+nodelist {
+    node {
+        ring0_addr: 10.0.0.4
+        name: node1
+        nodeid: 1
+    }
+}
+COROCONF
+tar -cJf "$FIXTURES_DIR/sosreport-installed-rpms.tar.xz" sosreport-installed-rpms
+rm -rf sosreport-installed-rpms
+echo "✓ Created sosreport-installed-rpms (8 packages)"
 
 # Test for Azure VM with Ultra Disk and Premium SSD v2
 echo ""
@@ -1458,6 +1523,47 @@ cat > test-data/lvm/lvdisplay.txt << 'EOF'
 EOF
 
 create_fixture "test-lvm"
+
+# 31b. Test for LVM configuration from sosreport (verbose pvs/vgs/lvs in sos_commands/lvm2/)
+echo ""
+echo "=== Creating test-lvm-sosreport.tar.xz ==="
+mkdir -p test-data/sos_commands/lvm2
+
+cat > "test-data/sos_commands/lvm2/pvs_-a_-v_-o_pv_mda_free_--config_global_locking_type_0" << 'EOF'
+  Reloading config files
+  WARNING: locking_type (0) is deprecated, using --nolocking.
+  WARNING: File locking is disabled.
+  PV         VG          Fmt  Attr PSize    PFree DevSize   PV UUID                            PMdaFree  PMdaSize  #PMda #PMdaUse 1st PE
+  /dev/sda1                   ---        0     0    800.00m                                           0         0      0        0      0
+  /dev/sda2  rootvg      lvm2 a--   <28.73g    0    <28.73g 4uu5BU-0TAy-rc94-icWO-qE9Q-nPgR-m0VmAc   507.50k  1020.00k     1        1   1.00m
+  /dev/sda3  rootvg      lvm2 a--   <98.00g 4.00m    98.00g GFR5X8-rnj6-qUMi-ZIDS-cimp-thG1-ZlNN5L   507.50k  1020.00k     1        1   1.00m
+  /dev/sdb1                   ---        0     0     <1.76t                                           0         0      0        0      0
+  /dev/sdc1  vgoraclebip lvm2 a--   <64.00g    0    <64.00g VQZW3z-25sX-nZyU-q3f3-8AcZ-dCYz-Dp8fPr   508.00k  1020.00k     1        1   1.00m
+  /dev/sdd1  vggridhome  lvm2 a--   <64.00g    0    <64.00g PUYyrj-DtbS-uChW-v6tH-aSZE-ezRh-MckD8g   508.00k  1020.00k     1        1   1.00m
+EOF
+
+cat > "test-data/sos_commands/lvm2/vgs_-v_-o_vg_mda_count_--config_global_locking_type_0" << 'EOF'
+  Reloading config files
+  WARNING: locking_type (0) is deprecated, using --nolocking.
+  WARNING: File locking is disabled.
+  VG          Attr   Ext   #PV #LV #SN VSize    VFree VG UUID                                VProfile #VMda VMdaFree  VMdaSize  #VMdaUse VG Tags
+  rootvg      wz--n- 4.00m   2   2   0  126.72g 4.00m 67jA2p-1x3X-SqhR-1iY7-j9jS-h8XB-XNqtys              2   507.50k  1020.00k        2         
+  vggridhome  wz--n- 4.00m   1   1   0  <64.00g    0  Al6ivs-izrr-zrw3-Yf6b-3a59-Trnt-yn3nRK              1   508.00k  1020.00k        1         
+  vgoraclebip wz--n- 4.00m   1   1   0  <64.00g    0  rfoP9b-5Y4C-ZWBP-QsRM-B8dZ-4abx-u2hF7B              1   508.00k  1020.00k        1         
+  Reloading config files
+EOF
+
+cat > "test-data/sos_commands/lvm2/lvs_-a_-o_lv_tags_devices_--config_global_locking_type_0" << 'EOF'
+  WARNING: locking_type (0) is deprecated, using --nolocking.
+  WARNING: File locking is disabled.
+  LV          VG          Attr       LSize    Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert LV Tags Devices         KRahead Rahead #Str Stripe
+  crashlv     rootvg      -wi-ao----   10.00g                                                             /dev/sda2(0)      4.00m   auto    1     0
+  rootlv      rootvg      -wi-ao---- <116.72g                                                             /dev/sda3(0)      4.00m   auto    1     0
+  lvgridhome  vggridhome  -wi-ao----  <64.00g                                                             /dev/sdd1(0)      4.00m   auto    1     0
+  lvoraclebip vgoraclebip -wi-ao----  <64.00g                                                             /dev/sdc1(0)      4.00m   auto    1     0
+EOF
+
+create_fixture "test-lvm-sosreport"
 
 # 32. Test for RAID configuration
 echo ""
@@ -2653,6 +2759,626 @@ failure_action shell
 KDCONF
 
 create_fixture "test-vmcore-crashes"
+
+################################################################################
+# Vmcore edge-cases: empty kdump status, no-vmcore listing, no-date crash,
+# timestamp-free dmesg ending with ---[ ... ]--- (exercises every branch)
+################################################################################
+echo ""
+echo "=== Creating test-vmcore-edge-cases.tar.xz ==="
+
+# vmcore-dmesg WITHOUT date in directory path → crash.date stays null
+# Also no timestamp prefixes so "---[ end ... ]---" terminates the call trace
+mkdir -p test-data/var/crash/nodate-crash
+cat > test-data/var/crash/nodate-crash/vmcore-dmesg.txt << 'VMCORE_NODATE'
+Linux version 5.14.0-362.el9.x86_64
+Kernel panic - not syncing: VFS: Unable to mount root fs on unknown-block(0,0)
+CPU: 0 PID: 1 Comm: swapper/0 Kdump: loaded Not tainted 5.14.0-362.el9.x86_64 #1
+Hardware name: Microsoft Corporation Virtual Machine/Virtual Machine, BIOS 090008  12/07/2018
+Call Trace:
+ <TASK>
+ mount_block_root+0x1f0/0x220
+ prepare_namespace+0x136/0x170
+ kernel_init_freeable+0x2a4/0x2d0
+ kernel_init+0x1a/0x130
+ </TASK>
+Kernel Offset: disabled
+VMCORE_NODATE
+
+# vmcore-dmesg WITH valid date → when sorted with the nodate crash, exercises
+# the !a.date / !b.date null-date sort guards
+mkdir -p "test-data/var/crash/127.0.0.1-2026-01-20-15:30:00"
+cat > "test-data/var/crash/127.0.0.1-2026-01-20-15:30:00/vmcore-dmesg.txt" << 'VMCORE_DATED'
+[300.000001] Kernel panic - not syncing: Fatal exception in interrupt
+[300.000005] CPU: 3 PID: 0 Comm: swapper/3 Kdump: loaded Not tainted 5.14.0-362.el9.x86_64 #1
+[300.000010] Hardware name: Microsoft Corporation Virtual Machine/Virtual Machine, BIOS 090008  12/07/2018
+[300.000015] Call Trace:
+[300.000016]  die+0x5/0x50
+[300.000017]  do_trap+0x80/0x100
+[300.000018]  do_error_trap+0x65/0x80
+VMCORE_DATED
+
+# Empty kdump status → parseKdumpStatus returns null (covers empty-content branch)
+mkdir -p test-data/sos_commands/kdump
+touch test-data/sos_commands/kdump/kdumpctl_status
+
+# Crash listing with no vmcore files → parseCrashListing returns null
+cat > test-data/sos_commands/kdump/ls_-alZR_.var.crash << 'CRASHLS_EMPTY'
+/var/crash:
+total 0
+drwxr-xr-x. 2 root root system_u:object_r:var_t:s0    6 Jan  1 00:00 .
+drwxr-xr-x. 22 root root system_u:object_r:var_t:s0 4096 Jan  1 00:00 ..
+CRASHLS_EMPTY
+
+# Basic kdump.conf
+mkdir -p test-data/etc
+cat > test-data/etc/kdump.conf << 'KDCONF_EDGE'
+# kdump configuration
+path /var/crash
+core_collector makedumpfile -l --message-level 7 -d 31
+default reboot
+KDCONF_EDGE
+
+create_fixture "test-vmcore-edge-cases"
+
+################################################################################
+# Test: InspectIaaSDisk storage - block devices from results.txt + fstab
+# Tests that blockDevicesParser extracts Filesystem Status from results.txt
+# and correlates UUIDs with fstab entries (including mismatches)
+################################################################################
+echo ""
+echo "=== Creating test-inspect-iaas-disk-storage.zip ==="
+
+python3 - "$FIXTURES_DIR" << 'INSPECT_STORAGE_PYEOF'
+import zipfile, sys
+fixtures_dir = sys.argv[1]
+fixture_path = f"{fixtures_dir}/test-inspect-iaas-disk-storage.zip"
+
+# results.txt with Filesystem Status providing device/uuid/fstype data
+results_txt = """Execution start time: 14:30:00.
+
+========== Request Info ==========
+Storage Acct: md-storagetest.z45.blob.storage.azure.net
+Container/Vhd: /storagecontainer/test
+Manifest requested: diagnostic
+Inspect service Operational ID: aabbccdd-1234-5678-90ab-cdef01234567
+Guestfish version: 1.52.1.
+========== End Request Info ==========
+
+Filesystem Status:
+/dev/sda1: xfs [uuid=11111111-aaaa-bbbb-cccc-111111111111]
+/dev/sda14: unknown [uuid=]
+/dev/sda15: vfat [uuid=ABCD-EF01]
+/dev/rootvg/homelv: xfs [uuid=22222222-aaaa-bbbb-cccc-222222222222]
+/dev/rootvg/rootlv: xfs [uuid=33333333-aaaa-bbbb-cccc-333333333333]
+/dev/rootvg/tmplv: xfs [uuid=44444444-aaaa-bbbb-cccc-444444444444]
+/dev/rootvg/usrlv: xfs [uuid=55555555-aaaa-bbbb-cccc-555555555555]
+/dev/rootvg/varlv: xfs [uuid=66666666-aaaa-bbbb-cccc-666666666666]
+Inspection Status:
+/dev/rootvg/rootlv
+Inspection Metadata for /dev/rootvg/rootlv
+Type: linux
+Distribution: rhel
+Product Name: Red Hat Enterprise Linux release 8.8 (Ootpa)
+Mount Points:
+/: /dev/rootvg/rootlv
+/var: /dev/rootvg/varlv
+/usr: /dev/rootvg/usrlv
+/tmp: /dev/rootvg/tmplv
+/home: /dev/rootvg/homelv
+/boot: /dev/sda1
+/boot/efi: /dev/sda15
+/mnt: /dev/disk/cloud/azure_resource-part1
+Mounting /dev/rootvg/rootlv on / SUCCEEDED.
+Mounting /dev/rootvg/varlv on /var SUCCEEDED.
+Mounting /dev/rootvg/usrlv on /usr SUCCEEDED.
+Mounting /dev/rootvg/tmplv on /tmp SUCCEEDED.
+Mounting /dev/rootvg/homelv on /home SUCCEEDED.
+Mounting /dev/sda1 on /boot SUCCEEDED.
+Mounting /dev/sda15 on /boot/efi SUCCEEDED.
+Mounting /dev/disk/cloud/azure_resource-part1 on /mnt FAILED.
+
+Using manifest: diagnostic  [linux]
+14:30:30  Executing Operation [1/1]: echo,### Done ###
+### Done ###
+"""
+
+# fstab with intentional issues for testing UUID correlation:
+# - OLD-UUID-DEAD references a UUID not present on disk (disk replaced)
+# - 77777777 has fstype mismatch (fstab=ext4, disk=xfs)
+# - GONE-UUID has no matching device at all
+fstab_content = """#
+# /etc/fstab
+#
+/dev/mapper/rootvg-rootlv /                       xfs     defaults        0 0
+UUID=11111111-aaaa-bbbb-cccc-111111111111 /boot   xfs     defaults        0 0
+UUID=ABCD-EF01          /boot/efi               vfat    defaults,uid=0,gid=0,umask=077,shortname=winnt 0 2
+/dev/mapper/rootvg-homelv /home                   xfs     defaults        0 0
+/dev/mapper/rootvg-tmplv /tmp                    xfs     defaults        0 0
+/dev/mapper/rootvg-usrlv /usr                    xfs     defaults        0 0
+/dev/mapper/rootvg-varlv /var                    xfs     defaults        0 0
+/dev/disk/cloud/azure_resource-part1    /mnt    auto    defaults,nofail,x-systemd.requires=cloud-init.service,comment=cloudconfig       0       2
+# Data disk was replaced - UUID no longer exists on any device
+UUID=OLD-UUID-DEAD-DEAD-DEAD-DEADDEADDEAD /data xfs defaults,nofail 0 2
+# UUID does not exist at all
+UUID=GONE-UUID-0000-0000-0000-000000000000 /opt ext4 defaults,nofail 0 2
+"""
+
+redhat_release = "Red Hat Enterprise Linux release 8.8 (Ootpa)\\n"
+hostname_content = "storagetest01\\n"
+
+with zipfile.ZipFile(fixture_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    zf.writestr('results.txt', results_txt)
+    zf.writestr('diskinfo.txt', 'Disk info placeholder\\n')
+    zf.writestr('device_0/etc/fstab', fstab_content)
+    zf.writestr('device_0/etc/redhat-release', redhat_release)
+    zf.writestr('device_0/etc/hostname', hostname_content)
+INSPECT_STORAGE_PYEOF
+echo "✓ Created test-inspect-iaas-disk-storage.zip"
+
+################################################################################
+# Test: sosreport storage - block devices from lsblk/blkid + fstab
+# Tests blockDevicesParser with sosreport sos_commands/block files including
+# basic lsblk, lsblk -f, and blkid, correlated with /etc/fstab
+################################################################################
+echo ""
+echo "=== Creating test-sosreport-storage.tar.xz ==="
+
+# Standard sosreport directory structure
+mkdir -p test-data/sos_commands/block
+mkdir -p test-data/etc
+
+# Basic lsblk output
+cat > test-data/sos_commands/block/lsblk << 'EOF'
+NAME            MAJ:MIN RM   SIZE RO TYPE MOUNTPOINTS
+sda               8:0    0    64G  0 disk 
+├─sda1            8:1    0   500M  0 part /boot
+├─sda2            8:2    0     1M  0 part 
+├─sda14           8:14   0     4M  0 part 
+├─sda15           8:15   0   495M  0 part /boot/efi
+└─sda16           8:16   0    63G  0 part 
+  ├─rootvg-rootlv  253:0  0    10G  0 lvm  /
+  ├─rootvg-usrlv   253:1  0    10G  0 lvm  /usr
+  ├─rootvg-varlv   253:2  0    10G  0 lvm  /var
+  ├─rootvg-tmplv   253:3  0     5G  0 lvm  /tmp
+  └─rootvg-homelv  253:4  0     5G  0 lvm  /home
+sdb               8:16   0   128G  0 disk 
+└─sdb1            8:17   0   128G  0 part /mnt
+sdc               8:32   0   256G  0 disk 
+└─sdc1            8:33   0   256G  0 part /data
+EOF
+
+# lsblk -f -a -l output (includes filesystem, UUID, mount info)
+cat > 'test-data/sos_commands/block/lsblk_-f_-a_-l' << 'EOF'
+NAME             FSTYPE FSVER LABEL UUID                                 FSAVAIL FSUSE% MOUNTPOINTS
+sda                                                                                      
+sda1             xfs                aaaa1111-1111-1111-1111-aaaaaaaaaaaa  300M    40%    /boot
+sda2                                                                                     
+sda14                                                                                    
+sda15            vfat   FAT32       EFI0-BOOT                            400M    19%    /boot/efi
+sda16            LVM2_m LVM2                                                             
+rootvg-rootlv    xfs                bbbb2222-2222-2222-2222-bbbbbbbbbbbb    7G    30%    /
+rootvg-usrlv     xfs                cccc3333-3333-3333-3333-cccccccccccc    6G    40%    /usr
+rootvg-varlv     xfs                dddd4444-4444-4444-4444-dddddddddddd    7G    30%    /var
+rootvg-tmplv     xfs                eeee5555-5555-5555-5555-eeeeeeeeeeee    4G    20%    /tmp
+rootvg-homelv    xfs                ffff6666-6666-6666-6666-ffffffffffff    4G    20%    /home
+sdb                                                                                      
+sdb1             ext4   1.0         1234abcd-abcd-abcd-abcd-1234abcd1234  110G     6%   /mnt
+sdc                                                                                      
+sdc1             xfs          data  5678ef01-ef01-ef01-ef01-5678ef015678  230G     6%   /data
+EOF
+
+# blkid output
+cat > 'test-data/sos_commands/block/blkid_-c_.dev.null' << 'EOF'
+/dev/sda1: UUID="aaaa1111-1111-1111-1111-aaaaaaaaaaaa" BLOCK_SIZE="512" TYPE="xfs" PARTUUID="p-sda1"
+/dev/sda15: UUID="EFI0-BOOT" BLOCK_SIZE="512" TYPE="vfat" PARTUUID="p-sda15"
+/dev/sda16: TYPE="LVM2_member" PARTUUID="p-sda16"
+/dev/mapper/rootvg-rootlv: UUID="bbbb2222-2222-2222-2222-bbbbbbbbbbbb" BLOCK_SIZE="4096" TYPE="xfs"
+/dev/mapper/rootvg-usrlv: UUID="cccc3333-3333-3333-3333-cccccccccccc" BLOCK_SIZE="4096" TYPE="xfs"
+/dev/mapper/rootvg-varlv: UUID="dddd4444-4444-4444-4444-dddddddddddd" BLOCK_SIZE="4096" TYPE="xfs"
+/dev/mapper/rootvg-tmplv: UUID="eeee5555-5555-5555-5555-eeeeeeeeeeee" BLOCK_SIZE="4096" TYPE="xfs"
+/dev/mapper/rootvg-homelv: UUID="ffff6666-6666-6666-6666-ffffffffffff" BLOCK_SIZE="4096" TYPE="xfs"
+/dev/sdb1: UUID="1234abcd-abcd-abcd-abcd-1234abcd1234" BLOCK_SIZE="4096" TYPE="ext4" PARTUUID="p-sdb1"
+/dev/sdc1: UUID="5678ef01-ef01-ef01-ef01-5678ef015678" BLOCK_SIZE="4096" TYPE="xfs" LABEL="data" PARTUUID="p-sdc1"
+EOF
+
+# fstab with known-good entries + one missing UUID + one fstype mismatch
+cat > test-data/etc/fstab << 'EOF'
+# /etc/fstab - sosreport storage test
+/dev/mapper/rootvg-rootlv /                       xfs     defaults        0 1
+UUID=aaaa1111-1111-1111-1111-aaaaaaaaaaaa /boot   xfs     defaults        0 2
+UUID=EFI0-BOOT /boot/efi                          vfat    defaults        0 2
+/dev/mapper/rootvg-usrlv /usr                      xfs     defaults        0 0
+/dev/mapper/rootvg-varlv /var                      xfs     defaults        0 0
+/dev/mapper/rootvg-tmplv /tmp                      xfs     defaults        0 0
+/dev/mapper/rootvg-homelv /home                    xfs     defaults        0 0
+UUID=1234abcd-abcd-abcd-abcd-1234abcd1234 /mnt    ext4    defaults,nofail 0 2
+# Filesystem type mismatch: fstab says ext4, actual disk (sdc1) is xfs
+UUID=5678ef01-ef01-ef01-ef01-5678ef015678 /data   ext4    defaults,nofail 0 2
+# This UUID no longer exists on any disk
+UUID=DEAD0000-0000-0000-0000-DEAD00000000 /backup ext4    defaults,nofail 0 2
+EOF
+
+# Add os-release for sosreport identification
+cat > test-data/etc/os-release << 'EOF'
+NAME="Red Hat Enterprise Linux"
+VERSION="8.8 (Ootpa)"
+ID="rhel"
+VERSION_ID="8.8"
+PRETTY_NAME="Red Hat Enterprise Linux 8.8 (Ootpa)"
+EOF
+
+create_fixture "test-sosreport-storage"
+
+# =====================================================================
+# InspectIaaSDisk ZIP fixture
+# =====================================================================
+echo ""
+echo "=== Creating test-inspect-iaas-disk.zip ==="
+
+# InspectIaaSDisk files are ZIP archives (not tar.xz), so we use python/zip directly
+python3 - "$FIXTURES_DIR" << 'INSPECT_PYEOF'
+import zipfile, sys
+fixtures_dir = sys.argv[1]
+fixture_path = f"{fixtures_dir}/test-inspect-iaas-disk.zip"
+
+results_txt = """Execution start time: 20:46:49.
+
+========== Request Info ==========
+Storage Acct: md-testaccount.z45.blob.storage.azure.net
+Container/Vhd: /testcontainer/abcd
+Manifest requested: diagnostic
+Inspect service Operational ID: 117c4d70-8c42-44c5-9f3e-cddeb3eb4264
+Guestfish version: 1.52.1.
+========== End Request Info ==========
+
+Filesystem Status:
+/dev/sda1: xfs [uuid=849d8772-f8d2-4698-8d69-53c316388aa8]
+/dev/sda14: unknown [uuid=]
+/dev/sda15: vfat [uuid=E1E6-DC77]
+/dev/rootvg/homelv: xfs [uuid=49728169-a170-45f8-a201-4a379b58e421]
+/dev/rootvg/rootlv: xfs [uuid=b6a91419-76de-400f-b28c-6eb44864e89f]
+/dev/rootvg/tmplv: xfs [uuid=ff83b522-e9c1-4d94-98c9-5a9fe925a8e8]
+/dev/rootvg/usrlv: xfs [uuid=d081f48e-8ab0-4512-b8c6-bd4180d2e13e]
+/dev/rootvg/varlv: xfs [uuid=d73a5f17-6c3f-4cd6-b6b5-cea4b582aef2]
+Inspection Status:
+/dev/rootvg/rootlv
+Inspection Metadata for /dev/rootvg/rootlv
+Type: linux
+Distribution: rhel
+Product Name: Red Hat Enterprise Linux release 8.8 (Ootpa)
+Mount Points:
+/: /dev/rootvg/rootlv
+/mnt: /dev/disk/cloud/azure_resource-part1
+/var: /dev/rootvg/varlv
+/usr: /dev/rootvg/usrlv
+/tmp: /dev/rootvg/tmplv
+/home: /dev/rootvg/homelv
+/boot: /dev/sda1
+/boot/efi: /dev/sda15
+Mounting /dev/rootvg/rootlv on / SUCCEEDED.
+Mounting /dev/disk/cloud/azure_resource-part1 on /mnt FAILED.
+Mounting /dev/rootvg/varlv on /var SUCCEEDED.
+Mounting /dev/rootvg/usrlv on /usr SUCCEEDED.
+Mounting /dev/rootvg/tmplv on /tmp SUCCEEDED.
+Mounting /dev/rootvg/homelv on /home SUCCEEDED.
+Mounting /dev/sda1 on /boot SUCCEEDED.
+Mounting /dev/sda15 on /boot/efi SUCCEEDED.
+
+
+Using manifest: diagnostic  [linux]
+20:47:21  Executing Operation [1/3]: echo,### Probing Directories ###
+### Probing Directories ###
+20:47:21  Executing Operation [2/3]: ll,/boot
+20:47:21  Listing contents of /boot:
+total 226040
+drwxr-xr-x.  2 root root     4096 Oct 18 22:57 .
+20:47:22  Executing Operation [3/3]: ll,/var/log
+20:47:22  Listing contents of /var/log:
+total 1000
+drwxr-xr-x.  2 root root     4096 Oct 18 22:57 .
+"""
+
+fstab_content = """#
+# /etc/fstab
+# Created by anaconda on Thu Aug 18 07:45:40 2022
+#
+/dev/mapper/rootvg-rootlv /                       xfs     defaults        0 0
+UUID=849d8772-f8d2-4698-8d69-53c316388aa8 /boot                   xfs     defaults        0 0
+UUID=E1E6-DC77          /boot/efi               vfat    defaults,uid=0,gid=0,umask=077,shortname=winnt 0 2
+/dev/mapper/rootvg-homelv /home                   xfs     defaults        0 0
+/dev/mapper/rootvg-tmplv /tmp                    xfs     defaults        0 0
+/dev/mapper/rootvg-usrlv /usr                    xfs     defaults        0 0
+/dev/mapper/rootvg-varlv /var                    xfs     defaults        0 0
+/dev/disk/cloud/azure_resource-part1    /mnt    auto    defaults,nofail,x-systemd.requires=cloud-init.service,comment=cloudconfig       0       2
+"""
+
+redhat_release = "Red Hat Enterprise Linux release 8.8 (Ootpa)\n"
+hostname_content = "testvm001\n"
+
+hosts_content = """127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+10.0.0.10   testvm001 testvm001.internal.cloudapp.net
+10.0.0.11   testvm002 testvm002.internal.cloudapp.net
+"""
+
+waagent_conf = """#
+# Microsoft Azure Linux Agent Configuration
+#
+Extensions.Enabled=y
+Provisioning.Agent=auto
+ResourceDisk.Format=n
+ResourceDisk.EnableSwap=n
+ResourceDisk.SwapSizeMB=2048
+ResourceDisk.MountPoint=/mnt
+OS.EnableFirewall=y
+OS.EnableFIPS=n
+OS.RootDeviceScsiTimeout=300
+Logs.Verbose=n
+Logs.Collect=n
+AutoUpdate.Enabled=y
+AutoUpdate.GAFamily=Prod
+"""
+
+messages_content = """2026-01-15T03:22:01.000000+00:00 testvm001 kernel: Linux version 4.18.0-477.27.1.el8_8.x86_64 (mockbuild@x86-vm-09.build.eng.example.com) (gcc version 8.5.0 20210514 (Red Hat 8.5.0-18)) #1 SMP Thu Aug 31 10:29:22 EDT 2025
+2026-01-15T03:22:05.000000+00:00 testvm001 kernel: Command line: BOOT_IMAGE=(hd0,gpt2)/vmlinuz-4.18.0-477.27.1.el8_8.x86_64 root=/dev/mapper/rootvg-rootlv ro crashkernel=auto
+2026-01-15T03:22:30.000000+00:00 testvm001 cloud-init[1234]: ci-info: ++++++++++++++++++++++++++++++++++++++Net device info+++++++++++++++++++++++++++++++++++++++
+2026-01-15T03:22:30.000001+00:00 testvm001 cloud-init[1234]: ci-info: +--------+------+-----------------------------+---------------+--------+-------------------+
+2026-01-15T03:22:30.000002+00:00 testvm001 cloud-init[1234]: ci-info: | Device |  Up  |           Address           |      Mask     | Scope  |     Hw-Address    |
+2026-01-15T03:22:30.000003+00:00 testvm001 cloud-init[1234]: ci-info: +--------+------+-----------------------------+---------------+--------+-------------------+
+2026-01-15T03:22:30.000004+00:00 testvm001 cloud-init[1234]: ci-info: |  eth0  | True |         10.0.0.99           | 255.255.255.0 | global | 00:11:22:33:44:55 |
+2026-01-15T03:22:30.000005+00:00 testvm001 cloud-init[1234]: ci-info: |   lo   | True |          127.0.0.1          |   255.0.0.0   |  host  |         .         |
+2026-01-15T03:22:30.000006+00:00 testvm001 cloud-init[1234]: ci-info: +--------+------+-----------------------------+---------------+--------+-------------------+
+2026-01-15T03:22:30.000007+00:00 testvm001 cloud-init[1234]: ci-info: +++++++++++++++++++++++++++++++Route IPv4 info+++++++++++++++++++++++++++++++
+2026-01-15T08:15:33.000000+00:00 testvm001 systemd[1]: Shutting down...
+2026-01-15T08:15:45.000000+00:00 testvm001 kernel: Linux version 4.18.0-477.27.1.el8_8.x86_64 (mockbuild@x86-vm-09.build.eng.example.com) (gcc version 8.5.0 20210514 (Red Hat 8.5.0-18)) #1 SMP Thu Aug 31 10:29:22 EDT 2025
+2026-01-15T08:16:10.000000+00:00 testvm001 cloud-init[2634]: ci-info: ++++++++++++++++++++++++++++++++++++++Net device info+++++++++++++++++++++++++++++++++++++++
+2026-01-15T08:16:10.000001+00:00 testvm001 cloud-init[2634]: ci-info: +--------+------+-----------------------------+---------------+--------+-------------------+
+2026-01-15T08:16:10.000002+00:00 testvm001 cloud-init[2634]: ci-info: | Device |  Up  |           Address           |      Mask     | Scope  |     Hw-Address    |
+2026-01-15T08:16:10.000003+00:00 testvm001 cloud-init[2634]: ci-info: +--------+------+-----------------------------+---------------+--------+-------------------+
+2026-01-15T08:16:10.000004+00:00 testvm001 cloud-init[2634]: ci-info: |  eth0  | True |         10.0.0.4            | 255.255.254.0 | global | 00:0d:3a:ab:cd:ef |
+2026-01-15T08:16:10.000005+00:00 testvm001 cloud-init[2634]: ci-info: |  eth0  | True | fe80::20d:3aff:feab:cdef/64 |       .       |  link  | 00:0d:3a:ab:cd:ef |
+2026-01-15T08:16:10.000006+00:00 testvm001 cloud-init[2634]: ci-info: |  eth1  | True | fe80::20d:3aff:feab:cdef/64 |       .       |  link  | 00:0d:3a:ab:cd:ef |
+2026-01-15T08:16:10.000007+00:00 testvm001 cloud-init[2634]: ci-info: |   lo   | True |          127.0.0.1          |   255.0.0.0   |  host  |         .         |
+2026-01-15T08:16:10.000008+00:00 testvm001 cloud-init[2634]: ci-info: |   lo   | True |           ::1/128           |       .       |  host  |         .         |
+2026-01-15T08:16:10.000009+00:00 testvm001 cloud-init[2634]: ci-info: +--------+------+-----------------------------+---------------+--------+-------------------+
+2026-01-15T08:16:10.000010+00:00 testvm001 cloud-init[2634]: ci-info: +++++++++++++++++++++++++++++++Route IPv4 info+++++++++++++++++++++++++++++++
+2026-02-10T14:33:12.000000+00:00 testvm001 kernel: java invoked oom-killer: gfp_mask=0x6200ca(GFP_HIGHUSER_MOVABLE), order=0
+2026-02-10T14:33:12.100000+00:00 testvm001 kernel: Out of memory: Killed process 12345 (java) total-vm:8192000kB, anon-rss:7654321kB, file-rss:0kB, shmem-rss:0kB, UID:1000 pgtables:15012kB oom_score_adj:0
+2026-02-18T22:05:44.000000+00:00 testvm001 kernel: XFS (sdb1): Internal error xfs_iget_cache_miss at line 355 of file fs/xfs/xfs_icache.c. Caller xfs_iget+0x15c/0x240
+2026-02-19T04:10:01.000000+00:00 testvm001 kernel: XFS (sdk4): Found unrecovered unlinked inode 0xb75 in AG 0x4.  Initiating recovery.
+2026-02-20T01:45:22.000000+00:00 testvm001 systemd[1]: You are in emergency mode. After logging in, type \"journalctl -xb\" to view
+"""
+
+ifcfg_eth0 = """DEVICE=eth0
+BOOTPROTO=dhcp
+ONBOOT=yes
+TYPE=Ethernet
+USERCTL=no
+PEERDNS=yes
+IPV6INIT=no
+NM_CONTROLLED=no
+"""
+
+ifcfg_eth1 = """DEVICE=eth1
+BOOTPROTO=static
+IPADDR=10.0.0.50
+PREFIX=24
+ONBOOT=yes
+TYPE=Ethernet
+USERCTL=no
+IPV6INIT=no
+NM_CONTROLLED=no
+"""
+
+firewalld_conf = """# firewalld config file
+DefaultZone=public
+MinimalMark=100
+CleanupOnExit=yes
+Lockdown=no
+IPv6_rpfilter=yes
+IndividualCalls=no
+LogDenied=off
+FirewallBackend=nftables
+"""
+
+dnf_log = """2024-11-17T09:27:25+0000 INFO Installed: python3-azure-mgmt-compute-18.0.0-1.el8.noarch
+2024-11-17T09:27:26+0000 INFO Installed: python3-azure-identity-1.5.0-1.el8.noarch
+2024-11-17T09:27:27+0000 INFO Installed: python3-azure-core-1.22.1-1.el8.noarch
+2024-11-17T09:28:00+0000 INFO Installed: fence-agents-azure-arm-4.10.0-55.el8_9.3.x86_64
+2024-11-17T09:28:01+0000 INFO Installed: resource-agents-4.9.0-44.el8.x86_64
+"""
+
+# Azure VM extension HandlerStatus files (JSON)
+handler_status_defender = '{"name": "Microsoft.Azure.AzureDefenderForServers.MDE.Linux", "version": "1.0.9.2", "status": "NotReady", "code": 1009, "message": "[ExtensionOperationError] Non-zero exit code: 1, /var/lib/waagent/Microsoft.Azure.AzureDefenderForServers.MDE.Linux-1.0.9.2/MDE-installer.sh", "supports_multi_config": false, "extension_status": null}'
+
+handler_status_backup = '{"name": "Microsoft.Azure.RecoveryServices.VMSnapshotLinux", "version": "1.0.9225.0", "status": "Ready", "code": 0, "message": "Plugin enabled", "supports_multi_config": false, "extension_status": null}'
+
+handler_status_patch = '{"name": "Microsoft.CPlat.Core.LinuxPatchExtension", "version": "1.6.64", "status": "Ready", "code": 0, "message": "Plugin enabled", "supports_multi_config": false, "extension_status": null}'
+
+handler_status_runcommand = '{"name": "Microsoft.CPlat.Core.RunCommandLinux", "version": "1.0.11", "status": "Ready", "code": 0, "message": "Plugin enabled", "supports_multi_config": false, "extension_status": null}'
+
+with zipfile.ZipFile(fixture_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    zf.writestr('results.txt', results_txt)
+    zf.writestr('diskinfo.txt', 'Disk info placeholder\n')
+    zf.writestr('device_0/etc/fstab', fstab_content)
+    zf.writestr('device_0/etc/redhat-release', redhat_release)
+    zf.writestr('device_0/etc/hostname', hostname_content)
+    zf.writestr('device_0/etc/hosts', hosts_content)
+    zf.writestr('device_0/etc/waagent.conf', waagent_conf)
+    zf.writestr('device_0/var/log/messages', messages_content)
+    zf.writestr('device_0/etc/sysconfig/network-scripts/ifcfg-eth0', ifcfg_eth0)
+    zf.writestr('device_0/etc/sysconfig/network-scripts/ifcfg-eth1', ifcfg_eth1)
+    zf.writestr('device_0/etc/firewalld/firewalld.conf', firewalld_conf)
+    zf.writestr('device_0/var/log/dnf.log', dnf_log)
+    zf.writestr('device_0/var/lib/waagent/Microsoft.Azure.AzureDefenderForServers.MDE.Linux-1.0.9.2/config/HandlerStatus', handler_status_defender)
+    zf.writestr('device_0/var/lib/waagent/Microsoft.Azure.RecoveryServices.VMSnapshotLinux-1.0.9225.0/config/HandlerStatus', handler_status_backup)
+    zf.writestr('device_0/var/lib/waagent/Microsoft.CPlat.Core.LinuxPatchExtension-1.6.64/config/HandlerStatus', handler_status_patch)
+    zf.writestr('device_0/var/lib/waagent/Microsoft.CPlat.Core.RunCommandLinux-1.0.11/config/HandlerStatus', handler_status_runcommand)
+INSPECT_PYEOF
+echo "✓ Created test-inspect-iaas-disk.zip"
+
+echo "=== Creating test-inspect-iaas-disk-cluster.zip ==="
+
+python3 - "$FIXTURES_DIR" << 'INSPECT_CLUSTER_PYEOF'
+import zipfile, sys
+fixtures_dir = sys.argv[1]
+fixture_path = f"{fixtures_dir}/test-inspect-iaas-disk-cluster.zip"
+
+results_txt = """Execution start time: 10:12:30.
+
+========== Request Info ==========
+Storage Acct: md-clustertest.z45.blob.storage.azure.net
+Container/Vhd: /clustercontainer/efgh
+Manifest requested: diagnostic
+Inspect service Operational ID: 99a1b2c3-d4e5-6f78-90ab-cdef01234567
+Guestfish version: 1.52.1.
+========== End Request Info ==========
+
+Filesystem Status:
+/dev/sda1: xfs [uuid=aaa11111-1111-1111-1111-111111111111]
+/dev/sda15: vfat [uuid=B00B-1234]
+/dev/rootvg/rootlv: xfs [uuid=bbb22222-2222-2222-2222-222222222222]
+Inspection Status:
+/dev/rootvg/rootlv
+Inspection Metadata for /dev/rootvg/rootlv
+Type: linux
+Distribution: sles
+Product Name: SUSE Linux Enterprise Server 15 SP5
+Mount Points:
+/: /dev/rootvg/rootlv
+/boot: /dev/sda1
+/boot/efi: /dev/sda15
+Mounting /dev/rootvg/rootlv on / SUCCEEDED.
+Mounting /dev/sda1 on /boot SUCCEEDED.
+Mounting /dev/sda15 on /boot/efi SUCCEEDED.
+"""
+
+hosts_content = """127.0.0.1   localhost
+::1         localhost
+# Cluster nodes
+10.0.1.10   hananode01 hananode01.internal.cloudapp.net
+10.0.1.11   hananode02 hananode02.internal.cloudapp.net
+10.0.1.20   hanamajority hanamajority.internal.cloudapp.net
+"""
+
+corosync_conf = """totem {
+    version: 2
+    secauth: on
+    crypto_hash: sha1
+    crypto_cipher: aes256
+    cluster_name: hacluster
+    clear_node_high_bit: yes
+    token: 30000
+    token_retransmits_before_loss_const: 10
+    join: 60
+    consensus: 36000
+    max_messages: 20
+    transport: udpu
+    interface {
+        ringnumber: 0
+        bindnetaddr: 10.0.1.0
+        mcastport: 5405
+        ttl: 1
+    }
+}
+
+logging {
+    fileline: off
+    to_logfile: yes
+    to_syslog: yes
+    logfile: /var/log/cluster/corosync.log
+    debug: off
+    timestamp: on
+    logger_subsys {
+        subsys: QUORUM
+        debug: off
+    }
+}
+
+quorum {
+    provider: corosync_votequorum
+    expected_votes: 2
+    two_node: 1
+}
+
+nodelist {
+    node {
+        ring0_addr: 10.0.1.10
+        name: hananode01
+        nodeid: 1
+    }
+    node {
+        ring0_addr: 10.0.1.11
+        name: hananode02
+        nodeid: 2
+    }
+}
+"""
+
+fstab_content = """#
+# /etc/fstab
+#
+/dev/mapper/rootvg-rootlv /                       xfs     defaults        0 0
+UUID=aaa11111-1111-1111-1111-111111111111 /boot   xfs     defaults        0 0
+UUID=B00B-1234          /boot/efi               vfat    defaults        0 2
+"""
+
+sles_release = "SUSE Linux Enterprise Server 15 (s390x)\nVERSION = 15\nPATCHLEVEL = 5\n"
+
+ifcfg_eth0_suse = """BOOTPROTO='dhcp'
+MTU=''
+REMOTE_IPADDR=''
+STARTMODE='auto'
+CLOUD_NETCONFIG_MANAGE='yes'
+"""
+
+cloud_init_output = """ci-info: ++++++++++++++++++++++++++++++++++++++Net device info+++++++++++++++++++++++++++++++++++++++
+ci-info: +--------+------+-----------------------------+---------------+--------+-------------------+
+ci-info: | Device |  Up  |           Address           |      Mask     | Scope  |     Hw-Address    |
+ci-info: +--------+------+-----------------------------+---------------+--------+-------------------+
+ci-info: |  eth0  | True |         10.0.1.10           | 255.255.255.0 | global | 60:45:bd:12:34:56 |
+ci-info: |  eth0  | True | fe80::6245:bdff:fe12:3456/64 |       .       |  link  | 60:45:bd:12:34:56 |
+ci-info: |   lo   | True |          127.0.0.1          |   255.0.0.0   |  host  |         .         |
+ci-info: |   lo   | True |           ::1/128           |       .       |  host  |         .         |
+ci-info: +--------+------+-----------------------------+---------------+--------+-------------------+
+ci-info: +++++++++++++++++++++++++++++++Route IPv4 info+++++++++++++++++++++++++++++++
+ci-info: +-------+-----------------+-----------+-----------------+-----------+-------+
+ci-info: | Route |   Destination   |  Gateway  |     Genmask     | Interface | Flags |
+ci-info: +-------+-----------------+-----------+-----------------+-----------+-------+
+ci-info: |   0   |     0.0.0.0     | 10.0.1.1  |     0.0.0.0     |    eth0   |   UG  |
+ci-info: |   1   |    10.0.1.0     |  0.0.0.0  |  255.255.255.0  |    eth0   |   U   |
+ci-info: |   2   |  168.63.129.16  | 10.0.1.1  | 255.255.255.255 |    eth0   |  UGH  |
+ci-info: |   3   | 169.254.169.254 | 10.0.1.1  | 255.255.255.255 |    eth0   |  UGH  |
+ci-info: +-------+-----------------+-----------+-----------------+-----------+-------+
+"""
+
+zypper_history = """# zypp history v1
+2021-03-08 15:31:22|radd   |fe6aa9d27ce|dir:/usr/src/packages/SOURCES/repos/SUSE%3ASLE-15-SP1%3AUpdate/standard|
+2021-03-08 15:31:22|command|root@hananode01|'zypper' 'install' '--auto-agree-with-licenses' 'pacemaker' 'corosync'|
+2021-03-08 15:31:23|install|pacemaker|2.1.7+20231219.0f7f88312-150600.4.7|x86_64||SLE-HA-Product|abc123|
+2021-03-08 15:31:23|install|corosync|2.4.6-150300.12.10.1|x86_64||SLE-HA-Product|def456|
+2021-03-08 15:31:24|install|resource-agents|4.13.0+git6.ae50f94f-150600.2.2|x86_64||SLE-HA-Product|ghi789|
+2021-03-08 15:31:24|install|fence-agents-azure-arm|4.12.1+git.1677142927.bf55c675-150500.4.19.1|noarch||SLE-HA-Product|jkl012|
+2021-03-08 15:31:25|install|cloud-netconfig-azure|1.15-150000.25.26.1|noarch||SLE-Module-Public-Cloud|mno345|
+2021-03-08 15:31:25|install|python3-azure-mgmt-compute|18.0.0-150100.6.11.2|noarch||SLE-Module-Public-Cloud|pqr678|
+2021-03-08 15:31:25|install|python3-azure-core|1.22.1-150100.3.7.2|noarch||SLE-Module-Public-Cloud|stu901|
+2021-03-08 15:31:26|install|sbd|1.5.2+20241209.5946119-150500.3.3.2|x86_64||SLE-HA-Product|vwx234|
+"""
+
+with zipfile.ZipFile(fixture_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    zf.writestr('results.txt', results_txt)
+    zf.writestr('diskinfo.txt', 'Disk info placeholder\n')
+    zf.writestr('device_0/etc/fstab', fstab_content)
+    zf.writestr('device_0/etc/SuSE-release', sles_release)
+    zf.writestr('device_0/etc/hostname', 'hananode01\n')
+    zf.writestr('device_0/etc/hosts', hosts_content)
+    zf.writestr('device_0/etc/corosync/corosync.conf', corosync_conf)
+    zf.writestr('device_0/etc/sysconfig/network/network/ifcfg-eth0', ifcfg_eth0_suse)
+    zf.writestr('device_0/var/log/cloud-init-output.log', cloud_init_output)
+    zf.writestr('device_0/var/log/zypp/history', zypper_history)
+INSPECT_CLUSTER_PYEOF
+echo "✓ Created test-inspect-iaas-disk-cluster.zip"
 
 echo ""
 echo "========================================="

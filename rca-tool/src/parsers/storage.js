@@ -13,7 +13,7 @@
  * | `lvmConfigParser` | `lvm.txt`, `pvs.txt`, `vgs.txt`, `lvs.txt`, `pvdisplay`, `vgdisplay`, `lvdisplay` | Parses Physical Volumes, Volume Groups, and Logical Volumes; validates PV-to-VG membership |
  * | `raidConfigParser` | `mdstat`, `md-arrays.txt`, `mdadm.txt`, `proc/mdstat` | Parses `/proc/mdstat` RAID arrays; detects degraded state, faulty devices, rebuild progress |
  * | `btrfsConfigParser` | `btrfs.txt`, `fs-btrfs.txt`, `btrfs-filesystem-show.txt`, `btrfs-subvolume-list.txt` | Extracts BTRFS filesystem inventory (label, UUID, devices) and subvolume list |
- * | `blockDevicesParser` | `lsblk`, `lsblk_-f_-a_-l`, `blkid_-c_.dev.null` | Builds disk/partition inventory with UUID, filesystem type, and mount point maps (multi-file) |
+ * | `blockDevicesParser` | `lsblk`, `lsblk_-f_-a_-l`, `blkid_-c_.dev.null`, `results.txt` (InspectIaaSDisk) | Builds disk/partition inventory with UUID, filesystem type, and mount point maps (multi-file) |
  * | `fstabAnalysisParser` | `/etc/fstab`, `fs-diskio.txt` | Parses fstab entries; classifies source type (UUID/device/label/network); flags missing `nofail` on non-OS mounts |
  * | `dfOutputParser` | `df`, `df_-aliT`, `df_-al_`, `fs-diskio.txt` | Parses `df` output for filesystem usage; builds mountpoint-to-usage lookup |
  *
@@ -62,21 +62,25 @@
  * | lvmConfig | `parsePVs`, `parseVGs`, `parseLVs` | Column-based parsing of pvs/vgs/lvs command output |
  * | lvmConfig | `validatePVsInVGs` | Cross-validates PV VG references against the VG list |
  * | btrfsConfig | `parseFilesystems`, `parseSubvolumes` | Parses `btrfs filesystem show` and `btrfs subvolume list` output |
- * | blockDevices | `parseLsblkBasic`, `parseLsblkFull`, `parseBlkid` | Three lsblk/blkid output formats into a unified device map |
+ * | blockDevices | `parseLsblkBasic`, `parseLsblkFull`, `parseBlkid`, `parseInspectDiskFilesystems` | Three lsblk/blkid output formats + InspectIaaSDisk Filesystem Status into a unified device map |
  * | fstabAnalysis | `extractFstabFromSCC` | Extracts the fstab section from the aggregated `fs-diskio.txt` |
  * | dfOutput | `extractDfFromSCC` | Extracts the df section from the aggregated `fs-diskio.txt` |
  */
 
-const storageDebugLog = console.log.bind(console, '[STORAGE]');
+function storageDebugLog(...args) {
+    if (typeof DEBUG_CONFIG !== 'undefined' && DEBUG_CONFIG.storage) {
+        console.log('[storage.js]', ...args);
+    }
+}
 
 /**
  * Parser: lvmConfig
  * Parses LVM configuration from various supportconfig/sosreport files
  */
 const lvmConfigParser = {
-    filePattern: /\/(lvm\.txt|pvs\.txt|vgs\.txt|lvs\.txt|pvdisplay|vgdisplay|lvdisplay)$/,
+    filePattern: /\/(lvm\.txt|pvs\.txt|vgs\.txt|lvs\.txt|pvdisplay|vgdisplay|lvdisplay)$|\/lvm2\/pvs_|\/lvm2\/vgs_|\/lvm2\/lvs_/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         storageDebugLog('[LVM parser] Analyzing:', filename);
         
         const result = {
@@ -88,8 +92,11 @@ const lvmConfigParser = {
             rawOutput: {}
         };
         
+        // Route to correct sub-parser based on filename
+        const basename = filename.split('/').pop();
+        
         // Check if this is an lvm.txt aggregated file or individual command output
-        if (filename.includes('lvm.txt')) {
+        if (basename === 'lvm.txt') {
             storageDebugLog('Processing aggregated lvm.txt file');
             
             // Parse aggregated lvm.txt file with multiple command outputs
@@ -110,11 +117,11 @@ const lvmConfigParser = {
                 storageDebugLog('Found lvs section, length:', lvsMatch[1].length);
                 this.parseLVs(lvsMatch[1], result);
             }
-        } else if (filename.includes('pvs') || filename.includes('pvdisplay')) {
+        } else if (basename.startsWith('pvs') || basename === 'pvdisplay') {
             this.parsePVs(content, result);
-        } else if (filename.includes('vgs') || filename.includes('vgdisplay')) {
+        } else if (basename.startsWith('vgs') || basename === 'vgdisplay') {
             this.parseVGs(content, result);
-        } else if (filename.includes('lvs') || filename.includes('lvdisplay')) {
+        } else if (basename.startsWith('lvs') || basename === 'lvdisplay') {
             this.parseLVs(content, result);
         }
         
@@ -131,14 +138,47 @@ const lvmConfigParser = {
         return result;
     },
     
+    /**
+     * Merge results from multiple LVM files (sosreport has separate pvs/vgs/lvs files).
+     * Re-validates PV-to-VG membership after merge.
+     */
+    mergeResults: function(existing, newResult) {
+        if (newResult.pvs && newResult.pvs.length > 0) existing.pvs.push(...newResult.pvs);
+        if (newResult.vgs && newResult.vgs.length > 0) existing.vgs.push(...newResult.vgs);
+        if (newResult.lvs && newResult.lvs.length > 0) existing.lvs.push(...newResult.lvs);
+        if (newResult.warnings && newResult.warnings.length > 0) existing.warnings.push(...newResult.warnings);
+        if (newResult.rawOutput) Object.assign(existing.rawOutput, newResult.rawOutput);
+        if (newResult.pvs?.length > 0 || newResult.vgs?.length > 0 || newResult.lvs?.length > 0) {
+            existing.found = true;
+        }
+        // Re-validate after merge if we have both PVs and VGs
+        if (existing.pvs.length > 0 && existing.vgs.length > 0) {
+            // Clear previous validation warnings to avoid duplicates
+            existing.warnings = existing.warnings.filter(w => w.type !== 'Missing VG' && w.type !== 'PV Count Mismatch');
+            this.validatePVsInVGs(existing);
+        }
+    },
+    
+    /** Filter diagnostic preamble lines from LVM command output (sosreport verbose mode). */
+    _cleanLvmOutput: function(content) {
+        return content
+            .split('\n')
+            .filter(line => {
+                const t = line.trim();
+                return !t.startsWith('#==') &&
+                       !t.startsWith('WARNING:') &&
+                       !t.startsWith('Reloading') &&
+                       !t.startsWith('Loading config') &&
+                       !t.startsWith('devices/');
+            })
+            .join('\n');
+    },
+    
     parsePVs: function(content, result) {
         storageDebugLog('Parsing PVs, content length:', content.length);
         
-        // Clean content from supportconfig markers
-        const cleanContent = content
-            .split('\n')
-            .filter(line => !line.trim().startsWith('#=='))
-            .join('\n');
+        // Clean content from supportconfig markers and LVM diagnostic preamble
+        const cleanContent = this._cleanLvmOutput(content);
         
         result.rawOutput.pvs = cleanContent;
         
@@ -176,17 +216,27 @@ const lvmConfigParser = {
     parseVGs: function(content, result) {
         storageDebugLog('VGs: Parsing VGs, content length:', content.length);
         
-        // Clean content from supportconfig markers
-        const cleanContent = content
-            .split('\n')
-            .filter(line => !line.trim().startsWith('#=='))
-            .join('\n');
+        // Clean content from supportconfig markers and LVM diagnostic preamble
+        const cleanContent = this._cleanLvmOutput(content);
         
         result.rawOutput.vgs = cleanContent;
         
         // Parse vgs command output
         const lines = cleanContent.split('\n');
         storageDebugLog('VGs: Processing', lines.length, 'lines');
+        
+        // Detect column order from header:
+        //   Default (SCC):   VG #PV #LV #SN Attr   VSize  VFree
+        //   Verbose (sosreport): VG Attr Ext #PV #LV #SN VSize VFree ...
+        let headerFormat = 'default';
+        for (const line of lines) {
+            const t = line.trim();
+            if (t.startsWith('VG ') || t.startsWith('VG\t')) {
+                if (/^VG\s+Attr/.test(t)) headerFormat = 'verbose';
+                break;
+            }
+        }
+        storageDebugLog('VGs: Detected header format:', headerFormat);
         
         for (const line of lines) {
             const trimmed = line.trim();
@@ -195,8 +245,20 @@ const lvmConfigParser = {
             // Look for VG names (not starting with /)
             const parts = trimmed.split(/\s+/);
             if (parts.length >= 2 && !parts[0].startsWith('/') && !parts[0].startsWith('-')) {
-                // First column should be VG name, second should be a number (PV count)
-                if (/^\d+$/.test(parts[1])) {
+                if (headerFormat === 'verbose' && parts.length >= 7 && /^\d+$/.test(parts[3])) {
+                    // Verbose: VG Attr Ext #PV #LV #SN VSize VFree ...
+                    storageDebugLog('VGs: Found VG line (verbose):', trimmed);
+                    result.vgs.push({
+                        name: parts[0],
+                        attr: parts[1],
+                        pv_count: parts[3],
+                        lv_count: parts[4] || '-',
+                        size: parts[6] || '-',
+                        free: parts[7] || '-'
+                    });
+                    storageDebugLog('VGs: Added VG:', parts[0]);
+                } else if (/^\d+$/.test(parts[1])) {
+                    // Default: VG #PV #LV #SN Attr VSize VFree
                     storageDebugLog('VGs: Found VG line:', trimmed);
                     result.vgs.push({
                         name: parts[0],
@@ -216,11 +278,8 @@ const lvmConfigParser = {
     parseLVs: function(content, result) {
         storageDebugLog('LVs: Parsing LVs, content length:', content.length);
         
-        // Clean content from supportconfig markers
-        const cleanContent = content
-            .split('\n')
-            .filter(line => !line.trim().startsWith('#=='))
-            .join('\n');
+        // Clean content from supportconfig markers and LVM diagnostic preamble
+        const cleanContent = this._cleanLvmOutput(content);
         
         result.rawOutput.lvs = cleanContent;
         
@@ -286,7 +345,7 @@ const lvmConfigParser = {
  */
 const raidConfigParser = {
     filePattern: /\/(mdstat|md-arrays\.txt|mdadm\.txt|proc\/mdstat)$/,
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         storageDebugLog('[RAID parser] Analyzing:', filename);
         const result = {
             found: false,
@@ -295,7 +354,7 @@ const raidConfigParser = {
             rawOutput: {}
         };
         result.rawOutput.mdstat = content;
-        const lines = content.split('\n');
+        const lines = _lines || content.split('\n');
         let currentArray = null;
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
@@ -382,7 +441,7 @@ const raidConfigParser = {
 const btrfsConfigParser = {
     filePattern: /\/(btrfs\.txt|fs-btrfs\.txt|btrfs-filesystem-show\.txt|btrfs-subvolume-list\.txt)$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         storageDebugLog('[BTRFS parser] Analyzing:', filename);
         
         const result = {
@@ -537,16 +596,21 @@ const btrfsConfigParser = {
 
 /**
  * Parser: blockDevices
- * Parses block device information from lsblk and blkid outputs
- * Correlates with fstab to detect UUID mismatches or mount issues
+ * Parses block device information from lsblk and blkid outputs, as well as
+ * InspectIaaSDisk results.txt Filesystem Status section.
+ * Correlates with fstab to detect UUID mismatches or mount issues.
+ *
+ * Sources:
+ *   - sosreport: sos_commands/block/lsblk, lsblk_-f_-a_-l, blkid_-c_.dev.null
+ *   - InspectIaaSDisk: results.txt (Filesystem Status section provides device/uuid/fstype)
  */
 const blockDevicesParser = {
-    filePattern: /\/sos_commands\/block\/(lsblk|lsblk_-f_-a_-l|blkid_-c_.dev.null)$/,
+    filePattern: /\/sos_commands\/block\/(lsblk|lsblk_-f_-a_-l|blkid_-c_.dev.null)$|^results\.txt$/,
     
     // This parser accumulates data from multiple files
     multiFile: true,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         storageDebugLog('[blockDevices parser] Analyzing:', filename);
         
         const result = {
@@ -569,6 +633,9 @@ const blockDevicesParser = {
         } else if (filename.includes('blkid')) {
             // Parse blkid output for complete UUID info
             this.parseBlkid(content, result);
+        } else if (filename.endsWith('results.txt')) {
+            // Parse InspectIaaSDisk results.txt Filesystem Status section
+            this.parseInspectDiskFilesystems(content, result);
         }
         
         if (result.disks.length > 0 || result.partitions.length > 0 || Object.keys(result.uuidMap).length > 0) {
@@ -741,6 +808,96 @@ const blockDevicesParser = {
             if (label) deviceInfo.label = label;
             if (blockSize) deviceInfo.blockSize = blockSize;
         }
+    },
+
+    /**
+     * Parse InspectIaaSDisk results.txt "Filesystem Status" section.
+     * Extracts device, filesystem type, and UUID from lines like:
+     *   /dev/sda1: xfs [uuid=849d8772-f8d2-4698-8d69-53c316388aa8]
+     *   /dev/sda14: unknown [uuid=]
+     *
+     * This provides the same device→uuid→fstype mapping that lsblk/blkid
+     * give in sosreport, enabling UUID-mismatch correlation with fstab
+     * for InspectIaaSDisk archives.
+     */
+    parseInspectDiskFilesystems: function(content, result) {
+        storageDebugLog('Parsing InspectIaaSDisk results.txt for Filesystem Status');
+
+        // Quick validation: must contain the Filesystem Status section
+        if (!content.includes('Filesystem Status:')) {
+            storageDebugLog('No Filesystem Status section found — not an InspectIaaSDisk results.txt');
+            return;
+        }
+
+        result.rawOutput.inspectDisk = content;
+
+        const lines = content.split('\n');
+        let inFilesystemSection = false;
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+
+            if (trimmed === 'Filesystem Status:') {
+                inFilesystemSection = true;
+                continue;
+            }
+
+            // End of section: blank line, next section header, or operation log
+            if (inFilesystemSection && (
+                trimmed === '' ||
+                trimmed.startsWith('Inspection') ||
+                trimmed.startsWith('=====') ||
+                /^\d{2}:\d{2}:\d{2}\s+Executing/.test(trimmed)
+            )) {
+                break;
+            }
+
+            if (!inFilesystemSection) continue;
+
+            // Format: /dev/sda1: xfs [uuid=849d8772-...]
+            //         /dev/sda14: unknown [uuid=]
+            const fsMatch = trimmed.match(/^(\/dev\/\S+):\s+(\S+)\s+\[uuid=([^\]]*)\]/);
+            if (!fsMatch) continue;
+
+            const device = fsMatch[1];
+            const fstype = fsMatch[2];
+            const uuid = fsMatch[3] || null;
+
+            // Skip unknown/empty filesystem entries
+            if (fstype === 'unknown' && !uuid) continue;
+
+            // Determine device type heuristic: paths containing a VG name
+            // (e.g. /dev/rootvg/rootlv) are LVM volumes → 'lvm', plain
+            // partitions like /dev/sda1 → 'part'
+            const isLvm = /^\/dev\/[^/]+\/[^/]+$/.test(device) && !device.match(/^\/dev\/sd[a-z]\d+$/);
+            const type = isLvm ? 'lvm' : 'part';
+
+            if (!result.deviceMap[device]) {
+                const deviceInfo = {
+                    name: device.replace('/dev/', ''),
+                    device: device,
+                    type: type,
+                    source: 'InspectIaaSDisk'
+                };
+                result.deviceMap[device] = deviceInfo;
+                result.partitions.push(deviceInfo);
+            }
+
+            const deviceInfo = result.deviceMap[device];
+            if (fstype && fstype !== 'unknown') {
+                deviceInfo.fstype = fstype;
+            }
+            if (uuid) {
+                deviceInfo.uuid = uuid;
+                result.uuidMap[uuid] = device;
+                result.uuidMap[uuid.toLowerCase()] = device;
+                result.uuidMap[uuid.toUpperCase()] = device;
+            }
+
+            storageDebugLog('InspectIaaSDisk: Added device:', device, 'type:', fstype, 'uuid:', uuid);
+        }
+
+        storageDebugLog('InspectIaaSDisk: Parsed', Object.keys(result.deviceMap).length, 'devices');
     }
 };
 
@@ -752,7 +909,7 @@ const blockDevicesParser = {
 const fstabAnalysisParser = {
     filePattern: /\/etc\/fstab$|\/fs-diskio\.txt$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         storageDebugLog('[fstabAnalysis parser] Analyzing:', filename);
         
         // If this is SCC's fs-diskio.txt, extract just the fstab section
@@ -901,7 +1058,7 @@ const fstabAnalysisParser = {
 const dfOutputParser = {
     filePattern: /\/df$|\/df_-aliT|\/df_-al_|\/fs-diskio\.txt$/,
     
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         storageDebugLog('[dfOutput parser] Analyzing:', filename);
         
         const result = {

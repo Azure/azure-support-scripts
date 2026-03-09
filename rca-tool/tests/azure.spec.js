@@ -4,8 +4,8 @@
  *
  * Covers Azure VM property detection, BYOS / PAYG billing-model
  * classification across SLES, RHEL, and Ubuntu images, SCC
- * `metadata.txt` format parsing, and Azure storage-type display
- * (Ultra Disk, Premium SSD v2).
+ * `metadata.txt` format parsing, Azure storage-type display
+ * (Ultra Disk, Premium SSD v2), and waagent.conf parsing.
  */
 import { test, expect } from './coverage-fixture.js';
 import { uploadAndWaitForAnalysis, getResultText, navigateToApp, fixturePath } from './test-helpers.js';
@@ -190,5 +190,51 @@ test.describe('Azure Parser', () => {
     // Should show regular Premium SSD
     expect(resultHTML).toContain('LUN 2');
     expect(resultHTML).toContain('1024 GB');
+  });
+
+  test('parses waagent.conf from InspectIaaSDisk ZIP', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk.zip'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('Azure Linux Agent Configuration');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+
+    // Should display the waagent config subsection
+    expect(content).toContain('Azure Linux Agent Configuration');
+
+    // Key settings should be rendered
+    expect(content).toMatch(/Extensions.*Enabled/);
+    expect(content).toMatch(/OS Firewall.*Enabled/);
+    expect(content).toMatch(/Provisioning Agent.*auto/);
+    expect(content).toMatch(/Resource Disk Swap.*Disabled/);
+    expect(content).toMatch(/Auto-Update.*Enabled/);
+    expect(content).toContain('300s');  // SCSI timeout
+  });
+
+  test('waagent.conf shows no warnings for healthy config', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk.zip'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('Azure Linux Agent Configuration');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+
+    // The default fixture has a healthy config — no warning messages expected
+    expect(content).not.toContain('extensions are disabled');
+    expect(content).not.toContain('firewall (wire-server access control) is disabled');
+    expect(content).not.toContain('Swap is enabled on the resource');
   });
 });

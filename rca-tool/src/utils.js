@@ -489,21 +489,36 @@ function extractRawFile(content, filename, debugLog) {
  * @returns {Object} Object with addedEvents array and duplicateCount
  */
 function deduplicateEvents(existingEvents, newEvents, comparisonFields, debugLog) {
+    // Build a Set of composite keys from existing events for O(1) lookup
+    // This replaces the previous O(N×M) .some() scan with O(N+M) Set operations
+    const keySet = new Set();
+    for (let i = 0; i < existingEvents.length; i++) {
+        const evt = existingEvents[i];
+        let key = '';
+        for (let f = 0; f < comparisonFields.length; f++) {
+            if (f > 0) key += '\0';
+            key += evt[comparisonFields[f]];
+        }
+        keySet.add(key);
+    }
+    
     const addedEvents = [];
     let duplicateCount = 0;
     
-    newEvents.forEach(newEvent => {
-        // Check if this event already exists by comparing specified fields
-        const isDuplicate = existingEvents.some(existingEvent => {
-            return comparisonFields.every(field => existingEvent[field] === newEvent[field]);
-        });
-        
-        if (!isDuplicate) {
-            addedEvents.push(newEvent);
-        } else {
-            duplicateCount++;
+    for (let i = 0; i < newEvents.length; i++) {
+        const newEvent = newEvents[i];
+        let key = '';
+        for (let f = 0; f < comparisonFields.length; f++) {
+            if (f > 0) key += '\0';
+            key += newEvent[comparisonFields[f]];
         }
-    });
+        if (keySet.has(key)) {
+            duplicateCount++;
+        } else {
+            keySet.add(key); // Also dedup within newEvents batch
+            addedEvents.push(newEvent);
+        }
+    }
     
     if (debugLog) {
         debugLog(`[deduplicateEvents] Added ${addedEvents.length} new events, skipped ${duplicateCount} duplicates`);

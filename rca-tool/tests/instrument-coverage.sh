@@ -44,7 +44,12 @@ echo "  ✓ worker.js → liblzma-streaming-worker.js"
 # data piggybacks on every message sent back to the main thread.  This lets the
 # test fixture capture coverage even though the worker is terminated right after
 # sending results.
-cat >> "$DIST_DIR/liblzma-streaming-worker.js" << 'COVERAGE_HOOK'
+#
+# Also define DEBUG_CONFIG so that parser debugLog() bodies are exercised,
+# covering the otherwise-untestable console.log branches.
+WORKER="$DIST_DIR/liblzma-streaming-worker.js"
+
+cat >> "$WORKER" << 'COVERAGE_HOOK'
 
 // --- Istanbul Coverage Hook (injected by instrument-coverage.sh) ---
 // Piggybacks __coverage__ data onto every postMessage from the worker so the
@@ -60,5 +65,18 @@ cat >> "$DIST_DIR/liblzma-streaming-worker.js" << 'COVERAGE_HOOK'
 })();
 COVERAGE_HOOK
 echo "  ✓ coverage hook injected into worker"
+
+# Enable debug logging for all parsers so debugLog() console.log branches
+# are exercised during tests, covering those otherwise-untestable lines.
+# DEBUG_CONFIG is a const object in the worker — its properties are mutable.
+cat >> "$WORKER" << 'DEBUG_HOOK'
+
+// --- Debug Config Enablement (injected by instrument-coverage.sh) ---
+// Turns on debugLog() for every parser so coverage captures the console.log body.
+if (typeof DEBUG_CONFIG !== 'undefined') {
+  Object.keys(DEBUG_CONFIG).forEach(function(k) { DEBUG_CONFIG[k] = true; });
+}
+DEBUG_HOOK
+echo "  ✓ debug config enablement injected"
 
 echo "Instrumentation complete."

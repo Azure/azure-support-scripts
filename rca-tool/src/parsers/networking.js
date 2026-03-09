@@ -128,7 +128,7 @@ const firewallRulesParser = {
     filePattern: /(?:network\.txt$|sos_commands\/firewalld\/|sos_commands\/firewall_tables\/|etc\/sysconfig\/(?:iptables-config|ebtables-config|nftables\.conf|firewalld)$|etc\/firewalld\/firewalld\.conf$)/,
     multiFile: true,
 
-    parse: function(content, filename) {
+    parse: function(content, filename, _lines) {
         debugLog('[firewallRules parser] Analyzing:', filename, '(', content.length, 'bytes)');
 
         // Accumulator – each call contributes; worker.js merges across files.

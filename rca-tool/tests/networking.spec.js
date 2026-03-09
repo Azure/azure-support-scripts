@@ -7,7 +7,7 @@
  * in `network.txt`).
  */
 import { test, expect } from './coverage-fixture.js';
-import { uploadAndWaitForAnalysis, getResultText, navigateToApp } from './test-helpers.js';
+import { uploadAndWaitForAnalysis, getResultText, navigateToApp, fixturePath } from './test-helpers.js';
 
 test.describe('Networking Parser', () => {
 
@@ -65,5 +65,25 @@ test.describe('Networking Parser', () => {
     expect(resultText).toMatch(/nftables|Active.*nftables/i);
     // Should show the security table with waagent rules
     expect(resultHTML).toContain('168.63.129.16');
+  });
+
+  test('detects firewalld configuration from InspectIaaSDisk ZIP', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('test-inspect-iaas-disk.zip'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('InspectIaaSDisk Results');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+
+    // Should detect firewalld from firewalld.conf
+    expect(content).toMatch(/firewall/i);
+    // Should detect nftables backend
+    expect(content).toContain('nftables');
   });
 });

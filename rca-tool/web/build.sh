@@ -15,6 +15,7 @@ mkdir -p public
 echo "Copying worker files..."
 cp ../src/worker.js public/liblzma-streaming-worker.js
 cp ../src/utils.js public/utils.js
+cp ../src/performance.js public/performance.js
 
 # Copy parsers directory
 echo "Copying parsers..."

@@ -62,14 +62,20 @@ const createAutomationParser = function(SCC_RULES) {
         // - "chef-apply: " (Chef apply executions)
         // Future: SaltStack, etc.
         // Returns array of detected automation events with timestamps and full command lines
-        parse: function(content, filename) {
-            const lines = content.split('\n');
+        parse: function(content, filename, _lines) {
+            const lines = _lines || content.split('\n');
             const automationEvents = [];
             
             debugLog('[automation parser] Analyzing', lines.length, 'lines for automation tool usage');
             
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
+                
+                // Fast pre-filter: skip lines that can't match any automation pattern
+                // These keywords cover all 8 patterns below
+                if (!(line.includes('ansible-') || line.includes('puppet') || line.includes('chef-'))) {
+                    continue;
+                }
                 
                 let toolType = null;
                 let patternType = null;

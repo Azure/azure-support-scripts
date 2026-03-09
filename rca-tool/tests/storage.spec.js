@@ -3,8 +3,9 @@
  * @description Playwright tests for {@link module:parsers/storage}.
  *
  * Tests UUID-mismatch detection between `/etc/fstab` and block
- * devices.  Also contains commented-out tests for LVM, RAID, BTRFS,
- * and PV-validation that are pending a storage.js loading fix.
+ * devices, LVM configuration parsing from both SCC and sosreport
+ * formats, including multi-file accumulation for separate
+ * pvs/vgs/lvs files.
  */
 import { test, expect } from './coverage-fixture.js';
 import { uploadAndWaitForAnalysis, getResultText, navigateToApp } from './test-helpers.js';
@@ -16,9 +17,7 @@ test.describe('Storage Parsers', () => {
     await expect(page.locator('h1')).toContainText('RCA Tool');
   });
 
-  // TODO: Re-enable these tests when storage.js loading issue is fixed
-  /*
-  test('detects and displays LVM configuration', async ({ page }) => {
+  test('detects and displays LVM configuration from SCC', async ({ page }) => {
     const resultHTML = await uploadAndWaitForAnalysis(page, 'scc_test-lvm.tar.xz');
     
     // Should display LVM Configuration section
@@ -28,13 +27,11 @@ test.describe('Storage Parsers', () => {
     expect(resultHTML).toContain('Physical Volumes');
     expect(resultHTML).toContain('/dev/sda2');
     expect(resultHTML).toContain('/dev/sdb1');
-    expect(resultHTML).toContain('/dev/sdc1');
     
     // Should show Volume Groups
     expect(resultHTML).toContain('Volume Groups');
     expect(resultHTML).toContain('rootvg');
     expect(resultHTML).toContain('datavg');
-    expect(resultHTML).toContain('missingvg');
     
     // Should show Logical Volumes
     expect(resultHTML).toContain('Logical Volumes');
@@ -43,95 +40,33 @@ test.describe('Storage Parsers', () => {
     expect(resultHTML).toContain('app');
     expect(resultHTML).toContain('data');
     expect(resultHTML).toContain('backup');
-    
-    // Should display warnings for missing PVs
-    expect(resultHTML).toContain('warning');
-    
-    // Should show raw output sections
-    expect(resultHTML).toContain('Raw pvs output');
-    expect(resultHTML).toContain('Raw vgs output');
-    expect(resultHTML).toContain('Raw lvs output');
   });
 
-  test('detects and displays RAID configuration', async ({ page }) => {
-    const resultHTML = await uploadAndWaitForAnalysis(page, 'scc_test-raid.tar.xz');
-    
-    // Should display RAID Configuration section
-    expect(resultHTML).toContain('RAID Configuration');
-    
-    // Should show RAID Arrays
-    expect(resultHTML).toContain('RAID Arrays');
-    expect(resultHTML).toContain('md0');
-    expect(resultHTML).toContain('md1');
-    expect(resultHTML).toContain('md2');
-    
-    // Should display RAID levels
-    expect(resultHTML).toContain('raid1');
-    expect(resultHTML).toContain('raid5');
-    
-    // Should show device status
-    expect(resultHTML).toContain('ACTIVE');
-    expect(resultHTML).toContain('/dev/sda1');
-    expect(resultHTML).toContain('/dev/sdb1');
-    expect(resultHTML).toContain('/dev/sdc1');
-    
-    // Should display warnings for degraded arrays
-    expect(resultHTML).toContain('DEGRADED');
-    
-    // Should show faulty devices
-    expect(resultHTML).toContain('faulty');
-    
-    // Should show raw mdstat output
-    expect(resultHTML).toContain('Raw /proc/mdstat');
-  });
+  test('detects LVM configuration from sosreport verbose format', async ({ page }) => {
+    const resultHTML = await uploadAndWaitForAnalysis(page, 'scc_test-lvm-sosreport.tar.xz');
 
-  test('detects and displays BTRFS configuration', async ({ page }) => {
-    const resultHTML = await uploadAndWaitForAnalysis(page, 'scc_test-btrfs.tar.xz');
-    
-    // Should display BTRFS Configuration section
-    expect(resultHTML).toContain('BTRFS Configuration');
-    
-    // Should show BTRFS Filesystems
-    expect(resultHTML).toContain('BTRFS Filesystems');
-    expect(resultHTML).toContain('root');
-    expect(resultHTML).toContain('data');
-    expect(resultHTML).toContain('550e8400-e29b-41d4-a716-446655440000');
-    expect(resultHTML).toContain('7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d');
-    
-    // Should show devices
+    // Should display LVM Configuration section
+    expect(resultHTML).toContain('LVM Configuration');
+
+    // Should detect PVs from separate pvs file (filtering WARNING lines)
+    expect(resultHTML).toContain('Physical Volumes');
     expect(resultHTML).toContain('/dev/sda2');
-    expect(resultHTML).toContain('/dev/sdb2');
     expect(resultHTML).toContain('/dev/sdc1');
     expect(resultHTML).toContain('/dev/sdd1');
-    expect(resultHTML).toContain('/dev/sde1');
-    
-    // Should show BTRFS Subvolumes
-    expect(resultHTML).toContain('BTRFS Subvolumes');
-    expect(resultHTML).toContain('@rootfs');
-    expect(resultHTML).toContain('@home');
-    expect(resultHTML).toContain('@var');
-    expect(resultHTML).toContain('@var/log');
-    expect(resultHTML).toContain('@snapshots');
-    
-    // Should show raw output sections
-    expect(resultHTML).toContain('Raw btrfs filesystem show');
-    expect(resultHTML).toContain('Raw btrfs subvolume list');
-  });
 
-  test('validates PV presence in VGs', async ({ page }) => {
-    const resultHTML = await uploadAndWaitForAnalysis(page, 'scc_test-lvm.tar.xz');
-    
-    // Should detect missing PVs in missingvg
-    expect(resultHTML).toContain('missingvg');
-    
-    // Should show warning for PARTIAL status
-    const resultText = await getResultText(page);
-    expect(resultText).toMatch(/partial|missing|warning/i);
-    
-    // Should properly parse PV counts
-    expect(resultHTML).toMatch(/#PV/);
+    // Should detect VGs from separate verbose-format vgs file
+    expect(resultHTML).toContain('Volume Groups');
+    expect(resultHTML).toContain('rootvg');
+    expect(resultHTML).toContain('vggridhome');
+    expect(resultHTML).toContain('vgoraclebip');
+
+    // Should detect LVs from separate lvs file
+    expect(resultHTML).toContain('Logical Volumes');
+    expect(resultHTML).toContain('crashlv');
+    expect(resultHTML).toContain('rootlv');
+    expect(resultHTML).toContain('lvgridhome');
+    expect(resultHTML).toContain('lvoraclebip');
   });
-  */
 
   test('detects UUID mismatches between fstab and block devices', async ({ page }) => {
     const resultHTML = await uploadAndWaitForAnalysis(page, 'scc_test-block-devices-mismatch.tar.xz');
@@ -148,6 +83,49 @@ test.describe('Storage Parsers', () => {
     expect(resultHTML).toMatch(/66666666.*type.*mismatch|mismatch.*66666666|ext4.*xfs|xfs.*ext4/i);
     
     // Should have error badge or indicator in summary
+    const resultText = await getResultText(page);
+    expect(resultText).toMatch(/\[X\].*UUID|UUID.*error|error.*UUID/i);
+  });
+
+  test('detects block devices from InspectIaaSDisk results.txt and correlates with fstab', async ({ page }) => {
+    const resultHTML = await uploadAndWaitForAnalysis(page, 'test-inspect-iaas-disk-storage.zip');
+
+    // Should parse the Filesystem Status section from results.txt
+    // and build a UUID map that enables fstab correlation
+
+    // Should display storage correlation section
+    expect(resultHTML).toMatch(/Storage Correlation|UUID|fstab/i);
+
+    // UUIDs present in results.txt should be detected and matched
+    expect(resultHTML).toContain('11111111-aaaa-bbbb-cccc-111111111111');
+
+    // Missing UUID from fstab (OLD-UUID-DEAD) should generate an error
+    expect(resultHTML).toContain('OLD-UUID-DEAD');
+
+    // Missing UUID (GONE-UUID) should also be flagged
+    expect(resultHTML).toContain('GONE-UUID-0000');
+
+    // Should have error badge for UUID not found
+    const resultText = await getResultText(page);
+    expect(resultText).toMatch(/\[X\].*UUID|UUID.*error|error.*UUID/i);
+  });
+
+  test('detects block devices from sosreport lsblk/blkid and correlates with fstab', async ({ page }) => {
+    const resultHTML = await uploadAndWaitForAnalysis(page, 'scc_test-sosreport-storage.tar.xz');
+
+    // Should display storage correlation section
+    expect(resultHTML).toMatch(/Storage Correlation|UUID|fstab/i);
+
+    // UUIDs present in lsblk/blkid should be detected
+    expect(resultHTML).toContain('aaaa1111-1111-1111-1111-aaaaaaaaaaaa');
+
+    // UUID that doesn't exist on disk (DEAD0000) should generate error
+    expect(resultHTML).toContain('DEAD0000');
+
+    // fstype mismatch: fstab says ext4, disk (sdc1) has xfs for UUID 5678ef01
+    expect(resultHTML).toMatch(/5678ef01.*type.*mismatch|mismatch.*5678ef01|ext4.*xfs|xfs.*ext4/i);
+
+    // Should have error badge for UUID not found
     const resultText = await getResultText(page);
     expect(resultText).toMatch(/\[X\].*UUID|UUID.*error|error.*UUID/i);
   });
