@@ -3380,6 +3380,204 @@ with zipfile.ZipFile(fixture_path, 'w', zipfile.ZIP_DEFLATED) as zf:
 INSPECT_CLUSTER_PYEOF
 echo "✓ Created test-inspect-iaas-disk-cluster.zip"
 
+################################################################################
+# InspectIaaSDisk SLES ZIP fixture
+# Used by unix.spec.js tests for SLES-specific InspectIaaSDisk parsing:
+#   - results.txt with SLES distribution, mount successes/failures
+#   - os-release, fstab with HANA mounts, sysctl.conf, sysctl.d
+#   - waagent.conf, waagent.log with categorised errors/warnings
+#   - Azure VM extension HandlerStatus files
+#   - sysconfig network interface (ifcfg-eth0)
+################################################################################
+echo ""
+echo "=== Creating test-inspect-iaas-disk-sles.zip ==="
+
+python3 - "$FIXTURES_DIR" << 'INSPECT_SLES_PYEOF'
+import zipfile, sys
+fixtures_dir = sys.argv[1]
+fixture_path = f"{fixtures_dir}/test-inspect-iaas-disk-sles.zip"
+
+results_txt = """Execution start time: 18:12:51.
+
+========== Request Info ==========
+Storage Acct: md-djzwkqttxnxb.z50.blob.storage.azure.net
+Container/Vhd: /jhfcb3s4xnxv/abcd
+Manifest requested: diagnostic
+Inspect service Operational ID: fc5d80d2-86aa-4b1f-a601-1d59ae66eba7
+Guestfish version: 1.57.5.
+========== End Request Info ==========
+
+Filesystem Status:
+/dev/sda1: unknown [uuid=]
+/dev/sda2: vfat [uuid=4150-8F0C]
+/dev/sda3: xfs [uuid=e98ca93f-ca1e-497e-a071-6157e9b1b704]
+/dev/sda4: xfs [uuid=3b92cd1e-e4ff-498d-b4a1-3cf4710b9e84]
+Inspection Status:
+/dev/sda4
+Inspection Metadata for /dev/sda4
+Type: linux
+Distribution: sles
+Product Name: SUSE Linux Enterprise Server 15 SP6
+Mount Points:
+/: /dev/sda4
+/mnt: /dev/disk/cloud/azure_resource-part1
+/boot: /dev/sda3
+/boot/efi: /dev/sda2
+Mounting /dev/sda4 on / SUCCEEDED.
+Mounting /dev/disk/cloud/azure_resource-part1 on /mnt FAILED.
+Mounting /dev/sda3 on /boot SUCCEEDED.
+Mounting /dev/sda2 on /boot/efi SUCCEEDED.
+
+
+Using manifest: diagnostic  [linux]
+18:13:11  Executing Operation [1/3]: echo,### Probing Directories ###
+### Probing Directories ###
+18:13:12  Executing Operation [2/3]: ll,/boot
+18:13:12  Listing contents of /boot:
+total 151204
+drwxr-xr-x  4 root root     4096 Feb 19 08:01 .
+drwxr-xr-x 25 root root     4096 Apr 21  2024 ..
+-rw-r--r--  1 root root 14191584 Jun 12  2024 vmlinuz-6.4.0-150600.21-default
+18:13:13  Executing Operation [3/3]: ll,/var/log
+18:13:13  Listing contents of /var/log:
+total 90924
+drwxr-xr-x 23 root root    16384 Feb 20 16:23 .
+drwxr-xr-x 11 root root      175 Feb 15 09:29 ..
+drwxr-xr-x  8 root root      310 Mar 29  2025 azure
+-rw-r--r--  1 root root   185883 Feb 20 16:21 cloud-init-output.log
+-rw-r-----  1 root root  4284310 Feb 20 16:21 cloud-init.log
+-rw-r-----  1 root root   734311 Feb 20 16:16 messages
+"""
+
+diskinfo_txt = """Filesystem      Size  Used Avail Use% Mounted on
+/dev/root       4.0G  455M  3.3G  12% /
+/dev            592M     0  592M   0% /dev
+shmfs           600M     0  600M   0% /dev/shm
+tmpfs           240M  308K  240M   1% /run
+/dev/sda4        39G   12G   28G  30% /sysroot
+/dev/sda3      1014M  162M  853M  16% /sysroot/boot
+/dev/sda2       512M  336K  512M   1% /sysroot/boot/efi
+"""
+
+fstab_content = """UUID=3b92cd1e-e4ff-498d-b4a1-3cf4710b9e84 / xfs defaults 0 0
+UUID=e98ca93f-ca1e-497e-a071-6157e9b1b704 /boot xfs defaults 0 0
+UUID=4150-8F0C /boot/efi vfat defaults 0 0
+UUID=7a9e73d4-8de4-4eea-b71c-9bf061c3ac58 /hana/data xfs nofail,noatime,nodiratime,logbsize=256k 0 0
+UUID=3c468c3c-f109-4afe-8817-9d3b98fe752d /hana/log xfs nofail,noatime,nodiratime,logbsize=64k 0 0
+UUID=302db8c5-2c48-45ef-a9b3-d4a4a7a1aff7 /hana/shared xfs nofail,noatime,nodiratime 0 0
+UUID=c2b3591b-c75b-4b4d-81d0-07bb200be71c /usr/sap xfs nofail,noatime,nodiratime 0 0
+/dev/disk/cloud/azure_resource-part1    /mnt    auto    defaults,nofail,x-systemd.requires=cloud-init.service,_netdev,comment=cloudconfig       0       2
+"""
+
+os_release = """NAME="SLES"
+VERSION="15-SP6"
+VERSION_ID="15.6"
+PRETTY_NAME="SUSE Linux Enterprise Server 15 SP6"
+ID="sles"
+ID_LIKE="suse"
+ANSI_COLOR="0;32"
+CPE_NAME="cpe:/o:suse:sles:15:sp6"
+"""
+
+hostname_content = "PH1LDBI02\n"
+
+hosts_content = """127.0.0.1 localhost
+::1 localhost
+10.100.1.10 PH1LDBI02
+168.63.129.16 metadata.azure.com
+"""
+
+ifcfg_eth0 = """BOOTPROTO='dhcp'
+STARTMODE='onboot'
+CLOUD_NETCONFIG_MANAGE='yes'
+"""
+
+sysctl_conf = """net.core.rmem_max=629145
+net.core.wmem_max=4194304
+"""
+
+sysctl_sap = """fs.aio-max-nr=18446744073709551615
+vm.memory_failure_early_kill=1
+net.ipv4.tcp_max_syn_backlog=8192
+net.ipv4.tcp_slow_start_after_idle=0
+net.ipv4.tcp_window_scaling=1
+net.core.somaxconn=4096
+vm.swappiness=15
+vm.dirty_bytes=629145600
+vm.dirty_background_bytes=314572800
+"""
+
+waagent_conf = """Provisioning.Enabled=y
+Extensions.Enabled=y
+Provisioning.UseCloudInit=n
+Provisioning.DeleteRootPassword=y
+ResourceDisk.Format=y
+ResourceDisk.Filesystem=ext4
+ResourceDisk.MountPoint=/mnt
+ResourceDisk.EnableSwap=y
+ResourceDisk.SwapSizeMB=2048
+OS.EnableFirewall=y
+AutoUpdate.Enabled=n
+"""
+
+messages_log = """Feb 20 16:21:01 PH1LDBI02 systemd[1]: Starting Azure Linux Agent...
+Feb 20 16:21:02 PH1LDBI02 python3[1234]: 2026/02/20 16:21:02.123456 INFO MonitorHandler Azure Enhanced Monitoring agent for SAP enabled
+Feb 20 16:21:03 PH1LDBI02 kernel: [    0.000000] Linux version 6.4.0-150600.21-default (geeko@buildhost) (gcc-13 (SUSE Linux)) #1 SMP PREEMPT_DYNAMIC
+Feb 20 16:22:00 PH1LDBI02 wickedd-dhcp4[567]: eth0: Committed DHCPv4 lease with address 10.100.1.10
+Feb 20 16:23:00 PH1LDBI02 systemd[1]: Started Pacemaker High Availability Cluster Manager.
+Feb 20 16:23:01 PH1LDBI02 corosync[890]: [TOTEM] A processor joined or left the membership and a new membership was formed.
+"""
+
+waagent_log = """2026-02-19T06:05:04.123456Z INFO ExtHandler ExtHandler [HEARTBEAT] Agent WALinuxAgent-2.14.0.1 is running as the goal state agent [DEBUG HeartbeatCounter: 1;HeartbeatId: E4ADA91F-9183-4119-BA91-DF4FB32320D7;UpdateGSErrors: 0;AutoUpdate: 0;UpdateMode: SelfUpdate;]
+2026-02-19T06:11:48.234567Z INFO ExtHandler ExtHandler Fetched new vmSettings [HostGAPlugin correlation ID: 66b50f65-1914-44ca-af6e-d3ae6fcfab4d eTag: 15590114118628401591 source: FastTrack]
+2026-02-19T06:11:48.345678Z INFO ExtHandler ExtHandler ProcessExtensionsGoalState started [etag_15590114118628401591 channel: HostGAPlugin source: FastTrack activity: 1d0e7c19-a12b-441c-8a04-1783c6908355]
+2026-02-19T06:20:14.456789Z INFO ExtHandler [Microsoft.Azure.RecoveryServices.VMSnapshotLinux-1.0.9225.0] Target handler state: enabled [etag_15590114118628401591]
+2026-02-19T06:20:14.567890Z INFO ExtHandler [Microsoft.Azure.RecoveryServices.VMSnapshotLinux-1.0.9225.0] [Enable] current handler state is: enabled
+2026-02-19T07:22:26.678901Z ERROR ExtHandler ExtHandler Error fetching the goal state: [ProtocolError] GET vmSettings [correlation ID: 16758839-2b40-40d5-80cd-10572beda761 eTag: 1234] [Internal error: 500]
+2026-02-19T07:28:24.789012Z ERROR ExtHandler ExtHandler Error fetching the goal state: [ProtocolError] [Wireserver Exception] [HttpError] [HTTP Failed] GET http://168.63.129.16/machine/?comp=goalstate [HTTP Retry]
+2026-02-19T08:10:28.890123Z WARNING MonitorHandler ExtHandler [PERIODIC] [IMDS_CONNECTION_ERROR] Unable to connect to IMDS endpoint 169.254.169.254
+2026-02-19T08:28:52.901234Z ERROR ExtHandler ExtHandler Event: name=Microsoft.Azure.AzureDefenderForServers.MDE.Linux, op=Enable, message=[ExtensionOperationError] Non-zero exit code: 52, /var/lib/waagent/Microsoft.Azure.AzureDefenderForServers.MDE.Linux-1.0.9.2/MDE.Linux.sh enable
+2026-02-19T08:44:26.012345Z ERROR Daemon Daemon Failed to mount resource disk [ResourceDiskError] Could not mount /dev/sdc1 after syncing partition table: [32] mount: /mnt: /dev/sdc1 already mounted on /mnt.
+2026-02-19T09:27:24.123456Z WARNING ExtHandler ExtHandler [PERIODIC] The status reported by the extension Microsoft.CPlat.Core.LinuxPatchExtension-1.6.64(Sequence number 17), was in an incorrect format and the agent could not parse it correctly. Failed due to [ExtensionStatusError] Expecting value: line 1 column 1 (char 0)
+2026-02-19T09:27:24.234567Z WARNING ExtHandler ExtHandler [PERIODIC] This status is being reported by the Guest Agent since no status file was reported by extension Microsoft.Azure.AzureDefenderForServers.MDE.Linux: [ExtensionStatusError] Status file /var/lib/waagent/Microsoft.Azure.AzureDefenderForServers.MDE.Linux-1.0.9.2/status/51.status does not exist
+2026-02-19T10:36:32.345678Z INFO ExtHandler ExtHandler Extension status: [("Microsoft.Azure.AzureDefenderForServers.MDE.Linux", "transitioning"), ("Microsoft.Azure.RecoveryServices.VMSnapshotLinux", "success"), ("Microsoft.CPlat.Core.LinuxPatchExtension", "error"), ("Microsoft.CPlat.Core.RunCommandLinux", "success")]
+2026-02-19T12:10:11.456789Z INFO Daemon Daemon Agent WALinuxAgent-2.14.0.1 launched with command "/usr/bin/python3 -u /usr/sbin/waagent -run-exthandlers" is successfully running
+2026-02-19T15:29:33.567890Z INFO ExtHandler ExtHandler [HEARTBEAT] Agent WALinuxAgent-2.14.0.1 is running as the goal state agent [DEBUG HeartbeatCounter: 2;HeartbeatId: E4ADA91F-9183-4119-BA91-DF4FB32320D7;UpdateGSErrors: 0;AutoUpdate: 0;UpdateMode: SelfUpdate;]
+2026-02-20T16:11:27.678901Z WARNING Daemon Daemon Failed to mount resource disk. Attempting to format and retry mount. [mount: /mnt: /dev/sdc1 already mounted on /mnt.
+2026-02-20T16:23:39.789012Z INFO ExtHandler ExtHandler ProcessExtensionsGoalState completed [etag_5312742817917373788 125692 ms]
+"""
+
+mde_status = '{"handlerName":"Microsoft.Azure.AzureDefenderForServers.MDE.Linux","handlerVersion":"1.0.9.2","status":"Ready","code":0,"formattedMessage":{"lang":"en-US","message":"MDE agent installed successfully"}}'
+
+snapshot_status = '{"handlerName":"Microsoft.Azure.RecoveryServices.VMSnapshotLinux","handlerVersion":"1.0.9225.0","status":"Ready","code":0,"formattedMessage":{"lang":"en-US","message":"Snapshot extension ready"}}'
+
+workload_status = '{"handlerName":"Microsoft.Azure.RecoveryServices.WorkloadBackup.AzureBackupLinuxWorkload","handlerVersion":"2.0.0.5","status":"Ready","code":0,"formattedMessage":{"lang":"en-US","message":"Workload backup handler ready"}}'
+
+patch_status = '{"handlerName":"Microsoft.CPlat.Core.LinuxPatchExtension","handlerVersion":"1.6.64","status":"Ready","code":0,"formattedMessage":{"lang":"en-US","message":"Patch extension ready"}}'
+
+runcmd_status = '{"handlerName":"Microsoft.CPlat.Core.RunCommandLinux","handlerVersion":"1.0.11","status":"Ready","code":0,"formattedMessage":{"lang":"en-US","message":"RunCommand handler ready"}}'
+
+with zipfile.ZipFile(fixture_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    zf.writestr('results.txt', results_txt)
+    zf.writestr('diskinfo.txt', diskinfo_txt)
+    zf.writestr('device_0/etc/fstab', fstab_content)
+    zf.writestr('device_0/etc/hostname', hostname_content)
+    zf.writestr('device_0/etc/hosts', hosts_content)
+    zf.writestr('device_0/etc/os-release', os_release)
+    zf.writestr('device_0/etc/sysconfig/network/network/ifcfg-eth0', ifcfg_eth0)
+    zf.writestr('device_0/etc/sysctl.conf', sysctl_conf)
+    zf.writestr('device_0/etc/sysctl.d/sap_hdb_sysctl.conf', sysctl_sap)
+    zf.writestr('device_0/etc/waagent.conf', waagent_conf)
+    zf.writestr('device_0/var/log/messages', messages_log)
+    zf.writestr('device_0/var/log/waagent.log', waagent_log)
+    zf.writestr('device_0/var/lib/waagent/Microsoft.Azure.AzureDefenderForServers.MDE.Linux-1.0.9.2/config/HandlerStatus', mde_status)
+    zf.writestr('device_0/var/lib/waagent/Microsoft.Azure.RecoveryServices.VMSnapshotLinux-1.0.9225.0/config/HandlerStatus', snapshot_status)
+    zf.writestr('device_0/var/lib/waagent/Microsoft.Azure.RecoveryServices.WorkloadBackup.AzureBackupLinuxWorkload-2.0.0.5/config/HandlerStatus', workload_status)
+    zf.writestr('device_0/var/lib/waagent/Microsoft.CPlat.Core.LinuxPatchExtension-1.6.64/config/HandlerStatus', patch_status)
+    zf.writestr('device_0/var/lib/waagent/Microsoft.CPlat.Core.RunCommandLinux-1.0.11/config/HandlerStatus', runcmd_status)
+INSPECT_SLES_PYEOF
+echo "✓ Created test-inspect-iaas-disk-sles.zip"
+
 echo ""
 echo "========================================="
 echo "All test fixtures created successfully!"
