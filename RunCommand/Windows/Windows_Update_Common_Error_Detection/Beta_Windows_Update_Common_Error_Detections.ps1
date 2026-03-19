@@ -1,7 +1,7 @@
 
 param(
     [Parameter(Mandatory = $false)]
-    [int]$StartDays = 30  # Default is 30 days if not provided
+    [int]$StartDays = 7  # Default is 7 days if not provided
 )
 
 # Display description on screen
