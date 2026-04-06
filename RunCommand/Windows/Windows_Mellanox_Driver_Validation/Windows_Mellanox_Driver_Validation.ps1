@@ -151,7 +151,8 @@ $sysEvents = Get-WinEvent -FilterHashtable @{
     LogName   = 'System'
     Id        = 41
     StartTime = $since
-} -ErrorAction SilentlyContinue
+} -ErrorAction SilentlyContinue |
+    Where-Object { $_.Message -match '0x000000d1|0xd1|DRIVER_IRQL_NOT_LESS_OR_EQUAL' }
 
 if ($sysEvents) {
     $bugcheckEvents += $sysEvents

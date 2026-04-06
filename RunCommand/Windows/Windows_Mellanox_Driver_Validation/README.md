@@ -8,12 +8,17 @@ Mellanox mlx5 drivers.
 Use this script as the **first stop** when handling Mellanox mlx5 driver-related crash
 cases, before escalation.
 
+## Related Documentation
+
+- [Troubleshoot Mellanox mlx5 Driver Crashes on Azure Windows VMs](https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/windows-virtual-machine-mellanox-network-driver-crash-troubleshooting)
+- [Azure VM Mellanox Driver Validation Tool](https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-machines/windows/windows-virtual-machine-mellanox-network-driver-validation-tool)
+
 ## Features
 
 - Detects installed Mellanox / NVIDIA ConnectX network adapters
 - Reports driver version, date, and provider
 - Flags drivers that appear outdated (> 1 year) for TSG review
-- Checks Windows Event Log for recent `0x000000D1` bugcheck events (last 30 days)
+- Checks Windows Event Log for recent `0x000000D1` bug check events (last 30 days)
 - Reports adapter link status
 
 ## Prerequisites
@@ -31,10 +36,10 @@ Set-ExecutionPolicy Bypass -Force
 .\Windows_Mellanox_Driver_Validation.ps1
 ```
 
-Or run via the Azure portal **RunCommand** feature:
-1. Navigate to the VM in the Azure portal
-2. Select **Run command** → **RunPowerShellScript**
-3. Paste the script contents and click **Run**
+Or run via the Azure portal **Run Command** feature:
+1. Navigate to the VM in the Azure portal.
+2. Select **Operations** > **Run Command** > **RunPowerShellScript**.
+3. Paste the script contents and select **Run**.
 
 ### What to look for in the output
 
@@ -61,6 +66,13 @@ Use the TSG to:
 - Event log lookback is 30 days by default.
 - Adapter age warning threshold is 365 days; > 730 days shows a higher-severity warning.
 
+## Known Issues
+
+- On some VM SKUs, `Get-PnpDevice` may not enumerate the Mellanox adapter even when
+  present. If the adapter is visible in Device Manager but not detected by the script,
+  run `Get-WmiObject Win32_PnPSignedDriver | Where-Object { $_.DeviceName -match 'Mellanox' }`
+  directly to confirm.
+
 ## Liability
 
 As described in the [MIT license](../../../LICENSE.txt), these scripts are provided
@@ -71,10 +83,3 @@ as-is with no warranty or liability associated with their use.
 We value your input. If you encounter problems with the script or have ideas on how it
 can be improved, please file an issue in the
 [Issues](https://github.com/Azure/azure-support-scripts/issues) section of the project.
-
-## Known Issues
-
-- On some VM SKUs, `Get-PnpDevice` may not enumerate the Mellanox adapter even when
-  present. If the adapter is visible in Device Manager but not detected by the script,
-  run `Get-WmiObject Win32_PnPSignedDriver | Where-Object { $_.DeviceName -match 'Mellanox' }`
-  directly to confirm.
