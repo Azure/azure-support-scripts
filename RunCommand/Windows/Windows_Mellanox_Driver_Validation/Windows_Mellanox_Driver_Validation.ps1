@@ -105,10 +105,34 @@ else {
             Write-Output "  Provider    : $($drv.DriverProviderName)"
             Write-Output "  INF File    : $($drv.InfName)"
 
-            # Parse driver date for age check (format: yyyyMMdd000000.000000+000)
-            if ($drv.DriverDate -match '^(\d{4})(\d{2})(\d{2})') {
-                $drvDate = [datetime]::ParseExact("$($Matches[1])-$($Matches[2])-$($Matches[3])", 'yyyy-MM-dd', $null)
-                $ageDays = ([datetime]::UtcNow - $drvDate).Days
+            # Parse driver date for age check.
+            # WMI may return DriverDate as a [datetime] (auto-converted by the provider) OR as a
+            # CIM_DATETIME string (yyyyMMdd000000.000000+000). Handle both to avoid silent failures
+            # on locale-variant WMI responses.
+            $drvDate = $null
+            if ($drv.DriverDate -is [datetime]) {
+                $drvDate = $drv.DriverDate
+            }
+            elseif ($drv.DriverDate -match '^(\d{4})(\d{2})(\d{2})') {
+                # Standard CIM_DATETIME string — extract date component
+                $drvDate = [datetime]::ParseExact(
+                    "$($Matches[1])-$($Matches[2])-$($Matches[3])",
+                    'yyyy-MM-dd',
+                    [System.Globalization.CultureInfo]::InvariantCulture
+                )
+            }
+            elseif ($drv.DriverDate) {
+                # Last resort: try ManagementDateTimeConverter for any remaining WMI format variants
+                try {
+                    $drvDate = [System.Management.ManagementDateTimeConverter]::ToDateTime($drv.DriverDate.ToString())
+                }
+                catch {
+                    $drvDate = $null
+                }
+            }
+
+            if ($drvDate) {
+                $ageDays = ([datetime]::UtcNow - $drvDate.ToUniversalTime()).Days
                 $ageYears = [math]::Round($ageDays / 365, 1)
 
                 if ($ageDays -gt 730) {
@@ -122,7 +146,7 @@ else {
                 }
             }
             else {
-                Write-Result INFO "Driver date format not parseable: $($drv.DriverDate)"
+                Write-Result INFO "Driver date format not parseable: $($drv.DriverDate). Compare version manually against TSG."
             }
         }
     }
@@ -174,10 +198,16 @@ if ($bugcheckEvents.Count -eq 0) {
     Write-Result PASS "No DRIVER_IRQL_NOT_LESS_OR_EQUAL (0xD1) bugcheck events found in the last $lookbackDays days."
 }
 else {
-    Write-Result WARN "$($bugcheckEvents.Count) potential bugcheck event(s) found in the last $lookbackDays days."
+    Write-Result WARN "$($bugcheckEvents.Count) potential bug check event(s) found in the last $lookbackDays days."
     Write-Output ""
 
-    foreach ($evt in $bugcheckEvents | Sort-Object TimeCreated -Descending | Select-Object -First 10) {
+    $displayLimit = 10
+    $displayEvents = $bugcheckEvents | Sort-Object TimeCreated -Descending | Select-Object -First $displayLimit
+    if ($bugcheckEvents.Count -gt $displayLimit) {
+        Write-Output "  Showing most recent $displayLimit of $($bugcheckEvents.Count) events."
+    }
+
+    foreach ($evt in $displayEvents) {
         Write-Output "  Time    : $($evt.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss'))"
         Write-Output "  Log     : $($evt.LogName)"
         Write-Output "  EventID : $($evt.Id)"
