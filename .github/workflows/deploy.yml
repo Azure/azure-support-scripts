@@ -193,6 +193,8 @@ jobs:
         for attempt in {1..30}; do
           root_html="$(curl -fsSL "${ROOT_URL_BUSTED}" || true)"
           docs_html="$(curl -fsSL "${DOCS_URL}" || true)"
+          services_source="$(curl -fsSL "${SERVICES_URL}" || true)"
+          worker_source="$(curl -fsSL "${WORKER_URL}" || true)"
 
           root_ok=0
           docs_ok=0
@@ -202,19 +204,19 @@ jobs:
           wasm_ok=0
           css_ok=0
 
-          if printf '%s' "${root_html}" | grep -q 'RCA Tool' \
-            && printf '%s' "${root_html}" | grep -q "${EXPECTED_LEPTOS_JS}" \
-            && printf '%s' "${root_html}" | grep -q "${EXPECTED_LEPTOS_WASM}" \
-            && printf '%s' "${root_html}" | grep -q "${EXPECTED_LEPTOS_CSS}"; then
+          if [[ "${root_html}" == *'RCA Tool'* \
+             && "${root_html}" == *"${EXPECTED_LEPTOS_JS}"* \
+             && "${root_html}" == *"${EXPECTED_LEPTOS_WASM}"* \
+             && "${root_html}" == *"${EXPECTED_LEPTOS_CSS}"* ]]; then
             root_ok=1
           fi
-          if printf '%s' "${docs_html}" | grep -q 'JSDoc'; then
+          if [[ "${docs_html}" == *'JSDoc'* ]]; then
             docs_ok=1
           fi
-          if curl -fsSL "${SERVICES_URL}" | grep -q 'falcon-sensor'; then
+          if [[ "${services_source}" == *'falcon-sensor'* ]]; then
             services_ok=1
           fi
-          if curl -fsSL "${WORKER_URL}" | grep -q 'versionedAsset'; then
+          if [[ "${worker_source}" == *'versionedAsset'* ]]; then
             worker_ok=1
           fi
           if curl -fsI "${LEPTOS_JS_URL}" >/dev/null; then
@@ -241,9 +243,9 @@ jobs:
             echo "--- Docs preview ---"
             printf '%s\n' "${docs_html}" | head -n 40 || true
             echo "--- Worker preview ---"
-            curl -fsSL "${WORKER_URL}" | head -n 40 || true
+            printf '%s\n' "${worker_source}" | sed -n '1,40p' || true
             echo "--- Services asset preview ---"
-            curl -fsSL "${SERVICES_URL}" | head -n 40 || true
+            printf '%s\n' "${services_source}" | sed -n '1,40p' || true
             exit 1
           fi
 
