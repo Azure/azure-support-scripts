@@ -129,4 +129,33 @@ test.describe('Storage Parsers', () => {
     const resultText = await getResultText(page);
     expect(resultText).toMatch(/\[X\].*UUID|UUID.*error|error.*UUID/i);
   });
+
+  test('detects mtab entries and highlights mounts not in fstab', async ({ page }) => {
+    const resultHTML = await uploadAndWaitForAnalysis(page, 'scc_test-mtab-comparison.tar.xz');
+
+    // Should show the mtab section
+    expect(resultHTML).toContain('Mounted Filesystems');
+    expect(resultHTML).toContain('/etc/mtab');
+
+    // Extra mounts NOT in fstab should be flagged
+    expect(resultHTML).toContain('/data');
+    expect(resultHTML).toContain('/sapmnt');
+    expect(resultHTML).toContain('/hana/data');
+    expect(resultHTML).toContain('/hana/log');
+
+    // Should show "not in fstab" badge
+    expect(resultHTML).toMatch(/not in fstab/i);
+
+    // Virtual filesystems (sysfs, proc, tmpfs, devtmpfs) should NOT appear as extra mounts
+    const resultText = await getResultText(page);
+    // The extra mounts table should not contain virtual fs entries
+    expect(resultHTML).not.toMatch(/Hand-mounted.*\/sys\b/);
+    expect(resultHTML).not.toMatch(/Hand-mounted.*\/proc\b/);
+
+    // Should show raw mtab content
+    expect(resultHTML).toContain('Show raw /etc/mtab');
+
+    // SAP/HANA mounts should be identified as likely cluster-managed
+    expect(resultHTML).toMatch(/cluster-managed/i);
+  });
 });

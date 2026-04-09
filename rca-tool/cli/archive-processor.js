@@ -253,6 +253,9 @@ export async function processArchive(archivePath, options = {}) {
             // Post-processing: correlate fstab with block devices
             correlateFstabWithBlockDevices(analysisResults);
             
+            // Post-processing: compare mtab with fstab
+            compareMtabWithFstab(analysisResults);
+            
             // Post-processing: distro-aware corosync warning filtering
             const osReleaseData = analysisResults.osRelease || analysisResults.sysinfo || analysisResults.basicEnvironment || null;
             const isSUSE = osReleaseData && osReleaseData.name && 
@@ -575,6 +578,68 @@ function correlateFstabWithBlockDevices(results) {
     
     results.storageCorrelation = correlation;
     debugLog('Storage correlation complete:', correlation.summary);
+}
+
+/**
+ * Compare mtab entries with fstab to find mounts not defined in fstab.
+ * These are typically hand-mounted filesystems or cluster-managed resources.
+ * Mutates results.mtabAnalysis to include extraMounts.
+ */
+function compareMtabWithFstab(results) {
+    const mtab = results.mtabAnalysis;
+    if (!mtab?.found) {
+        debugLog('Cannot compare mtab: mtabAnalysis not found');
+        return;
+    }
+
+    const fstab = results.fstabAnalysis;
+
+    // Build a set of fstab mountpoints for fast lookup
+    const fstabMountpoints = new Set();
+    if (fstab?.found && fstab.entries) {
+        for (const entry of fstab.entries) {
+            fstabMountpoints.add(entry.mountpoint);
+        }
+    }
+
+    // Count real vs virtual mounts
+    let realMounts = 0;
+    let virtualMounts = 0;
+    const typeBreakdown = {};
+    for (const entry of mtab.entries) {
+        if (entry.isVirtualFs) {
+            virtualMounts++;
+        } else {
+            realMounts++;
+        }
+        typeBreakdown[entry.fstype] = (typeBreakdown[entry.fstype] || 0) + 1;
+    }
+
+    // Find mounts in mtab that are NOT in fstab (excluding virtual filesystems)
+    const extraMounts = [];
+    for (const entry of mtab.entries) {
+        if (entry.isVirtualFs) continue;
+        if (!fstabMountpoints.has(entry.mountpoint)) {
+            extraMounts.push({
+                source: entry.source,
+                mountpoint: entry.mountpoint,
+                fstype: entry.fstype,
+                options: entry.options,
+                sourceType: entry.sourceType,
+                reason: 'Not found in /etc/fstab - possibly hand-mounted or cluster-managed'
+            });
+        }
+    }
+
+    // Collect autofs entries separately for visibility
+    const autofsMounts = mtab.entries.filter(e => e.fstype === 'autofs');
+
+    mtab.realMounts = realMounts;
+    mtab.virtualMounts = virtualMounts;
+    mtab.typeBreakdown = typeBreakdown;
+    mtab.extraMounts = extraMounts;
+    mtab.autofsMounts = autofsMounts;
+    debugLog('mtab vs fstab comparison complete:', extraMounts.length, 'extra mounts,', realMounts, 'real,', virtualMounts, 'virtual,', autofsMounts.length, 'autofs');
 }
 
 export default { processArchive };

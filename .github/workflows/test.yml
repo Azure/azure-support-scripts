@@ -17,6 +17,21 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '22'
+
+    - name: Setup Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: wasm32-unknown-unknown
+
+    - name: Cache Rust build artifacts
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: rca-tool/web-leptos -> target
+
+    - name: Install Trunk
+      uses: taiki-e/install-action@v2
+      with:
+        tool: trunk
         
     - name: Setup Emscripten
       uses: mymindstorm/setup-emsdk@v14
@@ -41,9 +56,13 @@ jobs:
       run: npm ci
       working-directory: rca-tool/cli
         
-    - name: Build Web Interface (with JSDoc)
+    - name: Build legacy Web Interface (with JSDoc)
       run: bash build.sh
       working-directory: rca-tool
+
+    - name: Build Leptos Web Interface
+      run: ./build.sh
+      working-directory: rca-tool/web-leptos
     
     - name: Build CLI
       run: npm run build
@@ -60,19 +79,21 @@ jobs:
       working-directory: rca-tool/tests
  
     - name: Install Playwright Browsers
-      run: npx playwright install --with-deps msedge
+      run: npx playwright install --with-deps chromium
       working-directory: rca-tool/tests
 
     - name: Instrument source files for coverage
       run: bash instrument-coverage.sh
       working-directory: rca-tool/tests
       
-    - name: Run tests
-      run: npx playwright test --project=local
+    - name: Run Leptos web tests
+      run: npx playwright test --config=playwright.leptos.config.js --project=local-leptos
       working-directory: rca-tool/tests
       
-    - name: Run accessibility checks
-      run: node accessibility-check.js
+    - name: Run accessibility checks against Leptos
+      run: |
+        npx http-server ../ -p 8080 > /tmp/rca-tool-http-server.log 2>&1 &
+        ACCESSIBILITY_URL=http://localhost:8080/web-leptos/dist/ node accessibility-check.js
       working-directory: rca-tool/tests
     
     - name: Test CLI with all fixtures
@@ -108,7 +129,7 @@ jobs:
       with:
         name: test-results
         path: |
-          rca-tool/tests/playwright-report/
+          rca-tool/tests/playwright-report*/
           rca-tool/tests/test-results/
         retention-days: 30
 
@@ -117,5 +138,5 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: coverage-report
-        path: rca-tool/tests/coverage-report/
+        path: rca-tool/tests/coverage-report*/
         retention-days: 30

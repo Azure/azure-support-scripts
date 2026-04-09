@@ -61,6 +61,8 @@
  * | Parser | File Patterns | Purpose |
  * |--------|---------------|---------|
  * | `cryptoPoliciesParser` | `crypto-policies/config`, `updates.txt` | Reports active crypto policy (DEFAULT, LEGACY, FUTURE, FIPS) on RHEL 8+ |
+ * | `fipsModeSetupParser` | `sos_commands/crypto/fips-mode-setup_--check` | Parses `fips-mode-setup --check` output; detects FIPS enabled/disabled and inconsistent state |
+ * | `kernelCmdlineParser` | `proc/cmdline`, `boot.txt` | Parses kernel command line; detects `fips=1` boot parameter and other notable parameters |
  *
  * #### Leapp In-Place Upgrade
  *
@@ -947,6 +949,12 @@ const kernelTuningParser = {
             }
         }
         
+        // FIPS detection: crypto.fips_enabled = 1 means kernel is in FIPS mode
+        const fipsEnabled = parameters['crypto.fips_enabled'] === '1';
+        if (fipsEnabled) {
+            debugLog('[kernelTuning parser] FIPS mode is ENABLED (crypto.fips_enabled = 1)');
+        }
+
         return {
             found: true,
             parameters: parameters,
@@ -956,7 +964,8 @@ const kernelTuningParser = {
             hasAzureNetworkWarnings: azureNetworkWarnings.length > 0,
             azureNetworkTuned: azureNetworkWarnings.length === 0 && Object.keys(azureNetworkParams).every(p => parameters[p]),
             optionalNetworkInfo: optionalNetworkInfo,
-            hasOptionalNetworkInfo: optionalNetworkInfo.length > 0
+            hasOptionalNetworkInfo: optionalNetworkInfo.length > 0,
+            fipsEnabled: fipsEnabled
         };
     },
 
@@ -1057,7 +1066,10 @@ const kernelTuningParser = {
         accumulated.optionalNetworkInfo = optionalNetworkInfo;
         accumulated.hasOptionalNetworkInfo = optionalNetworkInfo.length > 0;
 
-        debugLog('[kernelTuning parser] Merged result: parameters:', Object.keys(accumulated.parameters).length, 'warnings:', warnings.length);
+        // Recompute FIPS detection from merged parameters
+        accumulated.fipsEnabled = parameters['crypto.fips_enabled'] === '1';
+
+        debugLog('[kernelTuning parser] Merged result: parameters:', Object.keys(accumulated.parameters).length, 'warnings:', warnings.length, 'fipsEnabled:', accumulated.fipsEnabled);
     }
 };
 
@@ -2539,6 +2551,138 @@ const cryptoPoliciesParser = {
             }
         }
         debugLog('[Crypto Policies parser] Found:', result);
+        return result;
+    }
+};
+
+/**
+ * Parser: fipsModeSetup
+ * Parses output of `fips-mode-setup --check` from sosreport.
+ * sosreport collects this at: sos_commands/crypto/fips-mode-setup_--check
+ * Output format:
+ *   "FIPS mode is enabled."  or  "FIPS mode is disabled."
+ *   Optionally followed by: "Inconsistent state detected." or crypto policy info.
+ */
+const fipsModeSetupParser = {
+    filePattern: /sos_commands\/crypto\/fips-mode-setup/,
+    parse: function(content, filename, _lines) {
+        debugLog('[fipsModeSetup parser] Analyzing:', filename);
+        const result = {
+            found: false,
+            fipsEnabled: false,
+            inconsistentState: false,
+            rawOutput: '',
+            warnings: []
+        };
+
+        const trimmed = content.trim();
+        if (!trimmed) return result;
+
+        result.rawOutput = trimmed.substring(0, 500);
+
+        // Check for FIPS enabled/disabled
+        if (/FIPS mode is enabled/i.test(trimmed)) {
+            result.found = true;
+            result.fipsEnabled = true;
+            debugLog('[fipsModeSetup parser] FIPS mode is ENABLED');
+        } else if (/FIPS mode is disabled/i.test(trimmed)) {
+            result.found = true;
+            result.fipsEnabled = false;
+            debugLog('[fipsModeSetup parser] FIPS mode is DISABLED');
+        } else if (/FIPS mode is not enabled/i.test(trimmed)) {
+            result.found = true;
+            result.fipsEnabled = false;
+            debugLog('[fipsModeSetup parser] FIPS mode is NOT enabled');
+        }
+
+        // Check for inconsistent state
+        if (/inconsistent.*state/i.test(trimmed)) {
+            result.inconsistentState = true;
+            result.warnings.push({
+                type: 'fips_inconsistent_state',
+                severity: 'warning',
+                message: 'FIPS mode is in an inconsistent state. The system may have been partially configured for FIPS.',
+                recommendation: 'Run fips-mode-setup --enable or --disable to set a consistent FIPS state, then reboot.',
+                documentationUrl: 'https://learn.microsoft.com/en-us/azure/virtual-machines/linux/fips-overview'
+            });
+            debugLog('[fipsModeSetup parser] Inconsistent FIPS state detected');
+        }
+
+        debugLog('[fipsModeSetup parser] Result:', result);
+        return result;
+    }
+};
+
+/**
+ * Parser: kernelCmdline
+ * Parses /proc/cmdline from sosreport or boot.txt from SCC.
+ * Detects `fips=1` boot parameter (definitive indicator of FIPS boot mode)
+ * and extracts other notable boot parameters for reference.
+ *
+ * Sources:
+ * - sosreport: proc/cmdline
+ * - SCC: boot.txt (contains `# /proc/cmdline` section)
+ */
+const kernelCmdlineParser = {
+    filePattern: /\/proc\/cmdline$|\/boot\.txt$/,
+    parse: function(content, filename, _lines) {
+        debugLog('[kernelCmdline parser] Analyzing:', filename);
+        const result = {
+            found: false,
+            fipsEnabled: false,
+            crashkernel: null,
+            rootDevice: null,
+            rawCmdline: '',
+            warnings: []
+        };
+
+        let cmdline = '';
+
+        if (filename.includes('boot.txt')) {
+            // SCC format: extract /proc/cmdline section
+            const sectionResult = SCC_RULES.extractSection(content, filename, '# /proc/cmdline', '/proc/cmdline');
+            if (!sectionResult.found) {
+                debugLog('[kernelCmdline parser] /proc/cmdline section not found in boot.txt');
+                return result;
+            }
+            // The section content is the kernel command line (typically one line)
+            cmdline = sectionResult.content.trim().split('\n')[0] || '';
+        } else {
+            // sosreport proc/cmdline: file is the command line directly
+            cmdline = (content || '').trim().split('\n')[0] || '';
+        }
+
+        if (!cmdline) return result;
+
+        result.found = true;
+        result.rawCmdline = cmdline.substring(0, 1000);
+
+        // Parse boot parameters
+        const params = cmdline.split(/\s+/);
+
+        for (const param of params) {
+            // FIPS boot parameter
+            if (param === 'fips=1') {
+                result.fipsEnabled = true;
+                debugLog('[kernelCmdline parser] FIPS boot parameter detected: fips=1');
+            }
+
+            // Crashkernel allocation
+            if (param.startsWith('crashkernel=')) {
+                result.crashkernel = param.split('=')[1];
+            }
+
+            // Root device
+            if (param.startsWith('root=')) {
+                result.rootDevice = param.split('=').slice(1).join('=');
+            }
+        }
+
+        debugLog('[kernelCmdline parser] Result:', {
+            fipsEnabled: result.fipsEnabled,
+            crashkernel: result.crashkernel,
+            rootDevice: result.rootDevice
+        });
         return result;
     }
 };

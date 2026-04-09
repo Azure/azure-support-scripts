@@ -9,6 +9,8 @@
     "test:ui": "playwright test --ui",
     "test:headed": "playwright test --headed",
     "test:coverage": "bash instrument-coverage.sh && playwright test --project=local && echo '\nOpen coverage-report/v8/index.html for detailed report'",
+    "test:leptos": "playwright test --config=playwright.leptos.config.js",
+    "test:leptos:headed": "playwright test --config=playwright.leptos.config.js --headed",
     "coverage:view": "npx monocart show-report coverage-report/index.html",
     "serve": "http-server -p 8080"
   },

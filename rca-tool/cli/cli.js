@@ -360,7 +360,7 @@ function formatResults(results, options) {
     }
 
     // STORAGE
-    const hasStorage = results.lvmConfig?.found || results.raidConfig?.found || results.btrfsConfig?.found || results.fstab?.found || results.blockDevices?.found || results.storageCorrelation?.found;
+    const hasStorage = results.lvmConfig?.found || results.raidConfig?.found || results.btrfsConfig?.found || results.fstab?.found || results.blockDevices?.found || results.storageCorrelation?.found || results.mtabAnalysis?.found;
     if (hasStorage) {
         output += '-'.repeat(70) + '\n';
         output += 'STORAGE\n';
@@ -412,6 +412,32 @@ function formatResults(results, options) {
                 });
                 warnings.forEach(w => {
                     output += `    [WARN] ${w.mountpoint}: ${w.message}\n`;
+                });
+            }
+        }
+
+        // Mtab / Fstab comparison
+        if (results.mtabAnalysis?.found) {
+            const extraMounts = results.mtabAnalysis.extraMounts || [];
+            const realCount = results.mtabAnalysis.realMounts ?? results.mtabAnalysis.entries?.length ?? 0;
+            const virtualCount = results.mtabAnalysis.virtualMounts ?? 0;
+            output += `  Mounted Filesystems (mtab): ${realCount} real mount(s)`;
+            if (virtualCount > 0) {
+                output += ` (${virtualCount} virtual/autofs excluded)`;
+            }
+            output += `\n`;
+            if (extraMounts.length > 0) {
+                output += `  Mounts NOT in fstab (${extraMounts.length}):\n`;
+                extraMounts.forEach(m => {
+                    output += `    [WARN] ${m.mountpoint} <- ${m.source} (${m.fstype})\n`;
+                    output += `           ${m.reason}\n`;
+                });
+            }
+            const autofsMounts = results.mtabAnalysis.autofsMounts || [];
+            if (autofsMounts.length > 0) {
+                output += `  Autofs Mounts (${autofsMounts.length} automounter entries):\n`;
+                autofsMounts.forEach(m => {
+                    output += `    [AUTO] ${m.mountpoint} <- ${m.source} (${m.options})\n`;
                 });
             }
         }
@@ -672,6 +698,69 @@ function formatResults(results, options) {
         if (results.basicEnvironment.sapProductDetected) output += '  SAP: Detected\n';
         if (results.basicEnvironment.epicProductDetected) output += '  SAP EPIC: Detected\n';
         output += '\n';
+    }
+
+    // DEBUGFS (ADVANCED)
+    const hasHvBalloon = results.hvBalloon?.found;
+    const hasExtfrag = results.extfrag?.found;
+    if (hasHvBalloon || hasExtfrag) {
+        output += '-'.repeat(70) + '\n';
+        output += 'DEBUGFS (ADVANCED)\n';
+        output += '-'.repeat(70) + '\n';
+
+        if (hasHvBalloon) {
+            const hv = results.hvBalloon;
+            output += '  Hyper-V Dynamic Memory (hv-balloon)\n';
+            if (hv.hostVersion) output += `    Host version: ${hv.hostVersion}\n`;
+            if (hv.capabilities) output += `    Capabilities: ${hv.capabilities}\n`;
+            if (hv.state !== null) output += `    State: ${hv.state} (${hv.stateText || 'Unknown'})\n`;
+            output += `    Committed memory: ${hv.committedMemoryGB} GB (${hv.totalPagesCommitted.toLocaleString()} pages)\n`;
+            output += `    Max dynamic memory: ${hv.maxDynamicMemoryGB} GB (${hv.maxDynamicPageCount.toLocaleString()} pages)\n`;
+            output += `    Ballooned memory: ${hv.balloonedMemoryMB} MB (${hv.pagesBallooned.toLocaleString()} pages)\n`;
+            output += `    Pages added: ${hv.pagesAdded.toLocaleString()}\n`;
+            output += `    Pages onlined: ${hv.pagesOnlined.toLocaleString()}\n`;
+            if (hv.maxDynamicMemoryGB > 0) {
+                const usagePct = Math.round((hv.committedMemoryGB / hv.maxDynamicMemoryGB) * 100);
+                output += `    Memory utilization: ${usagePct}%\n`;
+            }
+            if (hv.warnings.length > 0) {
+                hv.warnings.forEach(w => {
+                    output += `    [!] ${w}\n`;
+                });
+            }
+            output += '\n';
+        }
+
+        if (hasExtfrag) {
+            const ef = results.extfrag;
+            const orderLabels = ['4K', '8K', '16K', '32K', '64K', '128K', '256K', '512K', '1M', '2M', '4M'];
+            output += '  Memory Fragmentation Index\n';
+            ef.zones.forEach(zone => {
+                output += `    Node ${zone.node}, zone ${zone.zone}\n`;
+                if (zone.unusableIndex && zone.unusableIndex.length > 0) {
+                    output += '      Unusable: ';
+                    output += zone.unusableIndex.map((v, i) => {
+                        const label = i < orderLabels.length ? orderLabels[i] : 'o' + i;
+                        return label + '=' + v.toFixed(3);
+                    }).join('  ');
+                    output += '\n';
+                }
+                if (zone.extfragIndex && zone.extfragIndex.length > 0) {
+                    output += '      Extfrag: ';
+                    output += zone.extfragIndex.map((v, i) => {
+                        const label = i < orderLabels.length ? orderLabels[i] : 'o' + i;
+                        return label + '=' + v.toFixed(3);
+                    }).join('  ');
+                    output += '\n';
+                }
+            });
+            if (ef.warnings.length > 0) {
+                ef.warnings.forEach(w => {
+                    output += `    [!] ${w}\n`;
+                });
+            }
+            output += '\n';
+        }
     }
 
     output += '='.repeat(70) + '\n';

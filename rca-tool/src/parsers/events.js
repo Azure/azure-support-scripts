@@ -83,7 +83,7 @@ const emergencyModeParser = {
                     sourceFile: filename
                 });
                 
-                debugLog('[emergencyMode parser] ✓ Detected emergency mode at line', i + 1, ':', timestamp);
+                debugLog('[emergencyMode parser] [OK] Detected emergency mode at line', i + 1, ':', timestamp);
             }
         }
         
@@ -143,7 +143,7 @@ const kernelRebootsParser = {
                     rawLine: line.trim()
                 });
                 
-                debugLog('[kernelReboots parser] ✓ Detected kernel boot at line', i + 1, ':', timestamp, 'version:', kernelVersion);
+                debugLog('[kernelReboots parser] [OK] Detected kernel boot at line', i + 1, ':', timestamp, 'version:', kernelVersion);
                 continue;
             }
             
@@ -169,7 +169,7 @@ const kernelRebootsParser = {
                         rawLine: line.trim()
                     });
                     
-                    debugLog('[kernelReboots parser] ✓ Detected systemd shutdown at line', i + 1, ':', timestamp);
+                    debugLog('[kernelReboots parser] [OK] Detected systemd shutdown at line', i + 1, ':', timestamp);
                 }
                 continue;
             }
@@ -186,7 +186,7 @@ const kernelRebootsParser = {
                     rawLine: line.trim()
                 });
                 
-                debugLog('[kernelReboots parser] ✓ Detected reboot message at line', i + 1, ':', timestamp);
+                debugLog('[kernelReboots parser] [OK] Detected reboot message at line', i + 1, ':', timestamp);
                 continue;
             }
         }
@@ -259,7 +259,7 @@ const oomKillerParser = {
                     rawLine: line.trim()
                 });
                 
-                debugLog('[oomKiller parser] ✓ Detected OOM kill at line', i + 1, ':', timestamp, 'process:', processName, 'pid:', pid);
+                debugLog('[oomKiller parser] [OK] Detected OOM kill at line', i + 1, ':', timestamp, 'process:', processName, 'pid:', pid);
                 continue;
             }
             
@@ -298,7 +298,7 @@ const oomKillerParser = {
                         rawLine: line.trim()
                     });
                     
-                    debugLog('[oomKiller parser] ✓ Detected OOM invocation at line', i + 1, ':', timestamp, 'by:', invokedBy);
+                    debugLog('[oomKiller parser] [OK] Detected OOM invocation at line', i + 1, ':', timestamp, 'by:', invokedBy);
                 }
                 continue;
             }
@@ -329,7 +329,7 @@ const oomKillerParser = {
                         rawLine: line.trim()
                     });
                     
-                    debugLog('[oomKiller parser] ✓ Detected OOM reaper at line', i + 1, ':', timestamp);
+                    debugLog('[oomKiller parser] [OK] Detected OOM reaper at line', i + 1, ':', timestamp);
                 }
                 continue;
             }
@@ -360,7 +360,7 @@ const oomKillerParser = {
                         rawLine: line.trim()
                     });
                     
-                    debugLog('[oomKiller parser] ✓ Detected allocation failure at line', i + 1, ':', timestamp, 'process:', processName);
+                    debugLog('[oomKiller parser] [OK] Detected allocation failure at line', i + 1, ':', timestamp, 'process:', processName);
                 }
                 continue;
             }
@@ -432,7 +432,7 @@ const xfsErrorsParser = {
                     rawLine: trimmed
                 });
                 
-                debugLog('[xfsErrors parser] ✓ Detected XFS error at line', i + 1, ':', timestamp, 'device:', device);
+                debugLog('[xfsErrors parser] [OK] Detected XFS error at line', i + 1, ':', timestamp, 'device:', device);
             }
         }
         

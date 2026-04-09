@@ -11,17 +11,17 @@ import AxeBuilder from '@axe-core/playwright';
 
 async function runAccessibilityTest() {
   console.log('Starting accessibility scan...\n');
+  const targetUrl = process.env.ACCESSIBILITY_URL || 'http://localhost:8080/web-leptos/dist/';
   
   const browser = await chromium.launch({ 
     headless: true,
-    channel: 'msedge'  // Use Edge browser
   });
   const context = await browser.newContext();
   const page = await context.newPage();
 
   try {
-    // Navigate to your app
-    await page.goto('http://localhost:8080');
+    // Navigate to the target app
+    await page.goto(targetUrl);
     
     console.log('Page loaded. Running axe-core scan...\n');
 
@@ -90,7 +90,8 @@ async function runAccessibilityTest() {
 }
 
 // Check if server is running
-console.log('[WARNING] Make sure your dev server is running on http://localhost:8080');
+console.log('[WARNING] Make sure your dev server is running for the target URL.');
+console.log(`   Target URL: ${process.env.ACCESSIBILITY_URL || 'http://localhost:8080/web-leptos/dist/'}`);
 console.log('   You can start it with: npx http-server rca-tool/ -p 8080\n');
 
 runAccessibilityTest();

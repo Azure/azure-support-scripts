@@ -681,4 +681,134 @@ test.describe('Unix Parsers', () => {
     // IMDS connection error should be detected
     expect(content).toContain('IMDS');
   });
+
+  // ── FIPS Detection Tests ──────────────────────────────────────────────
+
+  test('detects FIPS enabled from all indicators', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('scc_test-fips-enabled.tar.xz'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('FIPS Status');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+    const html = await page.locator('#output').innerHTML();
+
+    // FIPS Status section must appear
+    expect(content).toContain('FIPS Status');
+
+    // Should show ENABLED badge
+    expect(html).toContain('ENABLED');
+
+    // All six sources should be listed
+    expect(content).toContain('fips-mode-setup --check');
+    expect(content).toContain('Kernel cmdline (fips=1)');
+    expect(content).toContain('sysctl crypto.fips_enabled');
+    expect(content).toContain('Crypto policy');
+    expect(content).toContain('waagent.conf OS.EnableFIPS');
+    expect(content).toContain('dracut-fips package');
+
+    // All should show Enabled
+    expect(content).toMatch(/fips-mode-setup.*Enabled/s);
+    expect(content).toMatch(/Kernel cmdline.*Enabled/s);
+    expect(content).toMatch(/sysctl.*Enabled/s);
+    expect(content).toMatch(/dracut-fips.*Enabled/s);
+
+    // FIPS-related packages should be listed
+    expect(content).toContain('FIPS-related packages');
+    expect(content).toContain('dracut-fips');
+    expect(content).toContain('fipscheck');
+
+    // Kernel command line should show fips=1
+    expect(content).toContain('Kernel Command Line');
+    expect(content).toContain('fips=1');
+
+    // Should NOT show inconsistent warning
+    expect(content).not.toContain('Inconsistent FIPS state');
+  });
+
+  test('detects FIPS disabled from all indicators', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('scc_test-fips-disabled.tar.xz'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('FIPS Status');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+    const html = await page.locator('#output').innerHTML();
+
+    // FIPS Status section must appear
+    expect(content).toContain('FIPS Status');
+
+    // Should NOT show ENABLED badge
+    expect(html).not.toMatch(/FIPS Status.*ENABLED/s);
+
+    // Disabled sources should show "Disabled / Not set"
+    expect(content).toContain('Disabled / Not set');
+
+    // Should show fips-mode-setup as disabled
+    expect(content).toContain('fips-mode-setup --check');
+
+    // Kernel cmdline should be present but without fips=1
+    expect(content).toContain('Kernel cmdline (fips=1)');
+
+    // Should NOT list dracut-fips as a source (package not installed)
+    expect(content).not.toMatch(/dracut-fips package/);
+
+    // Should NOT show inconsistent warning
+    expect(content).not.toContain('Inconsistent FIPS state');
+
+    // Should have Kernel Command Line section (without fips=1 in params)
+    expect(content).toContain('Kernel Command Line');
+  });
+
+  test('detects FIPS inconsistent state and shows warning', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('scc_test-fips-inconsistent.tar.xz'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && output.textContent.includes('FIPS Status');
+      },
+      { timeout: 60000 }
+    );
+
+    const content = await page.locator('#output').textContent();
+    const html = await page.locator('#output').innerHTML();
+
+    // FIPS Status section must appear
+    expect(content).toContain('FIPS Status');
+
+    // Should show inconsistent warning
+    expect(content).toContain('Inconsistent FIPS state');
+
+    // fips-mode-setup should report enabled
+    expect(content).toContain('fips-mode-setup --check');
+
+    // Inconsistent tag should appear in the table
+    expect(html).toContain('inconsistent');
+
+    // Crypto policy should show DEFAULT (which is the mismatch)
+    expect(content).toContain('DEFAULT');
+
+    // Should show the fips-mode-setup --enable recommendation
+    expect(content).toContain('fips-mode-setup --enable');
+
+    // Kernel cmdline should show fips=1 (boot param was set)
+    expect(content).toContain('fips=1');
+
+    // dracut-fips package should be detected
+    expect(content).toContain('dracut-fips');
+  });
 });

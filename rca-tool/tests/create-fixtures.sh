@@ -3578,6 +3578,242 @@ with zipfile.ZipFile(fixture_path, 'w', zipfile.ZIP_DEFLATED) as zf:
 INSPECT_SLES_PYEOF
 echo "[OK] Created test-inspect-iaas-disk-sles.zip"
 
+# Test: mtab vs fstab comparison
+# Tests detection of mounts in mtab that are NOT in fstab
+echo ""
+echo "=== Creating test-mtab-comparison.tar.xz ==="
+mkdir -p test-data/etc
+
+# fstab - defines a few mounts
+cat > test-data/etc/fstab << 'EOF'
+# /etc/fstab
+UUID=1234-5678-9abc-def0 / xfs defaults 0 1
+UUID=aaaa-bbbb-cccc-dddd /boot ext4 defaults 0 2
+UUID=2222-3333-4444-5555 /home xfs defaults,nofail 0 0
+UUID=7777-8888-9999-0000 /mnt xfs defaults,nofail 0 0
+EOF
+
+# mtab - has extra mounts not in fstab (hand-mounted + cluster-managed)
+cat > test-data/etc/mtab << 'EOF'
+/dev/sda2 / xfs rw,relatime,attr2 0 0
+/dev/sda1 /boot ext4 rw,relatime 0 0
+/dev/sdb1 /home xfs rw,relatime,nofail 0 0
+/dev/sdc1 /mnt xfs rw,relatime,nofail 0 0
+/dev/sdd1 /data ext4 rw,relatime 0 0
+10.0.0.5:/shared /sapmnt nfs rw,hard,rsize=65536,wsize=65536 0 0
+/dev/mapper/datavg-hanalv /hana/data xfs rw,relatime,attr2 0 0
+/dev/mapper/logvg-hanaloglv /hana/log xfs rw,relatime,attr2 0 0
+sysfs /sys sysfs rw,nosuid,nodev,noexec,relatime 0 0
+proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0
+tmpfs /run tmpfs rw,nosuid,nodev 0 0
+devtmpfs /dev devtmpfs rw,nosuid,relatime 0 0
+EOF
+
+create_fixture "test-mtab-comparison"
+
+################################################################################
+# Test: FIPS Enabled (sosreport style)
+# Tests detection of FIPS mode from multiple indicators:
+#   - sos_commands/crypto/fips-mode-setup_--check
+#   - proc/cmdline with fips=1
+#   - sysctl crypto.fips_enabled = 1
+#   - crypto-policies/config = FIPS
+#   - installed-rpms with dracut-fips
+#   - waagent.conf with OS.EnableFIPS=y
+################################################################################
+echo ""
+echo "=== Creating test-fips-enabled.tar.xz ==="
+
+# fips-mode-setup --check output
+mkdir -p test-data/sos_commands/crypto
+cat > "test-data/sos_commands/crypto/fips-mode-setup_--check" << 'EOF'
+FIPS mode is enabled.
+EOF
+
+# Kernel command line with fips=1
+mkdir -p test-data/proc
+cat > test-data/proc/cmdline << 'EOF'
+BOOT_IMAGE=(hd0,gpt2)/vmlinuz-4.18.0-425.3.1.el8.x86_64 root=UUID=abcdef01-2345-6789-abcd-ef0123456789 ro crashkernel=auto fips=1 rd.lvm.lv=rootvg/rootlv console=tty0 console=ttyS0,115200n8
+EOF
+
+# Kernel sysctl with crypto.fips_enabled = 1
+mkdir -p test-data/sos_commands/kernel
+cat > test-data/sos_commands/kernel/sysctl_-a << 'EOF'
+crypto.fips_enabled = 1
+kernel.hostname = fips-test-host
+kernel.osrelease = 4.18.0-425.3.1.el8.x86_64
+kernel.ostype = Linux
+vm.swappiness = 10
+net.ipv4.tcp_keepalive_time = 7200
+EOF
+
+# Crypto policy set to FIPS
+mkdir -p test-data/etc/crypto-policies
+cat > test-data/etc/crypto-policies/config << 'EOF'
+FIPS
+EOF
+
+# installed-rpms with dracut-fips
+mkdir -p test-data/sos_commands/rpm
+cat > test-data/sos_commands/rpm/installed-rpms << 'EOF'
+WALinuxAgent-2.9.1.1-3.el8_8.noarch      Wed Aug  2 00:00:00 2023
+bash-4.4.20-4.el8_6.x86_64               Mon Oct 17 00:00:00 2022
+cloud-init-23.1.1-12.el8.noarch          Thu Oct  5 00:00:00 2023
+crypto-policies-20230731-1.git94f0e2c.el8.noarch Thu Oct  5 00:00:00 2023
+dracut-fips-049-233.git20240115.el8.x86_64 Wed Jan 17 00:00:00 2024
+fipscheck-1.5.0-5.el8.x86_64             Thu Oct  5 00:00:00 2023
+fipscheck-lib-1.5.0-5.el8.x86_64         Thu Oct  5 00:00:00 2023
+kernel-4.18.0-425.3.1.el8.x86_64         Thu Nov  3 00:00:00 2022
+openssl-1.1.1k-12.el8_9.x86_64           Mon Dec 18 00:00:00 2023
+EOF
+
+# waagent.conf with FIPS enabled
+mkdir -p test-data/etc
+cat > test-data/etc/waagent.conf << 'EOF'
+# Microsoft Azure Linux Agent Configuration
+OS.EnableFIPS=y
+Provisioning.Agent=auto
+ResourceDisk.Format=n
+EOF
+
+# os-release for distro detection
+cat > test-data/etc/os-release << 'EOF'
+NAME="Red Hat Enterprise Linux"
+VERSION="8.8 (Ootpa)"
+ID="rhel"
+ID_LIKE="fedora"
+VERSION_ID="8.8"
+PRETTY_NAME="Red Hat Enterprise Linux 8.8 (Ootpa)"
+EOF
+
+create_fixture "test-fips-enabled"
+
+################################################################################
+# Test: FIPS Disabled (sosreport style)
+# Tests detection when FIPS mode is explicitly disabled
+################################################################################
+echo ""
+echo "=== Creating test-fips-disabled.tar.xz ==="
+
+# fips-mode-setup --check output (disabled)
+mkdir -p test-data/sos_commands/crypto
+cat > "test-data/sos_commands/crypto/fips-mode-setup_--check" << 'EOF'
+FIPS mode is disabled.
+EOF
+
+# Kernel command line without fips=1
+mkdir -p test-data/proc
+cat > test-data/proc/cmdline << 'EOF'
+BOOT_IMAGE=(hd0,gpt2)/vmlinuz-4.18.0-425.3.1.el8.x86_64 root=UUID=abcdef01-2345-6789-abcd-ef0123456789 ro crashkernel=auto rd.lvm.lv=rootvg/rootlv console=tty0 console=ttyS0,115200n8
+EOF
+
+# Kernel sysctl with crypto.fips_enabled = 0
+mkdir -p test-data/sos_commands/kernel
+cat > test-data/sos_commands/kernel/sysctl_-a << 'EOF'
+crypto.fips_enabled = 0
+kernel.hostname = nofips-test-host
+kernel.osrelease = 4.18.0-425.3.1.el8.x86_64
+kernel.ostype = Linux
+vm.swappiness = 10
+net.ipv4.tcp_keepalive_time = 7200
+EOF
+
+# Crypto policy set to DEFAULT
+mkdir -p test-data/etc/crypto-policies
+cat > test-data/etc/crypto-policies/config << 'EOF'
+DEFAULT
+EOF
+
+# installed-rpms without dracut-fips
+mkdir -p test-data/sos_commands/rpm
+cat > test-data/sos_commands/rpm/installed-rpms << 'EOF'
+WALinuxAgent-2.9.1.1-3.el8_8.noarch      Wed Aug  2 00:00:00 2023
+bash-4.4.20-4.el8_6.x86_64               Mon Oct 17 00:00:00 2022
+cloud-init-23.1.1-12.el8.noarch          Thu Oct  5 00:00:00 2023
+crypto-policies-20230731-1.git94f0e2c.el8.noarch Thu Oct  5 00:00:00 2023
+kernel-4.18.0-425.3.1.el8.x86_64         Thu Nov  3 00:00:00 2022
+openssl-1.1.1k-12.el8_9.x86_64           Mon Dec 18 00:00:00 2023
+EOF
+
+# waagent.conf without FIPS
+mkdir -p test-data/etc
+cat > test-data/etc/waagent.conf << 'EOF'
+# Microsoft Azure Linux Agent Configuration
+Provisioning.Agent=auto
+ResourceDisk.Format=n
+EOF
+
+# os-release
+cat > test-data/etc/os-release << 'EOF'
+NAME="Red Hat Enterprise Linux"
+VERSION="8.8 (Ootpa)"
+ID="rhel"
+ID_LIKE="fedora"
+VERSION_ID="8.8"
+PRETTY_NAME="Red Hat Enterprise Linux 8.8 (Ootpa)"
+EOF
+
+create_fixture "test-fips-disabled"
+
+################################################################################
+# Test: FIPS Inconsistent state (sosreport style)
+# Tests detection when FIPS mode is in an inconsistent state:
+#   fips-mode-setup says enabled but sysctl says disabled
+################################################################################
+echo ""
+echo "=== Creating test-fips-inconsistent.tar.xz ==="
+
+# fips-mode-setup reports inconsistent
+mkdir -p test-data/sos_commands/crypto
+cat > "test-data/sos_commands/crypto/fips-mode-setup_--check" << 'EOF'
+FIPS mode is enabled.
+Inconsistent state detected.
+The current crypto policy (DEFAULT) does not match FIPS.
+EOF
+
+# Kernel command line WITH fips=1 (was set at boot)
+mkdir -p test-data/proc
+cat > test-data/proc/cmdline << 'EOF'
+BOOT_IMAGE=(hd0,gpt2)/vmlinuz-4.18.0-425.3.1.el8.x86_64 root=UUID=abcdef01-2345-6789-abcd-ef0123456789 ro crashkernel=auto fips=1 rd.lvm.lv=rootvg/rootlv console=tty0 console=ttyS0,115200n8
+EOF
+
+# sysctl says FIPS enabled at kernel level
+mkdir -p test-data/sos_commands/kernel
+cat > test-data/sos_commands/kernel/sysctl_-a << 'EOF'
+crypto.fips_enabled = 1
+kernel.hostname = fips-inconsistent-host
+kernel.osrelease = 4.18.0-425.3.1.el8.x86_64
+kernel.ostype = Linux
+vm.swappiness = 10
+EOF
+
+# But crypto policy is DEFAULT (not FIPS) - the inconsistency!
+mkdir -p test-data/etc/crypto-policies
+cat > test-data/etc/crypto-policies/config << 'EOF'
+DEFAULT
+EOF
+
+# installed-rpms with dracut-fips
+mkdir -p test-data/sos_commands/rpm
+cat > test-data/sos_commands/rpm/installed-rpms << 'EOF'
+WALinuxAgent-2.9.1.1-3.el8_8.noarch      Wed Aug  2 00:00:00 2023
+dracut-fips-049-233.git20240115.el8.x86_64 Wed Jan 17 00:00:00 2024
+kernel-4.18.0-425.3.1.el8.x86_64         Thu Nov  3 00:00:00 2022
+EOF
+
+# os-release
+mkdir -p test-data/etc
+cat > test-data/etc/os-release << 'EOF'
+NAME="Red Hat Enterprise Linux"
+VERSION="8.8 (Ootpa)"
+ID="rhel"
+ID_LIKE="fedora"
+VERSION_ID="8.8"
+PRETTY_NAME="Red Hat Enterprise Linux 8.8 (Ootpa)"
+EOF
+
+create_fixture "test-fips-inconsistent"
+
 echo ""
 echo "========================================="
 echo "All test fixtures created successfully!"

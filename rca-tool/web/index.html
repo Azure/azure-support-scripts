@@ -989,7 +989,7 @@
                 console.log('[DEBUG] Resources detail:', analysis.pacemakerResources.resources);
             }
             
-            const { fileCount, directories, fileTypes, files, totalParsed, nestedGzipTotalCount, nestedGzipTotalCompressedBytes, nestedGzipCount, nestedGzipCompressedBytes, nestedGzipDecompressedBytes, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, clusterEvents, kernelReboots, oomKiller, xfsErrors, corosyncConfig, distroPackages, antivirus, automation, kernelTuning, hugePages, timeSync, ptpClockSource, timeSyncService, timedatectl, ptpDevice, chronyTracking, chronyMakestep, lvmConfig, raidConfig, fstab, blockDevices, fstabAnalysis, dfOutput, storageCorrelation, nvmeList, involfltVersion, involfltKernelVersion, azureExtensions, rhuiConfig, eusVersionLock, rhelRhuiCheck, cryptoPolicies, rhuiErrors, leappReport, leappLog, clusterMaintenanceMode, sbdConfig, azureFenceAuth, iscsiConfig, firewallRules, networkInterfaces, vmcore, inspectDiskResults, waagentConfig, waagentLog } = analysis;
+            const { fileCount, directories, fileTypes, files, totalParsed, nestedGzipTotalCount, nestedGzipTotalCompressedBytes, nestedGzipCount, nestedGzipCompressedBytes, nestedGzipDecompressedBytes, isSCCReport, sccReportName, azureVMProperties, clusterNodes, nodeToIpMap, hostsFile, nodesInHosts, nodesMissingFromHosts, liveMigration, clusterEvents, kernelReboots, oomKiller, xfsErrors, corosyncConfig, distroPackages, antivirus, automation, kernelTuning, hugePages, timeSync, ptpClockSource, timeSyncService, timedatectl, ptpDevice, chronyTracking, chronyMakestep, lvmConfig, raidConfig, fstab, blockDevices, fstabAnalysis, dfOutput, mtabAnalysis, storageCorrelation, nvmeList, involfltVersion, involfltKernelVersion, azureExtensions, rhuiConfig, eusVersionLock, rhelRhuiCheck, cryptoPolicies, fipsModeSetup, kernelCmdline, rhuiErrors, leappReport, leappLog, clusterMaintenanceMode, sbdConfig, azureFenceAuth, iscsiConfig, firewallRules, networkInterfaces, vmcore, inspectDiskResults, waagentConfig, waagentLog, hvBalloon, extfrag } = analysis;
 
             // Compute a reusable SAP detection flag early so UI sections can be gated
             const dirListGlobal = (directories || []).map(d => (d || '').toLowerCase());
@@ -3285,6 +3285,91 @@
                         }
                     }
                     html += `</div></details>`;
+                }
+                
+                // FIPS Status subsection - consolidated view of all FIPS indicators
+                {
+                    const fipsSources = [];
+                    // 1. fips-mode-setup --check (sosreport only, most explicit)
+                    if (fipsModeSetup && fipsModeSetup.found) {
+                        fipsSources.push({ source: 'fips-mode-setup --check', enabled: fipsModeSetup.fipsEnabled, inconsistent: fipsModeSetup.inconsistentState });
+                    }
+                    // 2. Kernel command line: fips=1 boot parameter
+                    if (kernelCmdline && kernelCmdline.found) {
+                        fipsSources.push({ source: 'Kernel cmdline (fips=1)', enabled: kernelCmdline.fipsEnabled });
+                    }
+                    // 3. Kernel sysctl: crypto.fips_enabled
+                    if (kernelTuning && kernelTuning.found && kernelTuning.parameters && kernelTuning.parameters['crypto.fips_enabled'] !== undefined) {
+                        fipsSources.push({ source: 'sysctl crypto.fips_enabled', enabled: kernelTuning.fipsEnabled });
+                    }
+                    // 4. Crypto policy = FIPS
+                    if (cryptoPolicies && cryptoPolicies.found && cryptoPolicies.policy) {
+                        fipsSources.push({ source: 'Crypto policy', enabled: /^FIPS/i.test(cryptoPolicies.policy), detail: cryptoPolicies.policy });
+                    }
+                    // 5. waagent.conf OS.EnableFIPS
+                    if (waagentConfig && waagentConfig.found && waagentConfig.summary && waagentConfig.summary.enableFIPS !== null && waagentConfig.summary.enableFIPS !== undefined) {
+                        fipsSources.push({ source: 'waagent.conf OS.EnableFIPS', enabled: waagentConfig.summary.enableFIPS === true });
+                    }
+                    // 6. dracut-fips package
+                    if (distroPackages && distroPackages.found && distroPackages.hasDracutFips) {
+                        fipsSources.push({ source: 'dracut-fips package', enabled: true });
+                    }
+
+                    const hasFipsData = fipsSources.length > 0;
+                    const anyFipsEnabled = fipsSources.some(s => s.enabled);
+                    const anyInconsistent = fipsSources.some(s => s.inconsistent);
+
+                    if (hasFipsData) {
+                        const fipsBlockClass = anyInconsistent ? 'warning-block' : 'subsection';
+                        html += `<details class="${fipsBlockClass}">`;
+                        html += `<summary style="cursor: pointer; font-weight: bold;">FIPS Status`;
+                        if (anyFipsEnabled) {
+                            html += ` <span class="text-info" style="font-size: 11px; font-weight: normal; padding: 1px 6px; border-radius: 3px; background: var(--info-bg, rgba(0,123,255,0.1));">ENABLED</span>`;
+                        }
+                        html += `</summary>`;
+                        html += `<div style="margin-top: 10px;">`;
+
+                        if (anyInconsistent) {
+                            html += `<div class="warning-block" style="margin-bottom: 10px;">`;
+                            html += `<p style="margin: 0; color: var(--warning-color);"><strong>Warning:</strong> Inconsistent FIPS state detected. Some indicators show FIPS enabled while others do not.</p>`;
+                            html += `<p style="margin: 5px 0 0 0; font-size: 12px;">Run <code>fips-mode-setup --enable</code> or <code>--disable</code> to set a consistent state, then reboot. `;
+                            html += `<a href="https://learn.microsoft.com/en-us/azure/virtual-machines/linux/fips-overview" target="_blank" rel="noopener noreferrer" style="font-size: 11px;">[docs]</a></p>`;
+                            html += `</div>`;
+                        }
+
+                        html += `<table style="width: 100%; border-collapse: collapse; font-size: 12px;">`;
+                        html += `<thead><tr style="border-bottom: 1px solid var(--border-color, #666);"><th style="text-align: left; padding: 4px 8px;">Source</th><th style="text-align: left; padding: 4px 8px;">Status</th></tr></thead>`;
+                        html += `<tbody>`;
+                        fipsSources.forEach((src, i) => {
+                            const bg = i % 2 === 0 ? 'background: var(--table-alt-bg, rgba(255,255,255,0.03));' : '';
+                            const statusClass = src.enabled ? 'text-info' : 'text-muted';
+                            const statusText = src.enabled ? 'Enabled' : 'Disabled / Not set';
+                            const detail = src.detail ? ` <span class="text-muted">(${escapeHtml(src.detail)})</span>` : '';
+                            const inconsistentTag = src.inconsistent ? ' <span class="text-warning">(inconsistent)</span>' : '';
+                            html += `<tr style="${bg}"><td style="padding: 4px 8px;">${escapeHtml(src.source)}</td><td style="padding: 4px 8px;"><span class="${statusClass}">${statusText}</span>${detail}${inconsistentTag}</td></tr>`;
+                        });
+                        html += `</tbody></table>`;
+
+                        // Show FIPS packages if found
+                        if (distroPackages && distroPackages.fipsPackages && distroPackages.fipsPackages.length > 0) {
+                            html += `<p style="margin-top: 10px; margin-bottom: 5px; font-size: 12px;"><strong>FIPS-related packages:</strong></p>`;
+                            html += `<ul style="margin: 5px 0; padding-left: 20px; font-size: 12px;">`;
+                            distroPackages.fipsPackages.forEach(pkg => {
+                                html += `<li><code>${escapeHtml(pkg.name)}</code> <span class="text-muted">${escapeHtml(pkg.version)}</span></li>`;
+                            });
+                            html += `</ul>`;
+                        }
+
+                        // Kernel command line if available
+                        if (kernelCmdline && kernelCmdline.found && kernelCmdline.rawCmdline) {
+                            html += `<details class="subsection" style="margin-top: 10px;">`;
+                            html += `<summary style="cursor: pointer; font-size: 12px;">Kernel Command Line</summary>`;
+                            html += `<pre style="margin: 10px 0; font-size: 11px; white-space: pre-wrap; word-break: break-all; max-height: 100px; overflow-y: auto;">${escapeHtml(kernelCmdline.rawCmdline)}</pre>`;
+                            html += `</details>`;
+                        }
+
+                        html += `</div></details>`;
+                    }
                 }
                 
                 // Leapp Upgrade Report subsection
@@ -5602,7 +5687,7 @@
 
 
             // Storage Section
-            const hasStorageData = (fstab && fstab.found) || (nvmeList && nvmeList.hasNVMe) || (blockDevices && blockDevices.found) || (storageCorrelation && storageCorrelation.found) || (analysis.lvmConfig && analysis.lvmConfig.found) || (analysis.raidConfig && analysis.raidConfig.found) || (analysis.btrfsConfig && analysis.btrfsConfig.found) || (analysis.dfOutput && analysis.dfOutput.found);
+            const hasStorageData = (fstab && fstab.found) || (nvmeList && nvmeList.hasNVMe) || (blockDevices && blockDevices.found) || (storageCorrelation && storageCorrelation.found) || (analysis.lvmConfig && analysis.lvmConfig.found) || (analysis.raidConfig && analysis.raidConfig.found) || (analysis.btrfsConfig && analysis.btrfsConfig.found) || (analysis.dfOutput && analysis.dfOutput.found) || (mtabAnalysis && mtabAnalysis.found);
             if (hasStorageData) {
                 html += `<details class="content-details">`;
                 html += `<summary>Storage`;
@@ -5987,6 +6072,104 @@
                     html += `</div>`;
                     html += `</details>`;
                 }
+                if (mtabAnalysis && mtabAnalysis.found) {
+                    const extraMounts = mtabAnalysis.extraMounts || [];
+                    const hasExtraMounts = extraMounts.length > 0;
+
+                    html += `<details style="margin-top: 15px;" ${hasExtraMounts ? 'open' : ''}>`;
+                    const realCount = mtabAnalysis.realMounts ?? mtabAnalysis.entries?.length ?? 0;
+                    const virtualCount = mtabAnalysis.virtualMounts ?? 0;
+                    html += `<summary style="font-size: 14px; cursor: pointer;">Mounted Filesystems`;
+                    html += ` <span style="font-size: 12px; font-weight: normal;">(${realCount} real mount${realCount !== 1 ? 's' : ''}`;
+                    if (virtualCount > 0) {
+                        html += `, ${virtualCount} virtual/autofs excluded`;
+                    }
+                    html += `)</span>`;
+                    if (hasExtraMounts) {
+                        html += ` <span class="badge badge-warning">[!] ${extraMounts.length} mount${extraMounts.length > 1 ? 's' : ''} not in fstab</span>`;
+                    }
+                    html += `</summary>`;
+                    html += `<div style="margin-top: 10px;">`;
+
+                    // Show mounts not in fstab
+                    if (hasExtraMounts) {
+                        html += `<div class="warning-block" style="margin-bottom: 15px;">`;
+                        html += `<p style="margin: 0 0 10px 0;"><strong>[!] Mounts not defined in /etc/fstab</strong></p>`;
+                        html += `<p style="margin: 0 0 10px 0; font-size: 13px;">These filesystems are currently mounted but have no entry in /etc/fstab. They may have been mounted manually or by a cluster resource agent:</p>`;
+                        html += `<div style="overflow-x: auto;">`;
+                        html += `<table style="width: 100%; border-collapse: collapse; font-size: 12px;">`;
+                        html += `<thead><tr style="background: var(--code-bg); border-bottom: 2px solid var(--code-border);">`;
+                        html += `<th scope="col" style="padding: 8px; text-align: left;">Mount Point</th>`;
+                        html += `<th scope="col" style="padding: 8px; text-align: left;">Source</th>`;
+                        html += `<th scope="col" style="padding: 8px; text-align: left;">Type</th>`;
+                        html += `<th scope="col" style="padding: 8px; text-align: left;">Options</th>`;
+                        html += `<th scope="col" style="padding: 8px; text-align: left;">Likely Origin</th>`;
+                        html += `</tr></thead><tbody>`;
+
+                        extraMounts.forEach(m => {
+                            let origin = 'Hand-mounted';
+                            if (m.sourceType === 'network') {
+                                origin = 'Network mount (NFS/CIFS)';
+                            } else if (m.mountpoint.includes('/hana/') || m.mountpoint.includes('/sapmnt') || m.mountpoint.includes('/usr/sap')) {
+                                origin = 'SAP/HANA (likely cluster-managed)';
+                            } else if (m.fstype === 'ocfs2' || m.fstype === 'gfs2') {
+                                origin = 'Cluster filesystem';
+                            }
+
+                            html += `<tr style="border-bottom: 1px solid var(--code-border); background: rgba(255, 193, 7, 0.1);">`;
+                            html += `<td style="padding: 6px 8px; font-family: monospace;">${m.mountpoint}</td>`;
+                            html += `<td style="padding: 6px 8px; font-family: monospace; font-size: 11px; max-width: 250px; overflow: hidden; text-overflow: ellipsis;" title="${m.source}">${m.source}</td>`;
+                            html += `<td style="padding: 6px 8px;">${m.fstype}</td>`;
+                            html += `<td style="padding: 6px 8px; font-size: 11px; max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="${m.options}">${m.options}</td>`;
+                            html += `<td style="padding: 6px 8px;">${origin}</td>`;
+                            html += `</tr>`;
+                        });
+
+                        html += `</tbody></table>`;
+                        html += `</div></div>`;
+                    }
+
+                    // Show autofs mounts
+                    const autofsMounts = mtabAnalysis.autofsMounts || [];
+                    if (autofsMounts.length > 0) {
+                        html += `<details style="margin-top: 10px;">`;
+                        html += `<summary style="font-size: 13px; cursor: pointer;">Autofs Mounts <span style="font-size: 12px; font-weight: normal;">(${autofsMounts.length} automounter entries)</span></summary>`;
+                        html += `<div style="margin-top: 8px;">`;
+                        html += `<p style="margin: 0 0 10px 0; font-size: 13px; color: var(--muted-text);">These mountpoints are managed by the automounter daemon (autofs). They are created on-demand when accessed and may not correspond to active mounts.</p>`;
+                        html += `<div style="overflow-x: auto;">`;
+                        html += `<table style="width: 100%; border-collapse: collapse; font-size: 12px;">`;
+                        html += `<thead><tr style="background: var(--code-bg); border-bottom: 2px solid var(--code-border);">`;
+                        html += `<th scope="col" style="padding: 8px; text-align: left;">Mount Point</th>`;
+                        html += `<th scope="col" style="padding: 8px; text-align: left;">Source</th>`;
+                        html += `<th scope="col" style="padding: 8px; text-align: left;">Options</th>`;
+                        html += `</tr></thead><tbody>`;
+
+                        autofsMounts.forEach(m => {
+                            html += `<tr style="border-bottom: 1px solid var(--code-border);">`;
+                            html += `<td style="padding: 6px 8px; font-family: monospace;">${m.mountpoint}</td>`;
+                            html += `<td style="padding: 6px 8px; font-family: monospace; font-size: 11px;">${m.source}</td>`;
+                            html += `<td style="padding: 6px 8px; font-size: 11px; max-width: 250px; overflow: hidden; text-overflow: ellipsis;" title="${m.options}">${m.options}</td>`;
+                            html += `</tr>`;
+                        });
+
+                        html += `</tbody></table>`;
+                        html += `</div></div>`;
+                        html += `</details>`;
+                    }
+
+                    // Raw mtab content in collapsible section
+                    if (mtabAnalysis.rawContent) {
+                        html += `<details style="margin-top: 10px;">`;
+                        html += `<summary style="font-size: 12px; cursor: pointer; color: var(--muted-text);">Show raw /etc/mtab</summary>`;
+                        html += `<pre style="background: var(--code-bg); padding: 10px; border: 1px solid var(--code-border); border-radius: 4px; overflow-x: auto; font-size: 11px; white-space: pre-wrap; margin-top: 5px;">`;
+                        html += mtabAnalysis.rawContent.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        html += `</pre>`;
+                        html += `</details>`;
+                    }
+
+                    html += `</div>`;
+                    html += `</details>`;
+                }
                 if (nvmeList && nvmeList.hasNVMe) {
                     html += `<details style="margin-top: 15px;">`;
                     html += `<summary style="font-size: 14px; cursor: pointer;">NVMe Drives <span style="font-size: 12px; font-weight: normal;">(${nvmeList.driveCount} detected)</span></summary>`;
@@ -5999,6 +6182,160 @@
                 }
 
                 html += `</div></details>`;
+            }
+
+            // ================================================================
+            // DEBUGFS (ADVANCED)
+            // ================================================================
+            const hasHvBalloon = hvBalloon && hvBalloon.found;
+            const hasExtfrag = extfrag && extfrag.found;
+            if (hasHvBalloon || hasExtfrag) {
+                const allDebugfsWarnings = []
+                    .concat(hasHvBalloon && hvBalloon.warnings ? hvBalloon.warnings : [])
+                    .concat(hasExtfrag && extfrag.warnings ? extfrag.warnings : []);
+                const hasDebugfsWarnings = allDebugfsWarnings.length > 0;
+                const debugfsBlockClass = hasDebugfsWarnings ? 'warning-block' : 'info-block';
+                html += `<details class="${debugfsBlockClass}">`;
+                html += `<summary style="cursor: pointer; font-weight: bold; user-select: none;">`;
+                if (hasDebugfsWarnings) {
+                    html += `[!] Debugfs (Advanced) <span class="badge badge-warning">${allDebugfsWarnings.length} warning${allDebugfsWarnings.length !== 1 ? 's' : ''}</span>`;
+                } else {
+                    html += `[OK] Debugfs (Advanced)`;
+                }
+                html += `</summary>`;
+                html += `<div style="margin-top: 15px;">`;
+
+                // All warnings
+                if (hasDebugfsWarnings) {
+                    allDebugfsWarnings.forEach(w => {
+                        html += `<p class="text-warning"><strong>[!]</strong> ${w}</p>`;
+                    });
+                }
+
+                // Hyper-V Dynamic Memory (hv-balloon) sub-section
+                if (hasHvBalloon) {
+                    html += `<details style="margin-top: 10px;" open>`;
+                    html += `<summary style="cursor: pointer; font-size: 14px;">Hyper-V Dynamic Memory (hv-balloon)</summary>`;
+                    html += `<div style="margin-top: 10px;">`;
+
+                    html += `<table style="width: auto; border-collapse: collapse; font-size: 13px;">`;
+                    html += `<tbody>`;
+                    if (hvBalloon.hostVersion) {
+                        html += `<tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Host Version</td><td style="padding: 4px 0;">${hvBalloon.hostVersion}</td></tr>`;
+                    }
+                    if (hvBalloon.capabilities) {
+                        html += `<tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Capabilities</td><td style="padding: 4px 0;">${hvBalloon.capabilities}</td></tr>`;
+                    }
+                    if (hvBalloon.state !== null) {
+                        html += `<tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">State</td><td style="padding: 4px 0;">${hvBalloon.state} (${hvBalloon.stateText || 'Unknown'})</td></tr>`;
+                    }
+                    html += `<tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Committed Memory</td><td style="padding: 4px 0;">${hvBalloon.committedMemoryGB} GB (${hvBalloon.totalPagesCommitted.toLocaleString()} pages)</td></tr>`;
+                    html += `<tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Max Dynamic Memory</td><td style="padding: 4px 0;">${hvBalloon.maxDynamicMemoryGB} GB (${hvBalloon.maxDynamicPageCount.toLocaleString()} pages)</td></tr>`;
+                    const balloonClass = hvBalloon.pagesBallooned > 0 ? 'text-warning' : 'text-success';
+                    html += `<tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Ballooned Memory</td><td style="padding: 4px 0;" class="${balloonClass}">${hvBalloon.balloonedMemoryMB} MB (${hvBalloon.pagesBallooned.toLocaleString()} pages)</td></tr>`;
+                    html += `<tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Pages Added</td><td style="padding: 4px 0;">${hvBalloon.pagesAdded.toLocaleString()}</td></tr>`;
+                    html += `<tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Pages Onlined</td><td style="padding: 4px 0;">${hvBalloon.pagesOnlined.toLocaleString()}</td></tr>`;
+                    html += `</tbody></table>`;
+
+                    if (hvBalloon.maxDynamicMemoryGB > 0) {
+                        const usagePct = Math.min(100, Math.round((hvBalloon.committedMemoryGB / hvBalloon.maxDynamicMemoryGB) * 100));
+                        const barColor = usagePct > 90 ? '#dc3545' : usagePct > 70 ? '#ffc107' : '#28a745';
+                        html += `<div style="margin-top: 12px;">`;
+                        html += `<p style="font-size: 13px; margin-bottom: 4px;"><strong>Memory Utilization:</strong> ${usagePct}%</p>`;
+                        html += `<div style="background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 4px; height: 20px; width: 300px; overflow: hidden;">`;
+                        html += `<div style="background: ${barColor}; height: 100%; width: ${usagePct}%; transition: width 0.3s;"></div>`;
+                        html += `</div>`;
+                        html += `</div>`;
+                    }
+
+                    if (hvBalloon.rawContent) {
+                        html += `<details style="margin-top: 12px;">`;
+                        html += `<summary style="cursor: pointer; font-size: 12px;">Raw debugfs output</summary>`;
+                        html += `<pre style="background: var(--code-bg); padding: 10px; border: 1px solid var(--code-border); border-radius: 4px; overflow-x: auto; font-size: 12px; white-space: pre; margin-top: 5px;">`;
+                        html += hvBalloon.rawContent.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        html += `</pre>`;
+                        html += `</details>`;
+                    }
+
+                    html += `</div></details>`; // close hv-balloon sub-section
+                }
+
+                // Memory Fragmentation (extfrag) sub-section
+                if (hasExtfrag) {
+                    const orderLabels = ['4K', '8K', '16K', '32K', '64K', '128K', '256K', '512K', '1M', '2M', '4M'];
+                    html += `<details style="margin-top: 10px;" open>`;
+                    html += `<summary style="cursor: pointer; font-size: 14px;">Memory Fragmentation Index <span style="font-size: 12px; font-weight: normal;">(${extfrag.zones.length} zone${extfrag.zones.length !== 1 ? 's' : ''})</span></summary>`;
+                    html += `<div style="margin-top: 10px;">`;
+
+                    // Explanation
+                    html += `<p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">Values per buddy allocator order (0-10). Higher orders = larger contiguous allocations. Order 9 = 2MB huge pages.</p>`;
+
+                    extfrag.zones.forEach(zone => {
+                        html += `<div style="margin-bottom: 15px;">`;
+                        html += `<p style="font-size: 13px; font-weight: bold; margin-bottom: 5px;">Node ${zone.node}, zone ${zone.zone}</p>`;
+
+                        // Unusable Index table (most actionable)
+                        if (zone.unusableIndex && zone.unusableIndex.length > 0) {
+                            html += `<table style="width: auto; border-collapse: collapse; font-size: 12px; margin-bottom: 8px;">`;
+                            html += `<thead><tr><td style="padding: 3px 6px; font-weight: bold;">Unusable Index</td>`;
+                            for (let o = 0; o < zone.unusableIndex.length && o < orderLabels.length; o++) {
+                                html += `<td style="padding: 3px 6px; text-align: center; font-weight: bold; font-size: 11px;">${orderLabels[o]}</td>`;
+                            }
+                            html += `</tr></thead><tbody><tr><td style="padding: 3px 6px;"></td>`;
+                            for (let o = 0; o < zone.unusableIndex.length && o < orderLabels.length; o++) {
+                                const val = zone.unusableIndex[o];
+                                let cellColor = '';
+                                if (val > 0.8) cellColor = 'background: #dc354540;';
+                                else if (val > 0.5) cellColor = 'background: #ffc10740;';
+                                else if (val > 0.2) cellColor = 'background: #fd7e1440;';
+                                html += `<td style="padding: 3px 6px; text-align: center; ${cellColor}">${val.toFixed(3)}</td>`;
+                            }
+                            html += `</tr></tbody></table>`;
+                        }
+
+                        // Extfrag Index table
+                        if (zone.extfragIndex && zone.extfragIndex.length > 0) {
+                            html += `<table style="width: auto; border-collapse: collapse; font-size: 12px;">`;
+                            html += `<thead><tr><td style="padding: 3px 6px; font-weight: bold;">Extfrag Index</td>`;
+                            for (let o = 0; o < zone.extfragIndex.length && o < orderLabels.length; o++) {
+                                html += `<td style="padding: 3px 6px; text-align: center; font-weight: bold; font-size: 11px;">${orderLabels[o]}</td>`;
+                            }
+                            html += `</tr></thead><tbody><tr><td style="padding: 3px 6px;"></td>`;
+                            for (let o = 0; o < zone.extfragIndex.length && o < orderLabels.length; o++) {
+                                const val = zone.extfragIndex[o];
+                                let cellColor = '';
+                                if (val >= 0 && val <= 1.0) {
+                                    if (val > 0.7) cellColor = 'background: #dc354540;';
+                                    else if (val > 0.5) cellColor = 'background: #ffc10740;';
+                                }
+                                const display = val < 0 ? val.toFixed(3) : val.toFixed(3);
+                                html += `<td style="padding: 3px 6px; text-align: center; ${cellColor}">${display}</td>`;
+                            }
+                            html += `</tr></tbody></table>`;
+                        }
+                        html += `</div>`;
+                    });
+
+                    // Legend
+                    html += `<div style="margin-top: 8px; font-size: 11px; color: var(--text-muted);">`;
+                    html += `<p><strong>Unusable Index:</strong> 0 = all free memory usable, 1 = completely fragmented. Values &gt;0.5 at order 9+ indicate huge page allocation issues.</p>`;
+                    html += `<p><strong>Extfrag Index:</strong> -1 = pages available, 0 = failure from lack of memory, 1 = failure from fragmentation. Values &gt;0.7 suggest compaction would help.</p>`;
+                    html += `</div>`;
+
+                    // Raw content
+                    if (extfrag.rawContent) {
+                        html += `<details style="margin-top: 12px;">`;
+                        html += `<summary style="cursor: pointer; font-size: 12px;">Raw extfrag output</summary>`;
+                        html += `<pre style="background: var(--code-bg); padding: 10px; border: 1px solid var(--code-border); border-radius: 4px; overflow-x: auto; font-size: 12px; white-space: pre; margin-top: 5px;">`;
+                        html += extfrag.rawContent.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        html += `</pre>`;
+                        html += `</details>`;
+                    }
+
+                    html += `</div></details>`; // close extfrag sub-section
+                }
+
+                html += `</div></details>`; // close debugfs section
             }
 
             // Archive Contents - Collapsible

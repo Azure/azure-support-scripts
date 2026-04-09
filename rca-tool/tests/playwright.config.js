@@ -60,9 +60,9 @@ export default defineConfig({
       use: { 
         ...devices['Desktop Edge'],
         channel: 'msedge',
-        // Ensure trailing slash so relative paths work correctly
-        // Note: URL('path', 'base') treats 'base' as a file unless it ends with /
-        baseURL: (process.env.DEPLOYED_URL || 'https://fede2cr.github.io/azure-support-scripts').replace(/\/?$/, '/'),
+        // Legacy Vite UI is published under /web/ now that Leptos is the default root UI.
+        // Ensure trailing slash so relative paths work correctly.
+        baseURL: (process.env.DEPLOYED_URL || 'https://fede2cr.github.io/azure-support-scripts/web').replace(/\/?$/, '/'),
       },
     },
   ],

@@ -2,8 +2,8 @@
  * @module parsers/storage
  * @description Storage Parsers for RCA Tool
  *
- * Provides six independent parsers covering LVM, RAID, BTRFS, block devices,
- * fstab analysis, and disk usage.  Each parser targets a specific set of
+ * Provides seven independent parsers covering LVM, RAID, BTRFS, block devices,
+ * fstab analysis, disk usage, and mtab/mounts analysis.  Each parser targets a specific set of
  * files from SCC (supportconfig) or SOS (sosreport) archives.
  *
  * ### Parser Inventory
@@ -16,6 +16,7 @@
  * | `blockDevicesParser` | `lsblk`, `lsblk_-f_-a_-l`, `blkid_-c_.dev.null`, `results.txt` (InspectIaaSDisk) | Builds disk/partition inventory with UUID, filesystem type, and mount point maps (multi-file) |
  * | `fstabAnalysisParser` | `/etc/fstab`, `fs-diskio.txt` | Parses fstab entries; classifies source type (UUID/device/label/network); flags missing `nofail` on non-OS mounts |
  * | `dfOutputParser` | `df`, `df_-aliT`, `df_-al_`, `fs-diskio.txt` | Parses `df` output for filesystem usage; builds mountpoint-to-usage lookup |
+ * | `mtabAnalysisParser` | `/etc/mtab`, `proc/mounts`, `proc/self/mounts`, `fs-diskio.txt`, `mount_-l`, `mount` | Parses mounted filesystems; compares against fstab to find hand-mounted or cluster-managed mounts |
  *
  * ### Return Shapes
  *
@@ -54,6 +55,14 @@
  * ```
  * { found, filesystems[], mountToUsage }
  * ```
+ *
+ * **mtabAnalysisParser:**
+ * ```
+ * { found, entries[], extraMounts[], rawContent }
+ * ```
+ * `extraMounts` lists mounts present in mtab but absent from fstab
+ * (excluding virtual filesystems), indicating hand-mounted or
+ * cluster-managed partitions.
  *
  * ### Key Helper Methods
  *
@@ -1164,5 +1173,163 @@ const dfOutputParser = {
         }
         
         return dfLines.length > 0 ? dfLines.join('\n') : null;
+    }
+};
+
+/**
+ * Parser: mtabAnalysis
+ * Parses /etc/mtab (or /proc/mounts) to find currently mounted filesystems.
+ * Compares each entry against fstab to identify mounts that were added
+ * manually (hand-mounted) or by a cluster manager as a resource.
+ *
+ * File patterns:
+ *   - etc/mtab (sosreport, supportconfig)
+ *   - proc/mounts (sosreport)
+ *   - proc/self/mounts (sosreport)
+ *   - fs-diskio.txt (SCC - contains a mount/mounts section)
+ *
+ * Return shape:
+ * ```
+ * { found, entries[], extraMounts[], rawContent }
+ * ```
+ * `extraMounts` contains entries present in mtab but **not** in fstab,
+ * excluding virtual/pseudo filesystems.  These are candidates for
+ * hand-mounted or cluster-managed partitions.
+ */
+const mtabAnalysisParser = {
+    filePattern: /\/etc\/mtab$|\/proc\/mounts$|\/proc\/self\/mounts$|\/fs-diskio\.txt$|\/mount_-l$|\/mount$/,
+
+    parse: function(content, filename, _lines) {
+        storageDebugLog('[mtabAnalysis parser] Analyzing:', filename);
+
+        // If this is SCC's fs-diskio.txt, extract the mount section
+        let mtabContent = content;
+        if (filename.includes('fs-diskio.txt')) {
+            mtabContent = this.extractMountFromSCC(content);
+            if (!mtabContent) {
+                storageDebugLog('[mtabAnalysis parser] No mount section found in fs-diskio.txt');
+                return { found: false, entries: [], extraMounts: [], rawContent: '' };
+            }
+        } else if (this.isMountCommandFormat(content)) {
+            // mount -l / mount output: "device on mountpoint type fstype (options)"
+            // Convert to mtab-like format for uniform parsing
+            mtabContent = this.convertMountToMtab(content);
+        }
+
+        const result = {
+            found: false,
+            entries: [],
+            extraMounts: [],   // Populated later during comparison
+            rawContent: mtabContent
+        };
+
+        // Virtual/pseudo filesystem types to exclude from comparison
+        const virtualFsTypes = [
+            'tmpfs', 'devtmpfs', 'sysfs', 'proc', 'cgroup', 'cgroup2',
+            'securityfs', 'devpts', 'hugetlbfs', 'mqueue', 'debugfs',
+            'tracefs', 'fusectl', 'configfs', 'pstore', 'efivarfs',
+            'bpf', 'binfmt_misc', 'autofs', 'sunrpc', 'rpc_pipefs',
+            'nfsd', 'overlay', 'nsfs', 'squashfs', 'rootfs', 'ramfs'
+        ];
+
+        const lines = mtabContent.split('\n');
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) continue;
+
+            // mtab/mounts format: device mountpoint fstype options dump pass
+            const parts = trimmed.split(/\s+/);
+            if (parts.length < 3) continue;
+
+            const [source, mountpoint, fstype, options] = parts;
+
+            const isVirtualFs = virtualFsTypes.includes(fstype) || fstype === 'none';
+
+            const entry = {
+                source: source,
+                mountpoint: mountpoint,
+                fstype: fstype,
+                options: options || 'defaults',
+                isVirtualFs: isVirtualFs,
+                sourceType: 'unknown'
+            };
+
+            // Classify source type
+            if (source.startsWith('UUID=')) {
+                entry.sourceType = 'uuid';
+            } else if (source.startsWith('LABEL=')) {
+                entry.sourceType = 'label';
+            } else if (source.startsWith('/dev/')) {
+                entry.sourceType = 'device';
+            } else if (source.startsWith('//') || source.includes(':')) {
+                entry.sourceType = 'network';
+            }
+
+            result.entries.push(entry);
+        }
+
+        if (result.entries.length > 0) {
+            result.found = true;
+        }
+
+        storageDebugLog('[mtabAnalysis parser] Found:', result.entries.length, 'entries');
+        return result;
+    },
+
+    isMountCommandFormat: function(content) {
+        // Detect "mount" command output format: "device on mountpoint type fstype (options)"
+        const firstLines = content.split('\n').slice(0, 5);
+        return firstLines.some(l => /^\S+\s+on\s+\S+\s+type\s+\S+\s+\(/.test(l.trim()));
+    },
+
+    convertMountToMtab: function(content) {
+        // Convert "mount -l" output to mtab-like format
+        const outLines = [];
+        for (const line of content.split('\n')) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            const m = trimmed.match(/^(\S+)\s+on\s+(\S+)\s+type\s+(\S+)\s+\(([^)]*)\)/);
+            if (m) {
+                outLines.push(`${m[1]} ${m[2]} ${m[3]} ${m[4]}`);
+            }
+        }
+        return outLines.join('\n');
+    },
+
+    extractMountFromSCC: function(content) {
+        // Extract mount/mounts section from SCC's fs-diskio.txt
+        // Look for "# /bin/mount" or "# mount" marker
+        const lines = content.split('\n');
+        const mountLines = [];
+        let inMountSection = false;
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+
+            // Start of mount section
+            if (line.match(/^#\s*\/bin\/mount\b/) || line.match(/^#\s*mount\s*$/)) {
+                inMountSection = true;
+                continue;
+            }
+
+            // End of section (next command marker)
+            if (inMountSection && (line.startsWith('#==') || line.match(/^#\s*\//))) {
+                break;
+            }
+
+            if (inMountSection && line.trim()) {
+                // Convert "mount" output format ("device on mountpoint type fstype (options)")
+                // to mtab-like format ("device mountpoint fstype options")
+                const mountMatch = line.match(/^(\S+)\s+on\s+(\S+)\s+type\s+(\S+)\s+\(([^)]*)\)/);
+                if (mountMatch) {
+                    mountLines.push(`${mountMatch[1]} ${mountMatch[2]} ${mountMatch[3]} ${mountMatch[4]}`);
+                } else {
+                    mountLines.push(line.trim());
+                }
+            }
+        }
+
+        return mountLines.length > 0 ? mountLines.join('\n') : null;
     }
 };

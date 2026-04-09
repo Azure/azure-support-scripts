@@ -108,6 +108,7 @@ if (typeof importScripts === 'function') {
     importScripts('parsers/networking.js');
     importScripts('parsers/network-interfaces.js');
     importScripts('parsers/vmcore.js');
+    importScripts('parsers/debugfs.js');
     debugLog('[Worker] Running in Web Worker context');
     debugLog('[Worker] Browser:', typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown');
 }
@@ -904,6 +905,9 @@ if (typeof fstabAnalysisParser !== 'undefined') {
 if (typeof dfOutputParser !== 'undefined') {
     SCC_RULES.dfOutput = dfOutputParser;
 }
+if (typeof mtabAnalysisParser !== 'undefined') {
+    SCC_RULES.mtabAnalysis = mtabAnalysisParser;
+}
 
 // From parsers/unix.js - RHUI/EUS parsers
 if (typeof rhuiConfigParser !== 'undefined') {
@@ -917,6 +921,12 @@ if (typeof rhelRhuiCheckParser !== 'undefined') {
 }
 if (typeof cryptoPoliciesParser !== 'undefined') {
     SCC_RULES.cryptoPolicies = cryptoPoliciesParser;
+}
+if (typeof fipsModeSetupParser !== 'undefined') {
+    SCC_RULES.fipsModeSetup = fipsModeSetupParser;
+}
+if (typeof kernelCmdlineParser !== 'undefined') {
+    SCC_RULES.kernelCmdline = kernelCmdlineParser;
 }
 if (typeof rhuiErrorsParser !== 'undefined') {
     SCC_RULES.rhuiErrors = rhuiErrorsParser;
@@ -950,6 +960,20 @@ if (typeof vmcoreParser !== 'undefined') {
     debugLog('[Worker] vmcoreParser registered successfully, filePattern:', vmcoreParser.filePattern);
 } else {
     console.warn('[Worker] vmcoreParser is NOT defined - vmcore.js may have failed to load');
+}
+
+// From parsers/debugfs.js
+if (typeof hvBalloonParser !== 'undefined') {
+    SCC_RULES.hvBalloon = hvBalloonParser;
+    debugLog('[Worker] hvBalloonParser registered successfully, filePattern:', hvBalloonParser.filePattern);
+} else {
+    console.warn('[Worker] hvBalloonParser is NOT defined - debugfs.js may have failed to load');
+}
+if (typeof extfragParser !== 'undefined') {
+    SCC_RULES.extfrag = extfragParser;
+    debugLog('[Worker] extfragParser registered successfully, filePattern:', extfragParser.filePattern);
+} else {
+    console.warn('[Worker] extfragParser is NOT defined - debugfs.js may have failed to load');
 }
 // ============================================================================
 
@@ -2446,6 +2470,74 @@ class IncrementalTARParser {
     }
 
     /**
+     * Compare mtab entries with fstab to find mounts not defined in fstab.
+     * These are typically hand-mounted filesystems or cluster-managed resources.
+     * Returns the mtab analysis enriched with extraMounts data.
+     */
+    compareMtabWithFstab() {
+        const mtab = this.analysisResults.mtabAnalysis;
+        if (!mtab?.found) {
+            debugLog('[Storage] No mtab data available for comparison');
+            return mtab || null;
+        }
+
+        const fstab = this.analysisResults.fstabAnalysis;
+
+        // Build a set of fstab mountpoints for fast lookup
+        const fstabMountpoints = new Set();
+        if (fstab?.found && fstab.entries) {
+            for (const entry of fstab.entries) {
+                fstabMountpoints.add(entry.mountpoint);
+            }
+        }
+
+        // Count real vs virtual mounts and build type breakdown
+        let realMounts = 0;
+        let virtualMounts = 0;
+        const typeBreakdown = {};
+        for (const entry of mtab.entries) {
+            if (entry.isVirtualFs) {
+                virtualMounts++;
+            } else {
+                realMounts++;
+            }
+            typeBreakdown[entry.fstype] = (typeBreakdown[entry.fstype] || 0) + 1;
+        }
+
+        // Find mounts in mtab that are NOT in fstab (excluding virtual filesystems)
+        const extraMounts = [];
+        for (const entry of mtab.entries) {
+            if (entry.isVirtualFs) continue;
+            if (!fstabMountpoints.has(entry.mountpoint)) {
+                extraMounts.push({
+                    source: entry.source,
+                    mountpoint: entry.mountpoint,
+                    fstype: entry.fstype,
+                    options: entry.options,
+                    sourceType: entry.sourceType,
+                    reason: 'Not found in /etc/fstab - possibly hand-mounted or cluster-managed'
+                });
+            }
+        }
+
+        // Collect autofs entries separately for visibility
+        const autofsMounts = mtab.entries.filter(e => e.fstype === 'autofs');
+
+        debugLog('[Storage] mtab vs fstab: found', extraMounts.length, 'extra mounts,', realMounts, 'real,', virtualMounts, 'virtual,', autofsMounts.length, 'autofs');
+
+        return {
+            found: mtab.found,
+            entries: mtab.entries,
+            realMounts: realMounts,
+            virtualMounts: virtualMounts,
+            typeBreakdown: typeBreakdown,
+            extraMounts: extraMounts,
+            autofsMounts: autofsMounts,
+            rawContent: mtab.rawContent
+        };
+    }
+
+    /**
      * Correlate fstab entries with block device information
      * Detects UUID mismatches, missing UUIDs, and filesystem type mismatches
      */
@@ -2851,6 +2943,7 @@ class IncrementalTARParser {
             fstabAnalysis: this.analysisResults.fstabAnalysis || null,
             inspectDiskResults: this.analysisResults.inspectDiskResults || null,
             dfOutput: this.analysisResults.dfOutput || null,
+            mtabAnalysis: this.compareMtabWithFstab(),
             storageCorrelation: this.correlateFstabWithBlockDevices(),
             nvmeList: this.analysisResults.nvmeList || null,
             involfltVersion: this.analysisResults.involfltVersion || null,
@@ -2863,6 +2956,8 @@ class IncrementalTARParser {
             eusVersionLock: this.analysisResults.eusVersionLock || null,
             rhelRhuiCheck: this.analysisResults.rhelRhuiCheck || null,
             cryptoPolicies: this.analysisResults.cryptoPolicies || null,
+            fipsModeSetup: this.analysisResults.fipsModeSetup || null,
+            kernelCmdline: this.analysisResults.kernelCmdline || null,
             rhuiErrors: this.analysisResults.rhuiErrors || null,
             leappReport: this.analysisResults.leappReport || null,
             leappLog: this.analysisResults.leappLog || null,
@@ -2877,6 +2972,8 @@ class IncrementalTARParser {
             vmcore: this.analysisResults.vmcore || null,
             waagentConfig: this.analysisResults.waagentConfig || null,
             waagentLog: this.analysisResults.waagentLog || null,
+            hvBalloon: this.analysisResults.hvBalloon || null,
+            extfrag: this.analysisResults.extfrag || null,
             usedPaxFormat: this.usedPaxFormat || false,  // Flag if PAX format was detected
             // Cross-validation results
             nodesInHosts: nodesInHosts,

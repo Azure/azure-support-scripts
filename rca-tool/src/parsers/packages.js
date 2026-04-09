@@ -172,6 +172,16 @@ const distroPackagesParser = {
         const foundPackages = {};
         const warnings = [];
         
+        // FIPS-related package detection
+        // These packages indicate FIPS mode is configured on the system
+        const fipsPackagePatterns = [
+            /^dracut-fips-/,
+            /^fipscheck-/,
+            /^fips-mode-setup-/,
+            /^crypto-policies-/
+        ];
+        const fipsPackages = [];
+
         // Parse RPM listing
         // Common RPM formats:
         // - "package-name-1.2.3-4.el8.x86_64"
@@ -179,6 +189,21 @@ const distroPackagesParser = {
         for (const line of lines) {
             const trimmed = line.trim();
             if (!trimmed) continue;
+
+            // Check for FIPS-related packages
+            for (const fipsPattern of fipsPackagePatterns) {
+                if (fipsPattern.test(trimmed)) {
+                    // Extract RPM token (before whitespace) then name and version
+                    // installed-rpms format: "dracut-fips-049-233.git20240115.el8.x86_64 Wed Jan 17 00:00:00 2024"
+                    const rpmToken = trimmed.split(/\s+/)[0];
+                    const fm = rpmToken.match(/^([a-z][a-z0-9_-]*?)-([\d]+[\d.]*\S*?)(?:\.[a-z][a-z0-9_]*)?$/i);
+                    if (fm) {
+                        fipsPackages.push({ name: fm[1], version: fm[2] });
+                        debugLog('[distroPackages parser] Found FIPS package:', fm[1], fm[2]);
+                    }
+                    break;
+                }
+            }
             
             // Try to match RPM package format
             // Pattern: package-name-version-release.arch
@@ -239,10 +264,15 @@ const distroPackagesParser = {
             }
         }
         
+        const hasDracutFips = fipsPackages.some(p => p.name === 'dracut-fips');
+        debugLog('[distroPackages parser] FIPS packages found:', fipsPackages.length, 'dracut-fips:', hasDracutFips);
+
         return {
             found: true,
             packages: foundPackages,
-            warnings: warnings
+            warnings: warnings,
+            fipsPackages: fipsPackages,
+            hasDracutFips: hasDracutFips
         };
     },
 
@@ -318,7 +348,17 @@ const distroPackagesParser = {
             }
         }
 
-        return { packages: foundPackages, warnings };
+        // FIPS package detection in the package map
+        const fipsPackageNames = ['dracut-fips', 'fipscheck', 'fips-mode-setup', 'crypto-policies'];
+        const fipsPackages = [];
+        for (const [pkgName, info] of Object.entries(packageMap)) {
+            if (fipsPackageNames.some(fp => pkgName === fp || pkgName.startsWith(fp + '-'))) {
+                fipsPackages.push({ name: pkgName, version: info.version });
+            }
+        }
+        const hasDracutFips = fipsPackages.some(p => p.name === 'dracut-fips' || p.name.startsWith('dracut-fips-'));
+
+        return { packages: foundPackages, warnings, fipsPackages, hasDracutFips };
     },
 
     /**
@@ -364,7 +404,9 @@ const distroPackagesParser = {
             filename: filename,
             packageCount: sortedPkgs.length,
             packages: validationResult.packages || {},
-            warnings: validationResult.warnings || []
+            warnings: validationResult.warnings || [],
+            fipsPackages: validationResult.fipsPackages || [],
+            hasDracutFips: validationResult.hasDracutFips || false
         };
     },
 
@@ -420,7 +462,9 @@ const distroPackagesParser = {
             filename: filename,
             packageCount: sortedPkgs.length,
             packages: validationResult.packages || {},
-            warnings: validationResult.warnings || []
+            warnings: validationResult.warnings || [],
+            fipsPackages: validationResult.fipsPackages || [],
+            hasDracutFips: validationResult.hasDracutFips || false
         };
     }
 };

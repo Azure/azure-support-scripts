@@ -85,13 +85,17 @@ export function fixturePath(filename) {
 
 /**
  * Navigate to the RCA Tool app root, choosing the correct path for the
- * active Playwright project (`local` → `/web/dist/`, `deployed` → `./`).
+ * active Playwright project (`local` → `/web/dist/`, `local-leptos` →
+ * `/web-leptos/dist/`, deployed projects → `./`).
  *
  * @async
  * @param {Object} page - Playwright page object.
  * @param {Object} testInfo - Playwright test info.
  */
 export async function navigateToApp(page, testInfo) {
-  const navPath = testInfo.project.name === 'deployed' ? './' : '/web/dist/';
+  const projectName = testInfo.project.name || '';
+  const isLeptos = projectName.includes('leptos');
+  const isDeployed = projectName === 'deployed' || projectName.includes('deployed');
+  const navPath = isDeployed ? './' : (isLeptos ? '/web-leptos/dist/' : '/web/dist/');
   await page.goto(navPath);
 }
