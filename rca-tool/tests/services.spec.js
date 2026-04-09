@@ -19,15 +19,15 @@ test.describe('Services Parsers', () => {
 
   test('detects antivirus software', async ({ page }) => {
     const result = await uploadAndWaitForAnalysis(page, 'scc_test-antivirus.tar.xz');
-    
-    if (result.includes('Antivirus')) {
-      // Should detect Falcon Sensor or Defender
-      const hasAntivirus = result.includes('Falcon Sensor') || result.includes('Microsoft Defender');
-      expect(hasAntivirus).toBeTruthy();
-      
-      // Should show SAP exclusions status
-      expect(result).toMatch(/SAP.*exclusion/i);
-    }
+
+    // The section title always contains "Antivirus", so assert on actual
+    // security-software detection instead of the generic heading text.
+    const hasAntivirus = /Falcon Sensor|Microsoft Defender/i.test(result);
+    expect(hasAntivirus, result).toBeTruthy();
+
+    // The fixture includes SAP exclusion guidance/config, so the rendered
+    // output should mention SAP exclusions.
+    expect(result).toMatch(/SAP.*exclusion/i);
   });
 
   test('detects Illumio security software', async ({ page }) => {

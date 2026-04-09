@@ -36,15 +36,30 @@ export async function uploadAndWaitForAnalysis(page, filename) {
   const fileInput = await page.locator('input[type="file"]');
   await fileInput.setInputFiles(filePath);
   
-  // Wait for analysis to complete (look for results content in #output)
-  await page.waitForFunction(() => {
+  // Wait for the final results view rather than the transient progress view.
+  // On slower CI runners, `#output.innerHTML.length > 100` can become true
+  // while the file is still being analysed, which makes the tests flaky.
+  await page.waitForFunction((expectedFilename) => {
     const output = document.getElementById('output');
-    return output && output.innerHTML.length > 100;
-  }, { timeout: 60000 });
-  
-  // Wait a bit more to ensure all content is rendered
-  await page.waitForTimeout(2000);
-  
+    if (!output) return false;
+
+    const header = output.querySelector('.analysis-header h2');
+    const button = output.querySelector('.analysis-header button');
+    const progress = output.querySelector('.progress-container');
+    const results = output.querySelector('.analysis-results');
+
+    const headerText = header?.textContent || '';
+    const buttonText = button?.textContent || '';
+
+    return headerText.includes(expectedFilename)
+      && buttonText.includes('Analyse another file')
+      && !progress
+      && !!results;
+  }, filename, { timeout: 60000 });
+
+  // Give the DOM a brief moment to settle before snapshotting the HTML.
+  await page.waitForTimeout(100);
+
   // Get the analysis result HTML
   const resultHTML = await page.locator('#output').innerHTML();
   
