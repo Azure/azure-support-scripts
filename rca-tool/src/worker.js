@@ -19,6 +19,27 @@
 
 // Version is only logged when debug mode is enabled\nconst WORKER_VERSION = '2025-12-23-nested-gzip';
 
+// Reuse the worker URL query string for all relative assets.
+// This prevents GitHub Pages/CDN caches from serving a mixed set of worker
+// files from different deployments during the post-deploy test window.
+const WORKER_ASSET_QUERY = (() => {
+    try {
+        const url = new URL(self.location.href);
+        return url.search || '';
+    } catch (_e) {
+        return '';
+    }
+})();
+
+function versionedAsset(path) {
+    if (!WORKER_ASSET_QUERY || /^https?:\/\//i.test(path)) {
+        return path;
+    }
+    return path.includes('?')
+        ? `${path}&${WORKER_ASSET_QUERY.slice(1)}`
+        : `${path}${WORKER_ASSET_QUERY}`;
+}
+
 // Global error handler to catch uncaught exceptions
 self.onerror = function(message, source, lineno, colno, error) {
     console.error('[Worker] Uncaught error:', message);
@@ -95,20 +116,20 @@ if (typeof importScripts === 'function') {
         debugLog('[Worker] Failed to load fflate library:', e);
     }
     
-    importScripts('utils.js');
-    importScripts('performance.js');
+    importScripts(versionedAsset('utils.js'));
+    importScripts(versionedAsset('performance.js'));
     // Import external parser modules
-    importScripts('parsers/packages.js');
-    importScripts('parsers/unix.js');
-    importScripts('parsers/services.js');
-    importScripts('parsers/events.js');
-    importScripts('parsers/azure.js');
-    importScripts('parsers/cluster.js');
-    importScripts('parsers/storage.js');
-    importScripts('parsers/networking.js');
-    importScripts('parsers/network-interfaces.js');
-    importScripts('parsers/vmcore.js');
-    importScripts('parsers/debugfs.js');
+    importScripts(versionedAsset('parsers/packages.js'));
+    importScripts(versionedAsset('parsers/unix.js'));
+    importScripts(versionedAsset('parsers/services.js'));
+    importScripts(versionedAsset('parsers/events.js'));
+    importScripts(versionedAsset('parsers/azure.js'));
+    importScripts(versionedAsset('parsers/cluster.js'));
+    importScripts(versionedAsset('parsers/storage.js'));
+    importScripts(versionedAsset('parsers/networking.js'));
+    importScripts(versionedAsset('parsers/network-interfaces.js'));
+    importScripts(versionedAsset('parsers/vmcore.js'));
+    importScripts(versionedAsset('parsers/debugfs.js'));
     debugLog('[Worker] Running in Web Worker context');
     debugLog('[Worker] Browser:', typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown');
 }
@@ -979,7 +1000,7 @@ if (typeof extfragParser !== 'undefined') {
 
 // Load the streaming WASM module
 importScripts(
-    './liblzma-wasm/dist-streaming/liblzma-xz-streaming.js'
+    versionedAsset('./liblzma-wasm/dist-streaming/liblzma-xz-streaming.js')
 );
 
 let moduleReady = false;
@@ -990,11 +1011,11 @@ LZMA_XZ_Streaming_Module({
     locateFile: (path) => {
         if (path.endsWith('.wasm')) {
             // Return the correct path relative to worker location
-            const wasmPath = './liblzma-wasm/dist-streaming/liblzma-xz-streaming.wasm';
+            const wasmPath = versionedAsset('./liblzma-wasm/dist-streaming/liblzma-xz-streaming.wasm');
             debugLog('[XZ Streaming Worker] Loading WASM from:', wasmPath);
             return wasmPath;
         }
-        return path;
+        return versionedAsset(path);
     }
 }).then((mod) => {
     Module = mod;

@@ -111,6 +111,9 @@ export async function navigateToApp(page, testInfo) {
   const projectName = testInfo.project.name || '';
   const isLeptos = projectName.includes('leptos');
   const isDeployed = projectName === 'deployed' || projectName.includes('deployed');
-  const navPath = isDeployed ? './' : (isLeptos ? '/web-leptos/dist/' : '/web/dist/');
+  const cacheBuster = isDeployed && process.env.CACHE_BUSTER
+    ? `?cb=${encodeURIComponent(process.env.CACHE_BUSTER)}`
+    : '';
+  const navPath = isDeployed ? `./${cacheBuster}` : (isLeptos ? '/web-leptos/dist/' : '/web/dist/');
   await page.goto(navPath);
 }

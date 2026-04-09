@@ -22,8 +22,10 @@ echo "==> Cleaning previous build output…"
 rm -rf dist .stage
 
 PUBLIC_URL="${PUBLIC_URL:-./}"
+ASSET_VERSION="${ASSET_VERSION:-${GITHUB_SHA:-$(git rev-parse --short=12 HEAD 2>/dev/null || echo dev)}}"
+export ASSET_VERSION
 
-echo "==> Running trunk build (release, public URL: ${PUBLIC_URL})…"
+echo "==> Running trunk build (release, public URL: ${PUBLIC_URL}, asset version: ${ASSET_VERSION})…"
 trunk build --release --public-url "$PUBLIC_URL" "$@"
 
 echo "==> Done.  Output in dist/"

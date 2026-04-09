@@ -21,6 +21,10 @@ jobs:
   build:
     needs: tests
     runs-on: ubuntu-latest
+    outputs:
+      leptos_js: ${{ steps.asset_manifest.outputs.leptos_js }}
+      leptos_wasm: ${{ steps.asset_manifest.outputs.leptos_wasm }}
+      leptos_css: ${{ steps.asset_manifest.outputs.leptos_css }}
     
     steps:
     - name: Checkout repository
@@ -95,6 +99,23 @@ jobs:
       run: |
         echo "Files to be deployed:"
         ls -lh rca-tool/_site/
+
+    - name: Capture Leptos asset manifest
+      id: asset_manifest
+      run: |
+        set -euo pipefail
+        cd rca-tool/_site
+        leptos_js=$(grep -o 'rca-tool-leptos-[^"]*\.js' index.html | head -n 1)
+        leptos_wasm=$(grep -o 'rca-tool-leptos-[^"]*_bg\.wasm' index.html | head -n 1)
+        leptos_css=$(grep -o 'styles-[^"]*\.css' index.html | head -n 1)
+
+        echo "Leptos JS:   ${leptos_js}"
+        echo "Leptos WASM: ${leptos_wasm}"
+        echo "Leptos CSS:  ${leptos_css}"
+
+        echo "leptos_js=${leptos_js}" >> "$GITHUB_OUTPUT"
+        echo "leptos_wasm=${leptos_wasm}" >> "$GITHUB_OUTPUT"
+        echo "leptos_css=${leptos_css}" >> "$GITHUB_OUTPUT"
         
     - name: Setup Pages
       uses: actions/configure-pages@v4
@@ -120,7 +141,7 @@ jobs:
 
   post-deploy-test:
     runs-on: ubuntu-latest
-    needs: deploy
+    needs: [build, deploy]
     
     steps:
     - name: Checkout repository
@@ -148,33 +169,67 @@ jobs:
     - name: Wait for deployment to be ready
       env:
         DEPLOYED_URL: ${{ needs.deploy.outputs.page_url }}
+        EXPECTED_LEPTOS_JS: ${{ needs.build.outputs.leptos_js }}
+        EXPECTED_LEPTOS_WASM: ${{ needs.build.outputs.leptos_wasm }}
+        EXPECTED_LEPTOS_CSS: ${{ needs.build.outputs.leptos_css }}
       run: |
         set -euo pipefail
+        CACHE_BUSTER="${GITHUB_RUN_ID}-${GITHUB_SHA}"
         ROOT_URL="${DEPLOYED_URL%/}/"
-        DOCS_URL="${ROOT_URL}docs/index.html"
-        SERVICES_URL="${ROOT_URL}assets/parsers/services.js"
+        ROOT_URL_BUSTED="${ROOT_URL}?cb=${CACHE_BUSTER}"
+        DOCS_URL="${ROOT_URL}docs/index.html?cb=${CACHE_BUSTER}"
+        SERVICES_URL="${ROOT_URL}assets/parsers/services.js?v=${CACHE_BUSTER}"
+        WORKER_URL="${ROOT_URL}assets/liblzma-streaming-worker.js?v=${CACHE_BUSTER}"
+        LEPTOS_JS_URL="${ROOT_URL}${EXPECTED_LEPTOS_JS}?cb=${CACHE_BUSTER}"
+        LEPTOS_WASM_URL="${ROOT_URL}${EXPECTED_LEPTOS_WASM}?cb=${CACHE_BUSTER}"
+        LEPTOS_CSS_URL="${ROOT_URL}${EXPECTED_LEPTOS_CSS}?cb=${CACHE_BUSTER}"
 
-        echo "Waiting for GitHub Pages to serve the updated site..."
+        echo "Waiting for GitHub Pages to serve the freshly built site..."
         echo "Root URL: ${ROOT_URL}"
+        echo "Expected JS: ${EXPECTED_LEPTOS_JS}"
+        echo "Expected WASM: ${EXPECTED_LEPTOS_WASM}"
+        echo "Expected CSS: ${EXPECTED_LEPTOS_CSS}"
 
         for attempt in {1..30}; do
+          root_html="$(curl -fsSL "${ROOT_URL_BUSTED}" || true)"
+          docs_html="$(curl -fsSL "${DOCS_URL}" || true)"
+
           root_ok=0
           docs_ok=0
           services_ok=0
+          worker_ok=0
+          js_ok=0
+          wasm_ok=0
+          css_ok=0
 
-          if curl -fsSL "${ROOT_URL}" | grep -q 'RCA Tool'; then
+          if printf '%s' "${root_html}" | grep -q 'RCA Tool' \
+            && printf '%s' "${root_html}" | grep -q "${EXPECTED_LEPTOS_JS}" \
+            && printf '%s' "${root_html}" | grep -q "${EXPECTED_LEPTOS_WASM}" \
+            && printf '%s' "${root_html}" | grep -q "${EXPECTED_LEPTOS_CSS}"; then
             root_ok=1
           fi
-          if curl -fsSL "${DOCS_URL}" | grep -q 'JSDoc'; then
+          if printf '%s' "${docs_html}" | grep -q 'JSDoc'; then
             docs_ok=1
           fi
           if curl -fsSL "${SERVICES_URL}" | grep -q 'falcon-sensor'; then
             services_ok=1
           fi
+          if curl -fsSL "${WORKER_URL}" | grep -q 'versionedAsset'; then
+            worker_ok=1
+          fi
+          if curl -fsI "${LEPTOS_JS_URL}" >/dev/null; then
+            js_ok=1
+          fi
+          if curl -fsI "${LEPTOS_WASM_URL}" >/dev/null; then
+            wasm_ok=1
+          fi
+          if curl -fsI "${LEPTOS_CSS_URL}" >/dev/null; then
+            css_ok=1
+          fi
 
-          echo "Attempt ${attempt}/30: root=${root_ok} docs=${docs_ok} services=${services_ok}"
+          echo "Attempt ${attempt}/30: root=${root_ok} docs=${docs_ok} services=${services_ok} worker=${worker_ok} js=${js_ok} wasm=${wasm_ok} css=${css_ok}"
 
-          if [[ ${root_ok} -eq 1 && ${docs_ok} -eq 1 && ${services_ok} -eq 1 ]]; then
+          if [[ ${root_ok} -eq 1 && ${docs_ok} -eq 1 && ${services_ok} -eq 1 && ${worker_ok} -eq 1 && ${js_ok} -eq 1 && ${wasm_ok} -eq 1 && ${css_ok} -eq 1 ]]; then
             echo "Deployment is ready."
             break
           fi
@@ -182,9 +237,11 @@ jobs:
           if [[ ${attempt} -eq 30 ]]; then
             echo "Deployment did not become ready in time."
             echo "--- Root preview ---"
-            curl -fsSL "${ROOT_URL}" | head -n 40 || true
+            printf '%s\n' "${root_html}" | head -n 40 || true
             echo "--- Docs preview ---"
-            curl -fsSL "${DOCS_URL}" | head -n 40 || true
+            printf '%s\n' "${docs_html}" | head -n 40 || true
+            echo "--- Worker preview ---"
+            curl -fsSL "${WORKER_URL}" | head -n 40 || true
             echo "--- Services asset preview ---"
             curl -fsSL "${SERVICES_URL}" | head -n 40 || true
             exit 1
@@ -196,8 +253,9 @@ jobs:
     - name: Run post-deployment tests against Leptos
       env:
         DEPLOYED_URL: ${{ needs.deploy.outputs.page_url }}
+        CACHE_BUSTER: ${{ github.run_id }}-${{ github.sha }}
       run: |
-        echo "Testing deployed Leptos UI at ${DEPLOYED_URL}"
+        echo "Testing deployed Leptos UI at ${DEPLOYED_URL} (cache buster: ${CACHE_BUSTER})"
         npx playwright test --config=playwright.leptos.config.js --project=deployed-leptos --reporter=list
       working-directory: rca-tool/tests
       

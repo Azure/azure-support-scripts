@@ -134,6 +134,12 @@ pub enum WorkerResult {
 
 // ── Public API: launch analysis ─────────────────────────────────────
 
+fn asset_version() -> &'static str {
+    option_env!("ASSET_VERSION")
+        .or(option_env!("GITHUB_SHA"))
+        .unwrap_or("dev")
+}
+
 /// Spawn a web-worker, send it the file data, and reactively drive the
 /// supplied signals as messages arrive.
 ///
@@ -147,11 +153,17 @@ pub fn launch_worker(
     set_progress: WriteSignal<ProgressState>,
     set_result: WriteSignal<WorkerResult>,
 ) {
-    // Create worker (same path as the original JS app)
-    let worker = match Worker::new("./assets/liblzma-streaming-worker.js") {
+    // Create a versioned worker URL so GitHub Pages does not serve stale
+    // worker/parser assets from a previous deployment during the post-deploy
+    // validation window.
+    let worker_url = format!(
+        "./assets/liblzma-streaming-worker.js?v={}",
+        asset_version()
+    );
+    let worker = match Worker::new(&worker_url) {
         Ok(w) => w,
         Err(e) => {
-            console_err!("[Leptos] Failed to create worker: {:?}", e);
+            console_err!("[Leptos] Failed to create worker ({}): {:?}", worker_url, e);
             set_result.set(WorkerResult::Error(format!(
                 "Failed to create worker: {e:?}"
             )));
@@ -160,8 +172,9 @@ pub fn launch_worker(
     };
 
     console_dbg!(
-        "[Leptos] Worker created for {filename} ({} bytes, format={format})",
-        data.len()
+        "[Leptos] Worker created for {filename} ({} bytes, format={format}, url={})",
+        data.len(),
+        worker_url
     );
 
     // Keep data in a RefCell so the ready-handler can consume it (once)
