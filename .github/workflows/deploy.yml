@@ -146,9 +146,52 @@ jobs:
       working-directory: rca-tool/tests
       
     - name: Wait for deployment to be ready
+      env:
+        DEPLOYED_URL: ${{ needs.deploy.outputs.page_url }}
       run: |
-        echo "Waiting 30 seconds for GitHub Pages to update..."
-        sleep 30
+        set -euo pipefail
+        ROOT_URL="${DEPLOYED_URL%/}/"
+        DOCS_URL="${ROOT_URL}docs/index.html"
+        SERVICES_URL="${ROOT_URL}assets/parsers/services.js"
+
+        echo "Waiting for GitHub Pages to serve the updated site..."
+        echo "Root URL: ${ROOT_URL}"
+
+        for attempt in {1..30}; do
+          root_ok=0
+          docs_ok=0
+          services_ok=0
+
+          if curl -fsSL "${ROOT_URL}" | grep -q 'RCA Tool'; then
+            root_ok=1
+          fi
+          if curl -fsSL "${DOCS_URL}" | grep -q 'JSDoc'; then
+            docs_ok=1
+          fi
+          if curl -fsSL "${SERVICES_URL}" | grep -q 'falcon-sensor'; then
+            services_ok=1
+          fi
+
+          echo "Attempt ${attempt}/30: root=${root_ok} docs=${docs_ok} services=${services_ok}"
+
+          if [[ ${root_ok} -eq 1 && ${docs_ok} -eq 1 && ${services_ok} -eq 1 ]]; then
+            echo "Deployment is ready."
+            break
+          fi
+
+          if [[ ${attempt} -eq 30 ]]; then
+            echo "Deployment did not become ready in time."
+            echo "--- Root preview ---"
+            curl -fsSL "${ROOT_URL}" | head -n 40 || true
+            echo "--- Docs preview ---"
+            curl -fsSL "${DOCS_URL}" | head -n 40 || true
+            echo "--- Services asset preview ---"
+            curl -fsSL "${SERVICES_URL}" | head -n 40 || true
+            exit 1
+          fi
+
+          sleep 10
+        done
         
     - name: Run post-deployment tests against Leptos
       env:
