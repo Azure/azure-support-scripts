@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "TLS 1.2 enabled (client)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "TLS 1.2 enabled (server)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "SSL 3.0 disabled",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Personal cert store populated",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Root CA store accessible",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Expired certs in Personal store",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "TLS 1.2 enabled (client)",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "TLS 1.2 enabled (server)",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "SSL 3.0 disabled",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Personal cert store populated",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "Root CA store accessible",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Expired certs in Personal store",
+        "status": "OK",
+        "detail": "Operational"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "TLS 1.2 enabled (client)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "TLS 1.2 enabled (server)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "SSL 3.0 disabled",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Personal cert store populated",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "Root CA store accessible",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Expired certs in Personal store",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}
