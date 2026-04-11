@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Driver store folder size",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Staged driver packages (pnputil)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "PnP devices with problems",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Pending driver installations",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "DriverStore service healthy",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Driver store folder size",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Staged driver packages (pnputil)",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "PnP devices with problems",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Pending driver installations",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "DriverStore service healthy",
+        "status": "WARN",
+        "detail": "Degraded state"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Driver store folder size",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Staged driver packages (pnputil)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "PnP devices with problems",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Pending driver installations",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "DriverStore service healthy",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

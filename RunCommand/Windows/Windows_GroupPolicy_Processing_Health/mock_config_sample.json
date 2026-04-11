@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "GPSvc service running",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "GroupPolicy operational log readable",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "Recent GP errors below threshold",
+        "status": "OK",
+        "detail": "Below threshold"
+      },
+      {
+        "name": "NETLOGON path accessible",
+        "status": "OK",
+        "detail": "Baseline compliant"
+      },
+      {
+        "name": "SYSVOL path accessible",
+        "status": "OK",
+        "detail": "Reachable"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "GPSvc service running",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "GroupPolicy operational log readable",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "Recent GP errors below threshold",
+        "status": "WARN",
+        "detail": "Elevated but not failing"
+      },
+      {
+        "name": "NETLOGON path accessible",
+        "status": "WARN",
+        "detail": "Mostly compliant"
+      },
+      {
+        "name": "SYSVOL path accessible",
+        "status": "OK",
+        "detail": "Reachable with latency"
+      }
+    ],
+    "broken": [
+      {
+        "name": "GPSvc service running",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "GroupPolicy operational log readable",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "Recent GP errors below threshold",
+        "status": "WARN",
+        "detail": "High error rate"
+      },
+      {
+        "name": "NETLOGON path accessible",
+        "status": "WARN",
+        "detail": "Drift detected"
+      },
+      {
+        "name": "SYSVOL path accessible",
+        "status": "FAIL",
+        "detail": "Unreachable"
+      }
+    ]
+  }
+}

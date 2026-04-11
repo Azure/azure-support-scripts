@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Default gateway configured",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Single default route (no split)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "IMDS route 169.254.169.254",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Persistent routes count",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "WireServer route (168.63.129.16)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "No blackhole routes (unreachable)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Default gateway configured",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Single default route (no split)",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "IMDS route 169.254.169.254",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Persistent routes count",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "WireServer route (168.63.129.16)",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "No blackhole routes (unreachable)",
+        "status": "OK",
+        "detail": "Operational"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Default gateway configured",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Single default route (no split)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "IMDS route 169.254.169.254",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Persistent routes count",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "WireServer route (168.63.129.16)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "No blackhole routes (unreachable)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

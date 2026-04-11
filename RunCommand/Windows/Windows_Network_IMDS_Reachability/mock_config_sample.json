@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "IP-enabled NIC present",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "Default route 0.0.0.0/0 exists",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "WireServer 168.63.129.16 reachable",
+        "status": "OK",
+        "detail": "Below threshold"
+      },
+      {
+        "name": "IMDS TCP endpoint reachable",
+        "status": "OK",
+        "detail": "Baseline compliant"
+      },
+      {
+        "name": "IMDS metadata response HTTP 200",
+        "status": "OK",
+        "detail": "Reachable"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "IP-enabled NIC present",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "Default route 0.0.0.0/0 exists",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "WireServer 168.63.129.16 reachable",
+        "status": "WARN",
+        "detail": "Elevated but not failing"
+      },
+      {
+        "name": "IMDS TCP endpoint reachable",
+        "status": "WARN",
+        "detail": "Mostly compliant"
+      },
+      {
+        "name": "IMDS metadata response HTTP 200",
+        "status": "OK",
+        "detail": "Reachable with latency"
+      }
+    ],
+    "broken": [
+      {
+        "name": "IP-enabled NIC present",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "Default route 0.0.0.0/0 exists",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "WireServer 168.63.129.16 reachable",
+        "status": "WARN",
+        "detail": "High error rate"
+      },
+      {
+        "name": "IMDS TCP endpoint reachable",
+        "status": "WARN",
+        "detail": "Drift detected"
+      },
+      {
+        "name": "IMDS metadata response HTTP 200",
+        "status": "FAIL",
+        "detail": "Unreachable"
+      }
+    ]
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "LanmanWorkstation service",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "SMB signing required (client)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "SMBv1 protocol disabled",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "SMB connections active",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Multichannel enabled",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "File sharing firewall rules",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "LanmanWorkstation service",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "SMB signing required (client)",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "SMBv1 protocol disabled",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "SMB connections active",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "Multichannel enabled",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "File sharing firewall rules",
+        "status": "OK",
+        "detail": "Operational"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "LanmanWorkstation service",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "SMB signing required (client)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "SMBv1 protocol disabled",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "SMB connections active",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "Multichannel enabled",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "File sharing firewall rules",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

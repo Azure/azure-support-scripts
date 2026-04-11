@@ -1,0 +1,109 @@
+{
+  "legacy": {
+    "paths": {
+      "tempSizeGB": 10.4,
+      "profileSizeGB": 52.2,
+      "diskQueue": 3,
+      "topWriters": [
+        {
+          "name": "sqlservr",
+          "pid": 4560,
+          "ioMB": 7340.2
+        },
+        {
+          "name": "SearchIndexer",
+          "pid": 1232,
+          "ioMB": 940.5
+        },
+        {
+          "name": "MsMpEng",
+          "pid": 3408,
+          "ioMB": 410.8
+        }
+      ]
+    }
+  },
+  "profiles": {
+    "healthy": [
+      {
+        "detail": "All checks passing",
+        "status": "OK",
+        "name": "Primary signal"
+      },
+      {
+        "detail": "Required services running",
+        "status": "OK",
+        "name": "Service dependencies"
+      },
+      {
+        "detail": "No drift detected",
+        "status": "OK",
+        "name": "Configuration baseline"
+      },
+      {
+        "detail": "No errors in observation window",
+        "status": "OK",
+        "name": "Error signal check"
+      },
+      {
+        "detail": "All endpoints reachable",
+        "status": "OK",
+        "name": "Connectivity probe"
+      }
+    ],
+    "degraded": [
+      {
+        "detail": "Operational with warnings",
+        "status": "OK",
+        "name": "Primary signal"
+      },
+      {
+        "detail": "One non-critical dependency issue",
+        "status": "WARN",
+        "name": "Service dependencies"
+      },
+      {
+        "detail": "Mostly compliant",
+        "status": "OK",
+        "name": "Configuration baseline"
+      },
+      {
+        "detail": "Elevated error rate but not failing",
+        "status": "WARN",
+        "name": "Error signal check"
+      },
+      {
+        "detail": "Primary path reachable",
+        "status": "OK",
+        "name": "Connectivity probe"
+      }
+    ],
+    "broken": [
+      {
+        "detail": "Service or component not responding",
+        "status": "FAIL",
+        "name": "Primary signal"
+      },
+      {
+        "detail": "Critical dependency down",
+        "status": "FAIL",
+        "name": "Service dependencies"
+      },
+      {
+        "detail": "Significant drift from expected state",
+        "status": "WARN",
+        "name": "Configuration baseline"
+      },
+      {
+        "detail": "High error rate",
+        "status": "WARN",
+        "name": "Error signal check"
+      },
+      {
+        "detail": "Required endpoint unreachable",
+        "status": "FAIL",
+        "name": "Connectivity probe"
+      }
+    ]
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Fixed volumes detected",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "Dirty volumes count",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "BootExecute key present",
+        "status": "OK",
+        "detail": "Below threshold"
+      },
+      {
+        "name": "Recent disk errors below threshold",
+        "status": "OK",
+        "detail": "Baseline compliant"
+      },
+      {
+        "name": "OS volume C exists",
+        "status": "OK",
+        "detail": "Reachable"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Fixed volumes detected",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "Dirty volumes count",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "BootExecute key present",
+        "status": "WARN",
+        "detail": "Elevated but not failing"
+      },
+      {
+        "name": "Recent disk errors below threshold",
+        "status": "WARN",
+        "detail": "Mostly compliant"
+      },
+      {
+        "name": "OS volume C exists",
+        "status": "OK",
+        "detail": "Reachable with latency"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Fixed volumes detected",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "Dirty volumes count",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "BootExecute key present",
+        "status": "WARN",
+        "detail": "High error rate"
+      },
+      {
+        "name": "Recent disk errors below threshold",
+        "status": "WARN",
+        "detail": "Drift detected"
+      },
+      {
+        "name": "OS volume C exists",
+        "status": "FAIL",
+        "detail": "Unreachable"
+      }
+    ]
+  }
+}

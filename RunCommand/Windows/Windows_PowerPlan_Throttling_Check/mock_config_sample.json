@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Active power plan",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Processor max state = 100%",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Processor min state reasonable",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Hard disk timeout (not 0)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "USB selective suspend disabled",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Sleep/Hibernate disabled for server",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Active power plan",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Processor max state = 100%",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Processor min state reasonable",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Hard disk timeout (not 0)",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "USB selective suspend disabled",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Sleep/Hibernate disabled for server",
+        "status": "OK",
+        "detail": "Operational"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Active power plan",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Processor max state = 100%",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Processor min state reasonable",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Hard disk timeout (not 0)",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "USB selective suspend disabled",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Sleep/Hibernate disabled for server",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}
