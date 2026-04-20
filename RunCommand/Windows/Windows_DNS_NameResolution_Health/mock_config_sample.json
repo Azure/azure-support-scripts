@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "DNS servers configured",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "Public DNS resolution works",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "Metadata alias resolves",
+        "status": "OK",
+        "detail": "Below threshold"
+      },
+      {
+        "name": "DNS suffix search list present",
+        "status": "OK",
+        "detail": "Baseline compliant"
+      },
+      {
+        "name": "Hosts overrides absent",
+        "status": "OK",
+        "detail": "Reachable"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "DNS servers configured",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "Public DNS resolution works",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "Metadata alias resolves",
+        "status": "WARN",
+        "detail": "Elevated but not failing"
+      },
+      {
+        "name": "DNS suffix search list present",
+        "status": "WARN",
+        "detail": "Mostly compliant"
+      },
+      {
+        "name": "Hosts overrides absent",
+        "status": "OK",
+        "detail": "Reachable with latency"
+      }
+    ],
+    "broken": [
+      {
+        "name": "DNS servers configured",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "Public DNS resolution works",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "Metadata alias resolves",
+        "status": "WARN",
+        "detail": "High error rate"
+      },
+      {
+        "name": "DNS suffix search list present",
+        "status": "WARN",
+        "detail": "Drift detected"
+      },
+      {
+        "name": "Hosts overrides absent",
+        "status": "FAIL",
+        "detail": "Unreachable"
+      }
+    ]
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Windows Event Collector service",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "WinRM service running",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Event subscriptions configured",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "ForwardedEvents log exists",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "WinRM listener configured",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Windows Event Collector service",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "WinRM service running",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Event subscriptions configured",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "ForwardedEvents log exists",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "WinRM listener configured",
+        "status": "WARN",
+        "detail": "Degraded state"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Windows Event Collector service",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "WinRM service running",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Event subscriptions configured",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "ForwardedEvents log exists",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "WinRM listener configured",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

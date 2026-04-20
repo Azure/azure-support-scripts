@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Computer domain membership",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "DNS suffix configured",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Domain controller reachable",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Secure channel healthy",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Netlogon service running",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Computer account password age",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Computer domain membership",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "DNS suffix configured",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Domain controller reachable",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Secure channel healthy",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "Netlogon service running",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Computer account password age",
+        "status": "OK",
+        "detail": "Operational"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Computer domain membership",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "DNS suffix configured",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Domain controller reachable",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Secure channel healthy",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "Netlogon service running",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Computer account password age",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}
