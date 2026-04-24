@@ -1,0 +1,2097 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RHUI Check Multi-Image Test Lab Builder</title>
+  <style>
+    :root { --bg:#ffffff; --card:#ffffff; --border:#edebe9; --text:#201f1e; --muted:#605e5c; --primary:#0078d4; --primaryHover:#106ebe; --danger:#b91c1c; --headerBg:#0078d4; --headerText:#ffffff; --mono:'Cascadia Code',ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; --sans:'Segoe UI',system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:var(--sans); color:var(--text); background:var(--bg); font-size:14px; -webkit-font-smoothing:antialiased; scrollbar-gutter:stable; }
+    header { background:var(--headerBg); color:var(--headerText); padding:12px 16px; font-weight:800; display:flex; align-items:center; justify-content:space-between; gap:12px; box-shadow:inset 0 -1px 0 rgba(255,255,255,0.18); position:sticky; top:0; z-index:100; }
+    .container { padding:16px; max-width:1440px; margin:0 auto; }
+    .grid { display:grid; grid-template-columns:1fr; gap:16px; }
+    @media (min-width:1100px) { .grid { grid-template-columns:1fr 1fr; } }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px; box-shadow:0 1px 2px rgba(0,0,0,0.04); min-height:300px; min-width:0; overflow:clip; }
+    .title { font-size:16px; font-weight:700; color:var(--text); }
+    label { font-size:12px; color:var(--muted); font-weight:600; display:block; margin-bottom:4px; }
+    input, textarea, select { width:100%; border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:14px; font-family:var(--sans); background:#fff; color:var(--text); outline:none; transition:border-color 0.1s; }
+    input:focus, textarea:focus, select:focus { border-color:var(--primary); }
+    textarea { font-family:var(--mono); font-size:12px; line-height:1.4; resize:vertical; }
+    button { border:1px solid var(--border); background:#fff; padding:8px 10px; border-radius:8px; cursor:pointer; font-weight:400; font-size:13px; font-family:var(--sans); color:var(--text); transition:background 0.1s, border-color 0.1s; }
+    button:hover { background:#f3f2f1; }
+    button.primary { background:var(--primary); color:#fff; border-color:var(--primary); }
+    button.primary:hover { background:var(--primaryHover); border-color:var(--primaryHover); }
+    button.danger { background:#fff; border-color:#d13438; color:var(--danger); }
+    button.danger:hover { background:#fdf3f4; }
+    button:disabled { opacity:0.4; cursor:not-allowed; }
+    .muted { color:var(--muted); font-size:13px; margin-top:6px; }
+    .error-text { color:var(--danger); font-size:12px; margin-top:4px; font-weight:600; }
+    .section { margin-top:16px; padding-top:16px; border-top:1px solid var(--border); }
+    .btn-group { display:flex; gap:0; }
+    .btn-group button { border-radius:0; margin:0; border-right-width:0; }
+    .btn-group button:first-child { border-radius:8px 0 0 8px; }
+    .btn-group button:last-child { border-radius:0 8px 8px 0; border-right-width:1px; }
+    .btn-group button:only-child { border-radius:8px; border-right-width:1px; }
+    table.summary { width:100%; border-collapse:collapse; margin-top:8px; font-size:12px; table-layout:fixed; }
+    table.summary th, table.summary td { border:1px solid var(--border); padding:6px 8px; text-align:left; vertical-align:top; }
+    table.summary th { background:#faf9f8; font-weight:600; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.02em; }
+    .truncate-cell { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .pill { display:inline-block; font-size:11px; font-weight:900; padding:2px 6px; border-radius:999px; border:1px solid var(--border); }
+    .ok { border-color:#b7e3c4; background:#ecfdf3; color:#16a34a; }
+    .textarea-wrap { position:relative; }
+    .textarea-wrap textarea { width:100%; }
+    .textarea-expand-btn { position:absolute; top:8px; right:24px; z-index:2; padding:4px 6px; font-size:14px; line-height:1; border:1px solid var(--border); border-radius:8px; background:#fff; cursor:pointer; opacity:0.6; }
+    .textarea-expand-btn:hover { opacity:1; background:#f3f2f1; }
+    .text-flow-window { display:none; position:fixed; inset:12px; border:1px solid var(--border); border-radius:12px; background:#fff; box-shadow:0 20px 40px rgba(0,0,0,0.22); z-index:110; padding:16px; flex-direction:column; }
+    .text-flow-window.show { display:flex; }
+    .text-flow-header { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; }
+    .text-flow-body { flex:1; min-height:0; position:relative; }
+    .text-flow-body textarea { width:100%; height:100%; resize:none; }
+    .image-picker-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:200; }
+    .image-picker-overlay.show { display:block; }
+    .image-picker-panel { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:min(600px, 92vw); max-height:80vh; background:#fff; border:1px solid var(--border); border-radius:12px; box-shadow:0 16px 40px rgba(0,0,0,0.22); z-index:201; display:flex; flex-direction:column; }
+    .image-picker-header { padding:14px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .image-picker-header .title { margin:0; }
+    .image-picker-body { padding:8px 16px; overflow-y:auto; flex:1; }
+    .image-picker-body label { display:flex; align-items:center; gap:8px; padding:8px 0; font-size:13px; font-weight:400; cursor:pointer; border-bottom:1px solid #f3f2f1; }
+    .image-picker-body label:last-child { border-bottom:none; }
+    .image-picker-body label:hover { background:#faf9f8; }
+    .image-picker-body input[type="checkbox"] { width:16px; height:16px; margin:0; flex-shrink:0; accent-color:var(--primary); }
+    .image-picker-footer { padding:12px 16px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end; }
+    .help-wrap { position: relative; }
+    .help-balloon {
+      position: absolute; top: calc(100% + 8px); right: 0; width: min(520px, 90vw);
+      background: #ffffff; border: 1px solid var(--border); border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 12px; z-index: 30;
+      color: var(--text); font-size: 13px; line-height: 1.45; display: none; white-space: normal;
+    }
+    .help-balloon.show { display: block; }
+    .help-balloon h4 { margin: 0 0 8px; font-size: 14px; font-weight: 700; }
+    .help-balloon ul { margin: 0 0 0 16px; padding: 0; }
+    .help-balloon li { margin: 4px 0; }
+    #helpBtn { border-color: rgba(255,255,255,0.45); background: rgba(255,255,255,0.14); color: #fff; font-size: 10px; padding: 3px 6px; }
+    #helpBtn:hover { background: rgba(255,255,255,0.22); }
+  </style>
+</head>
+<body>
+<header>
+  <div>RHUI Check Multi-Image Test Lab Builder</div>
+  <div class="help-wrap">
+    <button id="helpBtn" type="button">Help</button>
+    <div id="helpBalloon" class="help-balloon" role="dialog" aria-label="Help" aria-hidden="true">
+      <h4>About RHUI Check Test Lab Builder</h4>
+      <ul>
+        <li><strong>Purpose:</strong> Generates an ARM template that deploys one control VM plus one VM per RHEL image in the catalog, for automated RHUI break/check/fix validation testing.</li>
+        <li><strong>Control VM:</strong> A RHEL 9 Gen2 Standard_B2s VM with Ansible, httpd, and a key server. It receives rhui-check.py and the test playbook via cloud-init. After deployment, it polls all image VMs with ping (30 forks) and runs the playbook once all VMs are online.</li>
+        <li><strong>rhui-check.py:</strong> By default, the latest upstream rhui-check.py is downloaded from GitHub on page load (if the editor is empty). You can still paste or edit it manually. The script is gzip-compressed and base64-encoded into custom data, then written to /home/ansible/rhui-check.py on the control VM. The playbook copies it to each target.</li>
+        <li><strong>Test playbook:</strong> The RHUI break/check/fix playbook YAML. It is gzip-compressed and base64-encoded into cloud-init custom data, then auto-executed by the control VM after all VMs respond to ping.</li>
+        <li><strong>Force images:</strong> Pick specific RHEL images from the catalog instead of deploying all of them.</li>
+        <li><strong>Quota guard &amp; multi-region:</strong> Set a regional vCPU limit (default 100). When projected usage exceeds the limit, VMs are automatically split across multiple regions with hub-spoke VNet peering.</li>
+        <li><strong>Output:</strong> Single-region: resource-group-scope ARM template. Multi-region: subscription-scope template. Includes VNet/subnet/NSG, control VM with public IP, and one VM per selected image with SSH key auth.</li>
+        <li><strong>Results:</strong> The control VM runs httpd on port 80. After the playbook completes, results are served at /results.json and an HTML validation report at /index.html.</li>
+      </ul>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <div class="title">Configuration</div>
+      <div style="margin-top:12px;">
+        <label for="sshKey">SSH Public Key (for azureuser on all VMs)</label>
+        <input id="sshKey" type="text" placeholder="ssh-rsa AAAAB3NzaC1..." />
+        <div id="sshKeyError" class="error-text"></div>
+      </div>
+      <div style="margin-top:12px;">
+        <label for="testYaml">Test Playbook YAML (saved to /home/ansible/test.yml on control VM)</label>
+        <div class="textarea-wrap">
+          <button id="expandYamlBtn" class="textarea-expand-btn" title="Maximize YAML" type="button">&#x26F6;</button>
+          <textarea id="testYaml" style="min-height:160px;" placeholder="---
+"></textarea>
+        </div>
+      </div>
+      <div style="margin-top:12px;">
+        <label for="rhuiCheckPy">rhui-check.py (saved to /home/ansible/rhui-check.py on control VM)</label>
+        <div class="textarea-wrap">
+          <button id="expandPyBtn" class="textarea-expand-btn" title="Maximize Python" type="button">&#x26F6;</button>
+          <textarea id="rhuiCheckPy" style="min-height:160px;" placeholder="#!/usr/libexec/platform-python
+"></textarea>
+        </div>
+        <div id="rhuiCheckPyWarning" class="error-text"></div>
+      </div>
+      <div class="section">
+        <div class="title">Image Filters</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:10px; margin-top:8px;">
+          <div>
+            <label for="filterArch">Architecture</label>
+            <select id="filterArch" style="width:100%; padding:8px; border-radius:8px; border:1px solid var(--border); font-size:13px;">
+              <option value="">All</option>
+              <option value="x64">x64</option>
+              <option value="Arm64">Arm64</option>
+            </select>
+          </div>
+          <div>
+            <label for="filterGen">Generation</label>
+            <select id="filterGen" style="width:100%; padding:8px; border-radius:8px; border:1px solid var(--border); font-size:13px;">
+              <option value="">All</option>
+              <option value="Gen1">Gen1</option>
+              <option value="Gen2">Gen2</option>
+            </select>
+          </div>
+          <div style="display:flex; align-items:flex-end; justify-content:flex-end;">
+            <button id="clearFiltersBtn" type="button" style="font-size:12px; padding:8px 10px;">Clear filters</button>
+          </div>
+        </div>
+        <div class="muted">Filter the RHEL image catalog. The smallest compatible VM size is auto-selected per image.</div>
+      </div>
+      <div class="section">
+        <div class="title">Force VM Size &amp; Images</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px;">
+          <div>
+            <label for="forcedVmSize">Force VM size</label>
+            <select id="forcedVmSize" style="width:100%; padding:8px; border-radius:8px; border:1px solid var(--border); font-size:13px;">
+              <option value="">Auto (smallest compatible)</option>
+            </select>
+            <div class="muted">When set, all compatible images use this size.</div>
+          </div>
+          <div>
+            <label>Force images</label>
+            <button id="openImagePickerBtn" type="button" style="width:100%; text-align:left; padding:8px 10px; font-size:13px; font-weight:400; color:var(--muted);">
+              All filtered
+            </button>
+            <div class="muted">Pick specific RHEL images.</div>
+          </div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="title">Quota Guard</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:10px; margin-top:8px;">
+          <div>
+            <label for="regionalVcpuLimit">Regional vCPU limit</label>
+            <input id="regionalVcpuLimit" type="number" min="1" step="1" placeholder="100" style="padding:8px; border-radius:8px; border:1px solid var(--border); font-size:13px;" />
+            <div class="muted">Default 100. Single region is used when projected usage fits within limit.</div>
+          </div>
+        </div>
+        <div id="quotaStatus" class="muted" style="margin-top:8px;">Projected usage will appear here.</div>
+        <div id="quotaAlert" class="error-text"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+        <div class="title">Generated ARM JSON</div>
+        <div class="btn-group">
+          <button id="copyBtn" disabled>Copy</button>
+          <button id="deployPortalBtn" disabled>Copy + Portal</button>
+          <button id="downloadBtn" class="primary" disabled>Download</button>
+        </div>
+        <button id="resetStateBtn" class="danger" title="Clear all saved state and reload" style="margin-left:auto;">Reset</button>
+      </div>
+      <div class="section" style="margin-top:8px; padding-top:8px;">
+        <div class="muted" id="regionTabMeta"></div>
+      </div>
+      <div class="muted" style="margin-top:8px;">Generates one VNet/subnet/NSG + control VM + one VM per RHEL image. All VMs use SSH key authentication.</div>
+      <div id="splitWarning" class="error-text"></div>
+      <div class="textarea-wrap">
+        <button id="expandJsonBtn" class="textarea-expand-btn" title="Maximize JSON" type="button">&#x26F6;</button>
+        <textarea id="output" readonly spellcheck="false" style="margin-top:10px; min-height:250px;"></textarea>
+      </div>
+
+      <div class="section" style="margin-top:10px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+          <div class="title">VM Summary</div>
+          <button id="expandSummaryBtn" type="button" style="font-size:14px; padding:4px 6px; line-height:1;" title="Maximize VM Summary">&#x26F6;</button>
+        </div>
+        <div class="muted">Control VM: <strong>1 per region</strong> (RHEL 9 Gen2, Standard_B2s) &mdash; Playbook at /home/ansible/test.yml, rhui-check.py at /home/ansible/rhui-check.py</div>
+        <div class="muted" id="vmCount">Image VMs: 0</div>
+        <div id="vmTable" style="margin-top:8px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="imagePickerOverlay" class="image-picker-overlay">
+  <div class="image-picker-panel">
+    <div class="image-picker-header">
+      <div class="title">Select RHEL images</div>
+      <span id="imagePickerCount" class="muted" style="margin:0;"></span>
+    </div>
+    <div class="image-picker-body" id="imagePickerBody"></div>
+    <div class="image-picker-footer">
+      <button id="imagePickerSelectAll" type="button" style="font-size:12px;">Select all</button>
+      <button id="imagePickerClearAll" type="button" style="font-size:12px;">Clear</button>
+      <button id="imagePickerDone" type="button" class="primary" style="font-size:12px;">Done</button>
+    </div>
+  </div>
+</div>
+
+<div id="yamlFlowWindow" class="text-flow-window">
+  <div class="text-flow-header">
+    <div class="title">Test Playbook YAML</div>
+    <div class="btn-group">
+      <button id="yamlFlowCopyBtn" type="button">Copy</button>
+      <button id="yamlFlowCloseBtn" type="button" class="danger">Close</button>
+    </div>
+  </div>
+  <div class="text-flow-body">
+    <textarea id="yamlFlowOutput" spellcheck="false"></textarea>
+  </div>
+</div>
+
+<div id="pyFlowWindow" class="text-flow-window">
+  <div class="text-flow-header">
+    <div class="title">rhui-check.py</div>
+    <div class="btn-group">
+      <button id="pyFlowCopyBtn" type="button">Copy</button>
+      <button id="pyFlowCloseBtn" type="button" class="danger">Close</button>
+    </div>
+  </div>
+  <div class="text-flow-body">
+    <textarea id="pyFlowOutput" spellcheck="false"></textarea>
+  </div>
+</div>
+
+<div id="jsonFlowWindow" class="text-flow-window">
+  <div class="text-flow-header">
+    <div class="title">Generated ARM JSON</div>
+    <div class="btn-group">
+      <button id="jsonFlowCopyBtn" type="button">Copy</button>
+      <button id="jsonFlowCloseBtn" type="button" class="danger">Close</button>
+    </div>
+  </div>
+  <div class="text-flow-body">
+    <textarea id="jsonFlowOutput" readonly spellcheck="false"></textarea>
+  </div>
+</div>
+
+<div id="summaryFlowWindow" class="text-flow-window">
+  <div class="text-flow-header">
+    <div class="title">VM Summary</div>
+    <button id="summaryFlowCloseBtn" type="button" class="danger" style="font-size:14px; padding:4px 8px;" title="Minimize">&#x25A1;</button>
+  </div>
+  <div style="flex:1; overflow-y:auto; padding:4px;">
+    <div class="muted" id="summaryFlowCount"></div>
+    <div id="summaryFlowTable" style="margin-top:8px;"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ---------------------------------------------------------------------------
+// RHEL-only Image catalog
+// ---------------------------------------------------------------------------
+const imageOptions = [
+  { key: 'rhel_10_0_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL 10.0 (Gen1) (RedHat:RHEL:10_0:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL', sku:'10_0', version:'latest' } },
+  { key: 'rhel_10_1_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL 10.1 (Gen1) (RedHat:RHEL:10_1:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL', sku:'10_1', version:'latest' } },
+  { key: 'rhel_10_lvm_gen2_x64_gen2', arch: 'x64', gen: 'Gen2',
+    label: 'RHEL 10 (Gen2) (RedHat:RHEL:10-lvm-gen2:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL', sku:'10-lvm-gen2', version:'latest' } },
+  { key: 'rhel_7_6_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL 7.6 (Gen1) (RedHat:RHEL:7.6:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL', sku:'7.6', version:'latest' } },
+  { key: 'rhel_7_8_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL 7.8 (Gen1) (RedHat:RHEL:7.8:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL', sku:'7.8', version:'latest' } },
+  { key: 'rhel_8_9_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL 8.9 (Gen1) (RedHat:RHEL:8_9:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL', sku:'8_9', version:'latest' } },
+  { key: 'rhel_8_lvm_gen2_x64_gen2', arch: 'x64', gen: 'Gen2',
+    label: 'RHEL 8 (Gen2) (RedHat:RHEL:8-lvm-gen2:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL', sku:'8-lvm-gen2', version:'latest' } },
+  { key: 'rhel_9_7_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL 9.7 (Gen1) (RedHat:RHEL:9_7:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL', sku:'9_7', version:'latest' } },
+  { key: 'rhel_9_lvm_gen2_x64_gen2', arch: 'x64', gen: 'Gen2',
+    label: 'RHEL 9 (Gen2) (RedHat:RHEL:9-lvm-gen2:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL', sku:'9-lvm-gen2', version:'latest' } },
+  { key: 'rhel_arm64_10_1_arm64_gen2', arch: 'Arm64', gen: 'Gen2',
+    label: 'RHEL 10.1 Arm64 (Gen2) (RedHat:rhel-arm64:10_1-arm64:latest)',
+    ref: { publisher:'RedHat', offer:'rhel-arm64', sku:'10_1-arm64', version:'latest' } },
+  { key: 'rhel_arm64_8_10_arm64_gen2', arch: 'Arm64', gen: 'Gen2',
+    label: 'RHEL 8.10 Arm64 (Gen2) (RedHat:rhel-arm64:8_10-arm64:latest)',
+    ref: { publisher:'RedHat', offer:'rhel-arm64', sku:'8_10-arm64', version:'latest' } },
+  { key: 'rhel_arm64_9_7_arm64_gen2', arch: 'Arm64', gen: 'Gen2',
+    label: 'RHEL 9.7 Arm64 (Gen2) (RedHat:rhel-arm64:9_7-arm64:latest)',
+    ref: { publisher:'RedHat', offer:'rhel-arm64', sku:'9_7-arm64', version:'latest' } },
+  { key: 'rhel_raw_10_1_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL Raw 10.1 (Gen1) (RedHat:rhel-raw:10_1:latest)',
+    ref: { publisher:'RedHat', offer:'rhel-raw', sku:'10_1', version:'latest' } },
+  { key: 'rhel_raw_10_raw_gen2_x64_gen2', arch: 'x64', gen: 'Gen2',
+    label: 'RHEL Raw 10 (Gen2) (RedHat:rhel-raw:10-raw-gen2:latest)',
+    ref: { publisher:'RedHat', offer:'rhel-raw', sku:'10-raw-gen2', version:'latest' } },
+  { key: 'rhel_raw_10_raw_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL Raw 10 (Gen1) (RedHat:rhel-raw:10-raw:latest)',
+    ref: { publisher:'RedHat', offer:'rhel-raw', sku:'10-raw', version:'latest' } },
+  { key: 'rhel_raw_89_gen2_x64_gen2', arch: 'x64', gen: 'Gen2',
+    label: 'RHEL Raw 8.9 (Gen2) (RedHat:rhel-raw:89-gen2:latest)',
+    ref: { publisher:'RedHat', offer:'rhel-raw', sku:'89-gen2', version:'latest' } },
+  { key: 'rhel_raw_8_4_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL Raw 8.4 (Gen1) (RedHat:rhel-raw:8_4:latest)',
+    ref: { publisher:'RedHat', offer:'rhel-raw', sku:'8_4', version:'latest' } },
+  { key: 'rhel_raw_8_9_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL Raw 8.9 (Gen1) (RedHat:rhel-raw:8_9:latest)',
+    ref: { publisher:'RedHat', offer:'rhel-raw', sku:'8_9', version:'latest' } },
+  { key: 'rhel_raw_8_raw_gen2_x64_gen2', arch: 'x64', gen: 'Gen2',
+    label: 'RHEL Raw 8 (Gen2) (RedHat:rhel-raw:8-raw-gen2:latest)',
+    ref: { publisher:'RedHat', offer:'rhel-raw', sku:'8-raw-gen2', version:'latest' } },
+  { key: 'rhel_raw_8_raw_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL Raw 8 (Gen1) (RedHat:rhel-raw:8-raw:latest)',
+    ref: { publisher:'RedHat', offer:'rhel-raw', sku:'8-raw', version:'latest' } },
+  { key: 'rhel_raw_9_5_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL Raw 9.5 (Gen1) (RedHat:rhel-raw:9_5:latest)',
+    ref: { publisher:'RedHat', offer:'rhel-raw', sku:'9_5', version:'latest' } },
+  { key: 'rhel_ha_8_8_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL HA 8.8 (Gen1) (RedHat:RHEL-HA:8_8:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL-HA', sku:'8_8', version:'latest' } },
+  { key: 'rhel_raw_9_raw_gen2_x64_gen2', arch: 'x64', gen: 'Gen2',
+    label: 'RHEL Raw 9 (Gen2) (RedHat:rhel-raw:9-raw-gen2:latest)',
+    ref: { publisher:'RedHat', offer:'rhel-raw', sku:'9-raw-gen2', version:'latest' } },
+  { key: 'rhel_raw_9_raw_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL Raw 9 (Gen1) (RedHat:rhel-raw:9-raw:latest)',
+    ref: { publisher:'RedHat', offer:'rhel-raw', sku:'9-raw', version:'latest' } },
+  { key: 'rhel_sap_ha_84sapha_gen2_x64_gen2', arch: 'x64', gen: 'Gen2',
+    label: 'RHEL SAP HA 8.4 (Gen2) (RedHat:RHEL-SAP-HA:84sapha-gen2:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL-SAP-HA', sku:'84sapha-gen2', version:'latest' } },
+  { key: 'rhel_sap_ha_96sapha_gen2_x64_gen2', arch: 'x64', gen: 'Gen2',
+    label: 'RHEL SAP HA 9.6 (Gen2) (RedHat:RHEL-SAP-HA:96sapha-gen2:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL-SAP-HA', sku:'96sapha-gen2', version:'latest' } },
+  { key: 'rhel_7_9_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL 7.9 (Gen1) (RedHat:RHEL:7_9:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL', sku:'7_9', version:'latest' } },
+  { key: 'rhel_8_10_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL 8.10 (Gen1) (RedHat:RHEL:8_10:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL', sku:'8_10', version:'latest' } },
+  { key: 'rhel_8_8_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL 8.8 (Gen1) (RedHat:RHEL:8_8:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL', sku:'8_8', version:'latest' } },
+  { key: 'rhel_96_gen2_x64_gen2', arch: 'x64', gen: 'Gen2',
+    label: 'RHEL 9.6 (Gen2) (RedHat:RHEL:96-gen2:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL', sku:'96-gen2', version:'latest' } },
+  { key: 'rhel_9_6_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL 9.6 (Gen1) (RedHat:RHEL:9_6:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL', sku:'9_6', version:'latest' } },
+  { key: 'rhel_ha_8_10_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL HA 8.10 (Gen1) (RedHat:RHEL-HA:8_10:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL-HA', sku:'8_10', version:'latest' } },
+  { key: 'rhel_ha_8_8_gen2_x64_gen2', arch: 'x64', gen: 'Gen2',
+    label: 'RHEL HA 8.8 (Gen2) (RedHat:RHEL-HA:8_8-gen2:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL-HA', sku:'8_8-gen2', version:'latest' } },
+  { key: 'rhel_ha_9_6_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL HA 9.6 (Gen1) (RedHat:RHEL-HA:rhel_9_6_with_ha_add_on:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL-HA', sku:'rhel_9_6_with_ha_add_on', version:'latest' } },
+  { key: 'rhel_sap_apps_10_0_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL SAP Apps 10.0 (Gen1) (RedHat:RHEL-SAP-APPS:10_0:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL-SAP-APPS', sku:'10_0', version:'latest' } },
+  { key: 'rhel_sap_apps_7_9_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL SAP Apps 7.9 (Gen1) (RedHat:RHEL-SAP-APPS:7_9:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL-SAP-APPS', sku:'7_9', version:'latest' } },
+  { key: 'rhel_sap_apps_8_10_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL SAP Apps 8.10 (Gen1) (RedHat:RHEL-SAP-APPS:8_10:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL-SAP-APPS', sku:'8_10', version:'latest' } },
+  { key: 'rhel_sap_apps_8_8_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL SAP Apps 8.8 (Gen1) (RedHat:RHEL-SAP-APPS:8_8:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL-SAP-APPS', sku:'8_8', version:'latest' } },
+  { key: 'rhel_sap_apps_96_gen2_x64_gen2', arch: 'x64', gen: 'Gen2',
+    label: 'RHEL SAP Apps 9.6 (Gen2) (RedHat:RHEL-SAP-APPS:96sapapps-gen2:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL-SAP-APPS', sku:'96sapapps-gen2', version:'latest' } },
+  { key: 'rhel_sap_ha_10_0_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL SAP HA 10.0 (Gen1) (RedHat:RHEL-SAP-HA:10_0:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL-SAP-HA', sku:'10_0', version:'latest' } },
+  { key: 'rhel_sap_ha_7_9_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL SAP HA 7.9 (Gen1) (RedHat:RHEL-SAP-HA:7_9:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL-SAP-HA', sku:'7_9', version:'latest' } },
+  { key: 'rhel_sap_ha_8_10_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL SAP HA 8.10 (Gen1) (RedHat:RHEL-SAP-HA:8_10:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL-SAP-HA', sku:'8_10', version:'latest' } },
+  { key: 'rhel_sap_ha_8_8_x64_gen1', arch: 'x64', gen: 'Gen1',
+    label: 'RHEL SAP HA 8.8 (Gen1) (RedHat:RHEL-SAP-HA:8_8:latest)',
+    ref: { publisher:'RedHat', offer:'RHEL-SAP-HA', sku:'8_8', version:'latest' } },
+];
+
+// ---------------------------------------------------------------------------
+// VM Size catalog
+// ---------------------------------------------------------------------------
+const sizeOptions = [
+  { name: 'Standard_B2s', tags: { architectures: ['x64'], generations: ['Gen1','Gen2'], vcpus: 2 } },
+  { name: 'Standard_D2s_v3', tags: { architectures: ['x64'], generations: ['Gen1','Gen2'], vcpus: 2 } },
+  { name: 'Standard_D2ps_v6', tags: { architectures: ['Arm64'], generations: ['Gen2'], vcpus: 2 } },
+  { name: 'Standard_D4s_v5', tags: { architectures: ['x64'], generations: ['Gen1','Gen2'], vcpus: 4 } },
+  { name: 'Standard_E2ps_v6', tags: { architectures: ['Arm64'], generations: ['Gen2'], vcpus: 2 } },
+  { name: 'Standard_F2s_v2', tags: { architectures: ['x64'], generations: ['Gen1','Gen2'], vcpus: 2 } },
+];
+
+function sizeInfo(sizeName) {
+  const raw = sizeOptions.find(s => s.name === sizeName) || sizeOptions[0];
+  const t = raw.tags || {};
+  return {
+    name: raw.name,
+    vcpus: t.vcpus || 0,
+    arch: (t.architectures || [])[0] || 'x64',
+    gens: t.generations || [],
+    tags: t
+  };
+}
+
+const ENFORCED_QUOTA_LIMIT = 100;
+
+function getQuotaLimit() {
+  const el = $('regionalVcpuLimit');
+  if (!el) return ENFORCED_QUOTA_LIMIT;
+  const v = Number(el.value);
+  return (Number.isFinite(v) && v > 0) ? Math.floor(v) : ENFORCED_QUOTA_LIMIT;
+}
+
+function compatibleSizesForImage(img) {
+  return sizeOptions.map(s => sizeInfo(s.name)).filter(si => {
+    if (si.arch !== img.arch) return false;
+    if (!si.gens.includes(img.gen)) return false;
+    return true;
+  }).sort((a, b) => (a.vcpus - b.vcpus) || a.name.localeCompare(b.name));
+}
+
+function sizeForImage(img) {
+  const forced = $('forcedVmSize') ? $('forcedVmSize').value : '';
+  if (forced) {
+    const fi = sizeInfo(forced);
+    if (fi.arch === img.arch && fi.gens.includes(img.gen)) return forced;
+  }
+  const compatible = compatibleSizesForImage(img);
+  if (!compatible.length) return img.arch === 'Arm64' ? 'Standard_D2ps_v6' : 'Standard_B2s';
+  return compatible[0].name;
+}
+
+let _forcedImageKeys = new Set();
+
+function getSelectedForcedImageKeys() { return Array.from(_forcedImageKeys); }
+
+function getFilteredImages() {
+  const archFilter = $('filterArch') ? $('filterArch').value : '';
+  const genFilter = $('filterGen') ? $('filterGen').value : '';
+  return imageOptions.filter(img => {
+    if (archFilter && img.arch !== archFilter) return false;
+    if (genFilter && img.gen !== genFilter) return false;
+    return true;
+  });
+}
+
+function selectedImages() {
+  if (_forcedImageKeys.size) {
+    const filtered = getFilteredImages();
+    const filteredKeys = new Set(filtered.map(i => i.key));
+    const validKeys = Array.from(_forcedImageKeys).filter(k => filteredKeys.has(k));
+    if (validKeys.length) return imageOptions.filter(i => validKeys.includes(i.key));
+  }
+  return getFilteredImages();
+}
+
+function getPickableImages() {
+  const forcedSize = $('forcedVmSize') ? $('forcedVmSize').value : '';
+  const filtered = getFilteredImages();
+  if (!forcedSize) return filtered;
+  const fi = sizeInfo(forcedSize);
+  return filtered.filter(img => fi.arch === img.arch && fi.gens.includes(img.gen));
+}
+
+function pruneForcedImageKeys() {
+  const pickable = new Set(getPickableImages().map(i => i.key));
+  _forcedImageKeys.forEach(k => { if (!pickable.has(k)) _forcedImageKeys.delete(k); });
+}
+
+function refreshForcedImageButton() {
+  const btn = $('openImagePickerBtn');
+  if (!btn) return;
+  const pickable = getPickableImages();
+  if (_forcedImageKeys.size === 0) {
+    btn.textContent = `All filtered (${pickable.length} images)`;
+    btn.style.color = 'var(--muted)';
+  } else {
+    btn.textContent = `${_forcedImageKeys.size} of ${pickable.length} selected`;
+    btn.style.color = 'var(--text)';
+  }
+}
+
+function onForcedImagesChanged() {
+  refreshForcedImageButton();
+  saveState();
+  update();
+}
+
+function renderImagePickerBody() {
+  const body = $('imagePickerBody');
+  if (!body) return;
+  body.innerHTML = '';
+  const images = getPickableImages();
+  images.forEach(img => {
+    const lbl = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.value = img.key; cb.checked = _forcedImageKeys.has(img.key);
+    cb.onchange = () => { if (cb.checked) _forcedImageKeys.add(img.key); else _forcedImageKeys.delete(img.key); updateImagePickerCount(); };
+    const span = document.createElement('span');
+    span.textContent = img.label || img.key;
+    lbl.appendChild(cb); lbl.appendChild(span); body.appendChild(lbl);
+  });
+  updateImagePickerCount();
+}
+
+function updateImagePickerCount() {
+  const el = $('imagePickerCount');
+  const total = $('imagePickerBody') ? $('imagePickerBody').querySelectorAll('input[type="checkbox"]').length : 0;
+  if (el) el.textContent = `${_forcedImageKeys.size} of ${total} selected`;
+}
+
+function openImagePicker() { renderImagePickerBody(); $('imagePickerOverlay').classList.add('show'); }
+function closeImagePicker() {
+  $('imagePickerOverlay').classList.remove('show');
+  const compatible = new Set(getPickableImages().map(i => i.key));
+  _forcedImageKeys.forEach(k => { if (!compatible.has(k)) _forcedImageKeys.delete(k); });
+  onForcedImagesChanged();
+}
+
+function plannedVmList() {
+  const images = selectedImages();
+  const vmList = [];
+  images.forEach((img, idx) => {
+    const size = sizeForImage(img);
+    if (!size) return;
+    const hostName = img.key.replace(/_/g, '-').slice(0, 64);
+    vmList.push({
+      name: hostName,
+      ip: `10.1.0.${10 + vmList.length}`,
+      size, image: img.ref, gen: img.gen, arch: img.arch
+    });
+  });
+  return { images, vmList };
+}
+
+function splitVmListAcrossRegions(vmList, quotaLimit) {
+  const controlCores = sizeInfo('Standard_B2s').vcpus || 2;
+  const regions = [];
+  let remaining = vmList.slice();
+  while (remaining.length > 0) {
+    const regionIdx = regions.length;
+    const maxCoresThisRegion = regionIdx === 0 ? quotaLimit - controlCores : quotaLimit;
+    const bucket = [];
+    let usedCores = 0;
+    while (remaining.length > 0) {
+      const vm = remaining[0];
+      const vmCores = sizeInfo(vm.size).vcpus || 2;
+      if (usedCores + vmCores > maxCoresThisRegion && bucket.length > 0) break;
+      bucket.push(remaining.shift());
+      usedCores += vmCores;
+    }
+    regions.push({ region: `region${regionIdx + 1}`, vmList: bucket, cores: usedCores + (regionIdx === 0 ? controlCores : 0) });
+  }
+  return regions;
+}
+
+function buildRegionalPlans() {
+  const basePlan = plannedVmList();
+  const quotaLimit = getQuotaLimit();
+  const controlCores = sizeInfo('Standard_B2s').vcpus || 2;
+  const singleRegionCores = controlCores + basePlan.vmList.reduce((s, vm) => s + (sizeInfo(vm.size).vcpus || 0), 0);
+  const needsSplit = singleRegionCores > quotaLimit;
+  const regionPlans = needsSplit
+    ? splitVmListAcrossRegions(basePlan.vmList, quotaLimit)
+    : [{ region: 'region1', vmList: basePlan.vmList, cores: singleRegionCores }];
+  return { basePlan, regionPlans, quotaLimit, singleRegionCores, needsSplit };
+}
+
+function projectedCoreUsage(plan) {
+  const controlCores = sizeInfo('Standard_B2s').vcpus || 2;
+  return controlCores + plan.vmList.reduce((sum, vm) => sum + (sizeInfo(vm.size).vcpus || 0), 0);
+}
+
+function urnLabel(ref) { return `${ref.publisher}:${ref.offer}:${ref.sku}:${ref.version}`; }
+
+function toBase64Utf8(text) {
+  const bytes = new TextEncoder().encode(String(text || ''));
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+async function gzipToBase64(text) {
+  const input = new TextEncoder().encode(String(text || ''));
+  const cs = new CompressionStream('gzip');
+  const writer = cs.writable.getWriter();
+  writer.write(input); writer.close();
+  const reader = cs.readable.getReader();
+  const chunks = [];
+  for (;;) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); }
+  const totalLen = chunks.reduce((s, c) => s + c.length, 0);
+  const merged = new Uint8Array(totalLen);
+  let offset = 0;
+  for (const c of chunks) { merged.set(c, offset); offset += c.length; }
+  let binary = '';
+  for (let i = 0; i < merged.length; i++) binary += String.fromCharCode(merged[i]);
+  return btoa(binary);
+}
+
+// ---------------------------------------------------------------------------
+// Validation
+// ---------------------------------------------------------------------------
+function validateSshKey(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return 'SSH public key is required.';
+  const match = raw.match(/^(\S+)\s+([A-Za-z0-9+/]+={0,3})(?:\s+.*)?$/);
+  if (!match) return 'Use OpenSSH format: <type> <base64> [comment].';
+  const allowedTypes = ['ssh-rsa','ssh-ed25519','ecdsa-sha2-nistp256','ecdsa-sha2-nistp384','ecdsa-sha2-nistp521'];
+  if (!allowedTypes.includes(match[1])) return 'Unsupported key type.';
+  try { if (atob(match[2]).length < 32) return 'Key payload too short.'; } catch(e) { return 'Invalid base64 payload.'; }
+  return '';
+}
+
+// ---------------------------------------------------------------------------
+// ARM Template Generation
+// ---------------------------------------------------------------------------
+async function generateTemplate(sshKey, testYaml, rhuiCheckPy, regionPlans) {
+  const CONTROL_VM_NAME = 'rhui-check-control-vm';
+  const CONTROL_SIZE = 'Standard_B2s';
+  const CONTROL_IMAGE = { publisher:'RedHat', offer:'RHEL', sku:'9-lvm-gen2', version:'latest' };
+  const isMultiRegion = regionPlans.length > 1;
+
+  function armInner(expr) { return expr.startsWith('[') && expr.endsWith(']') ? expr.slice(1, -1) : expr; }
+
+  const regionConfigs = regionPlans.map((rp, idx) => {
+    const n = (idx + 1) * 10;
+    const base = `10.${n}.0`;
+    return { ...rp, idx, addressPrefix: `10.${n}.0.0/16`, subnetPrefix: `${base}.0/24`, ipBase: base,
+      vnetName: `r${idx + 1}-vnet`, nsgName: `r${idx + 1}-nsg`,
+      rgName: `[format('{0}-r${idx + 1}', parameters('rgPrefix'))]`, deployName: `deploy-r${idx + 1}`, namePrefix: `r${idx + 1}` };
+  });
+  const controlIp = `${regionConfigs[0].ipBase}.4`;
+
+  const allHosts = [{name: CONTROL_VM_NAME, ip: controlIp}];
+  regionConfigs.forEach(rc => {
+    rc.vmList.forEach((vm, i) => { const vmIp = `${rc.ipBase}.${10 + i}`; vm._ip = vmIp; allHosts.push({name: vm.name, ip: vmIp}); });
+  });
+  const hostsEntries = allHosts.map(h => `${h.ip}\t${h.name}`).join('\n');
+  const hostsSyncScript = `cat <<'HOSTS_EOF' >> /etc/hosts\n${hostsEntries}\nHOSTS_EOF`;
+  const inventoryHosts = allHosts.filter(h => h.name !== CONTROL_VM_NAME).map(h => h.name).join('\n');
+
+  const safeYaml = String(testYaml || '').replace(/\r\n/g, '\n');
+  const yamlB64 = await gzipToBase64(safeYaml);
+  const safePy = String(rhuiCheckPy || '').replace(/\r\n/g, '\n');
+  const pyB64 = await gzipToBase64(safePy);
+
+  const indexHtml = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>RHUI Check Results</title>
+<style>body{font-family:system-ui,sans-serif;margin:20px;background:#f5f5f5}
+.wrap{max-width:1000px;margin:0 auto;background:#fff;border-radius:12px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
+h1{color:#0078d4;margin:0 0 8px}pre{background:#f8f8f8;border:1px solid #edebe9;border-radius:8px;padding:12px;overflow:auto;max-height:600px;font-size:12px}
+a{color:#0078d4;font-weight:700}</style></head>
+<body><div class="wrap"><h1>RHUI Check Results</h1>
+<p id="status">Loading results.json...</p>
+<a id="dl" style="display:none" download="results.json">Download results.json</a>
+<pre id="out"></pre>
+<script>
+(async function(){
+  var statusEl = document.getElementById('status');
+  var outEl = document.getElementById('out');
+  var dlEl = document.getElementById('dl');
+  try {
+    var resultsUrl = new URL('/results.json', window.location.href);
+    resultsUrl.searchParams.set('t', Date.now().toString());
+    var r = await fetch(resultsUrl.toString(), { cache:'no-store' });
+    if (!r.ok) throw new Error('HTTP '+r.status+' while fetching '+resultsUrl.pathname);
+    var raw = await r.text();
+    var d = JSON.parse(raw);
+    statusEl.textContent = 'Results loaded ('+Object.keys(d).length+' entries)';
+    outEl.textContent = JSON.stringify(d,null,2);
+    var b = new Blob([JSON.stringify(d,null,2)], { type:'application/json' });
+    dlEl.href = URL.createObjectURL(b);
+    dlEl.style.display = 'inline';
+  } catch(err) {
+    statusEl.textContent = 'Unable to load /results.json: ' + (err && err.message ? err.message : 'unknown error');
+  }
+})();
+__SCRIPT_END__</div></body></html>`
+  .replace('__SCRIPT_END__', '<' + '/script>');
+
+  const controlBootstrap = [
+    hostsSyncScript,
+    'useradd -m ansible 2>/dev/null || true',
+    "mkdir -p /etc/ssh/sshd_config.d",
+    "echo 'StrictHostKeyChecking accept-new' > /etc/ssh/ssh_config.d/99-ansible-lab.conf",
+    "echo 'PubkeyAuthentication yes' > /etc/ssh/sshd_config.d/99-pubkey.conf",
+    "su - ansible -c 'echo | ssh-keygen -t rsa -b 4096 -N \"\" -q'",
+    "cat <<'KEYSERVER_EOF' > /home/ansible/k.py\nimport http.server, socketserver\nclass H(http.server.BaseHTTPRequestHandler):\n    def do_GET(self):\n        if self.path == '/k':\n            try:\n                with open('/home/ansible/.ssh/id_rsa.pub', 'rb') as f: data = f.read()\n                self.send_response(200); self.send_header('Content-Type', 'text/plain'); self.end_headers(); self.wfile.write(data)\n            except: self.send_response(500); self.end_headers()\n        else: self.send_response(404); self.end_headers()\n    def log_message(self, *a): pass\nwith socketserver.TCPServer(('0.0.0.0', 10000), H) as s: s.serve_forever()\nKEYSERVER_EOF",
+    'chown ansible:ansible /home/ansible/k.py',
+    "cat <<'SVC_EOF' > /etc/systemd/system/k.service\n[Unit]\nDescription=Key server\nAfter=network.target\n[Service]\nType=simple\nUser=ansible\nExecStart=/usr/bin/python3 /home/ansible/k.py\nRestart=always\nRestartSec=3\n[Install]\nWantedBy=multi-user.target\nSVC_EOF",
+    'systemctl daemon-reload',
+    'systemctl enable --now k.service',
+    'firewall-cmd --permanent --add-port=10000/tcp --add-port=80/tcp || true; firewall-cmd --reload || true',
+    'dnf install -y ansible-core httpd acl',
+    'systemctl enable --now httpd',
+    'setfacl -R -m u:ansible:rwx /var/www/html',
+    'setfacl -R -d -m u:ansible:rwx /var/www/html',
+    `cat <<'INV_EOF' > /etc/ansible/hosts\n[VMs]\n${inventoryHosts}\nINV_EOF`,
+    `echo '${yamlB64}' | base64 -d | gunzip > /home/ansible/test.yml`,
+    'chown ansible /home/ansible/test.yml',
+    `echo '${pyB64}' | base64 -d | gunzip > /home/ansible/rhui-check.py`,
+    'chmod 755 /home/ansible/rhui-check.py',
+    'chown ansible /home/ansible/rhui-check.py',
+    `cat <<'HTML_EOF' > /var/www/html/index.html\n${indexHtml}\nHTML_EOF`,
+    `cat <<'WAITER_EOF' > /home/ansible/run-test.sh\n#!/bin/bash\nVM_COUNT=$(ansible --list-hosts VMs 2>/dev/null | tail -n +2 | grep -c '[^[:space:]]')\nMAX_WAIT=1800\nELAPSED=0\ntee /var/www/html/index.html > /dev/null <<'HOLDER'\n<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="30"><title>RHUI Check - Waiting</title>\n<style>body{font-family:system-ui,sans-serif;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f5f5f5;color:#201f1e}\n.c{text-align:center;background:#fff;padding:40px 48px;border-radius:12px;border:1px solid #edebe9;box-shadow:0 2px 8px rgba(0,0,0,.08)}\nh1{color:#0078d4;margin:0 0 8px;font-size:22px}p{color:#605e5c;margin:4px 0;font-size:14px}\n.spin{display:inline-block;width:28px;height:28px;border:3px solid #edebe9;border-top-color:#0078d4;border-radius:50%;animation:s .8s linear infinite;margin-bottom:12px}@keyframes s{to{transform:rotate(360deg)}}</style></head>\n<body><div class="c"><div class="spin"></div><h1>Playbook has not run yet</h1><p>Waiting for all VMs to respond to ping&hellip;</p><p id="st">0 / __VM_COUNT__ VMs online &mdash; elapsed 0s</p><p style="font-size:12px;color:#a0a0a0;margin-top:16px;">This page auto-refreshes every 30 seconds.</p></div></body></html>\nHOLDER\nsed -i "s|__VM_COUNT__|$VM_COUNT|g" /var/www/html/index.html\nwhile [ $ELAPSED -lt $MAX_WAIT ]; do\n  OK=$(ansible -m ping VMs -f 30 -o 2>/dev/null | grep -c SUCCESS)\n  ELAPSED=$((ELAPSED + 15))\n  sed -i "s|<p id=\\"st\\">[^<]*</p>|<p id=\\"st\\">$OK / $VM_COUNT VMs online \\&mdash; elapsed ${'${'}ELAPSED}s</p>|" /var/www/html/index.html 2>/dev/null\n  if [ "$OK" -ge "$VM_COUNT" ] && [ "$VM_COUNT" -gt 0 ]; then\n    sed -i "s|<h1>[^<]*</h1>|<h1>Test playbook running\\&hellip;</h1>|;s|<p>Waiting[^<]*</p>|<p>All $VM_COUNT VMs online. Executing ansible-playbook test.yml</p>|;s|<p id=\\"st\\">[^<]*</p>|<p id=\\"st\\">Started at $(date -u +%H:%M:%S) UTC</p>|" /var/www/html/index.html 2>/dev/null\n    ansible-playbook -f 30 /home/ansible/test.yml 2>&1 | tee /home/ansible/test-run.log\n    exit 0\n  fi\n  sleep 15\ndone\necho "Timed out waiting for all VMs after ${'${'}MAX_WAIT}s" > /home/ansible/test-run.log\nWAITER_EOF`,
+    'chown ansible:ansible /home/ansible/run-test.sh',
+    'chmod +x /home/ansible/run-test.sh',
+    'nohup su - ansible -c "/home/ansible/run-test.sh" > /home/ansible/run-test-bg.log 2>&1 &',
+  ].join('\n');
+
+  const clientBootstrap = [
+    hostsSyncScript,
+    'useradd -m ansible 2>/dev/null || true',
+    "mkdir -p /etc/ssh/sshd_config.d",
+    "echo 'StrictHostKeyChecking accept-new' > /etc/ssh/ssh_config.d/99-ansible-lab.conf",
+    "echo 'PubkeyAuthentication yes' > /etc/ssh/sshd_config.d/99-pubkey.conf",
+    'systemctl restart sshd || true',
+    'mkdir -p /home/ansible/.ssh',
+    `for i in $(seq 1 30); do KEY=$(curl -fsSL http://${controlIp}:10000/k 2>/dev/null) && break; sleep 10; done`,
+    'if [ -n "$KEY" ]; then echo "$KEY" >> /home/ansible/.ssh/authorized_keys; fi',
+    'chmod 700 /home/ansible/.ssh',
+    'chmod 600 /home/ansible/.ssh/authorized_keys',
+    'chown -R ansible /home/ansible/.ssh',
+    "echo 'ansible ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/ansible",
+  ].join('\n');
+
+  // --- Build inner (resource-group-scope) template for one region ---
+  function buildRegionTemplate(rc, isControlRegion) {
+    const loc = "[parameters('location')]";
+    const innerResources = [];
+
+    const nsgRules = [
+      { "name": "ssh", "properties": { "access":"Allow","protocol":"Tcp","direction":"Inbound","priority":100,"sourceAddressPrefix":"AzureCloud","sourcePortRange":"*","destinationAddressPrefix":"*","destinationPortRange":"22" } }
+    ];
+    if (isControlRegion) {
+      nsgRules.push({ "name": "http-control", "properties": { "access":"Allow","protocol":"Tcp","direction":"Inbound","priority":110,"sourceAddressPrefix":"AzureCloud","sourcePortRange":"*","destinationAddressPrefix":`${controlIp}`,"destinationPortRange":"80" } });
+    }
+    innerResources.push({
+      "type": "Microsoft.Network/networkSecurityGroups", "apiVersion": "2024-05-01",
+      "name": "[variables('nsgName')]", "location": loc,
+      "properties": { "securityRules": nsgRules }
+    });
+
+    innerResources.push({
+      "type": "Microsoft.Network/virtualNetworks", "apiVersion": "2024-05-01",
+      "name": "[variables('vnetName')]", "location": loc,
+      "properties": { "addressSpace": { "addressPrefixes": ["[parameters('addressPrefix')]"] } }
+    });
+
+    innerResources.push({
+      "type": "Microsoft.Network/virtualNetworks/subnets", "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}', variables('vnetName'), 'default')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+      ],
+      "properties": {
+        "addressPrefix": "[parameters('subnetPrefix')]",
+        "networkSecurityGroup": { "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]" }
+      }
+    });
+
+    const subnetRef = "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), 'default')]";
+
+    if (isControlRegion) {
+      const pipName = `${CONTROL_VM_NAME}-pip`;
+      const nicName = `${CONTROL_VM_NAME}-nic`;
+      const dnsLabel = `[concat('${CONTROL_VM_NAME}-', uniqueString(resourceGroup().id))]`;
+
+      innerResources.push({
+        "type": "Microsoft.Network/publicIPAddresses", "apiVersion": "2024-05-01",
+        "name": pipName, "location": loc, "sku": { "name": "Standard" },
+        "properties": { "publicIPAllocationMethod": "Static", "publicIPAddressVersion": "IPv4",
+          "dnsSettings": { "domainNameLabel": dnsLabel } }
+      });
+
+      innerResources.push({
+        "type": "Microsoft.Network/networkInterfaces", "apiVersion": "2024-05-01",
+        "name": nicName, "location": loc,
+        "dependsOn": [subnetRef, `[resourceId('Microsoft.Network/publicIPAddresses', '${pipName}')]`],
+        "properties": { "enableAcceleratedNetworking": false,
+          "ipConfigurations": [{ "name": "ipconfig1", "properties": {
+            "subnet": { "id": subnetRef }, "privateIPAllocationMethod": "Static", "privateIPAddress": controlIp,
+            "publicIPAddress": { "id": `[resourceId('Microsoft.Network/publicIPAddresses', '${pipName}')]` }
+          }}] }
+      });
+
+      innerResources.push({
+        "type": "Microsoft.Compute/virtualMachines", "apiVersion": "2023-03-01",
+        "name": CONTROL_VM_NAME, "location": loc,
+        "dependsOn": [`[resourceId('Microsoft.Network/networkInterfaces', '${nicName}')]`],
+        "properties": {
+          "hardwareProfile": { "vmSize": CONTROL_SIZE },
+          "storageProfile": {
+            "imageReference": CONTROL_IMAGE,
+            "osDisk": { "createOption": "FromImage", "managedDisk": { "storageAccountType": "StandardSSD_LRS" } },
+            "diskControllerType": "SCSI"
+          },
+          "networkProfile": { "networkInterfaces": [{ "id": `[resourceId('Microsoft.Network/networkInterfaces', '${nicName}')]`, "properties": { "primary": true } }] },
+          "osProfile": {
+            "computerName": CONTROL_VM_NAME,
+            "adminUsername": "[parameters('adminUsername')]",
+            "customData": toBase64Utf8(`#!/bin/bash\n${controlBootstrap}`),
+            "linuxConfiguration": {
+              "disablePasswordAuthentication": true,
+              "ssh": { "publicKeys": [{ "path": "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]", "keyData": "[parameters('sshPublicKey')]" }] }
+            }
+          },
+          "diagnosticsProfile": { "bootDiagnostics": { "enabled": true } }
+        }
+      });
+    }
+
+    rc.vmList.forEach((vm, i) => {
+      const vmIp = vm._ip;
+      const nicName = `${vm.name}-nic`;
+      const vmDepends = [`[resourceId('Microsoft.Network/networkInterfaces', '${nicName}')]`];
+      if (isControlRegion) vmDepends.push(`[resourceId('Microsoft.Compute/virtualMachines', '${CONTROL_VM_NAME}')]`);
+
+      innerResources.push({
+        "type": "Microsoft.Network/networkInterfaces", "apiVersion": "2024-05-01",
+        "name": nicName, "location": loc,
+        "dependsOn": [subnetRef],
+        "properties": { "enableAcceleratedNetworking": false,
+          "ipConfigurations": [{ "name": "ipconfig1", "properties": {
+            "subnet": { "id": subnetRef }, "privateIPAllocationMethod": "Static", "privateIPAddress": vmIp
+          }}] }
+      });
+
+      const storageProfile = {
+        "imageReference": vm.image,
+        "osDisk": { "createOption": "FromImage", "managedDisk": { "storageAccountType": "StandardSSD_LRS" } }
+      };
+      if (vm.gen === 'Gen2') storageProfile.diskControllerType = 'SCSI';
+
+      innerResources.push({
+        "type": "Microsoft.Compute/virtualMachines", "apiVersion": "2023-03-01",
+        "name": vm.name, "location": loc, "dependsOn": vmDepends,
+        "properties": {
+          "hardwareProfile": { "vmSize": vm.size },
+          "storageProfile": storageProfile,
+          "networkProfile": { "networkInterfaces": [{ "id": `[resourceId('Microsoft.Network/networkInterfaces', '${nicName}')]`, "properties": { "primary": true } }] },
+          "osProfile": {
+            "computerName": vm.name,
+            "adminUsername": "[parameters('adminUsername')]",
+            "customData": toBase64Utf8(`#!/bin/bash\n${clientBootstrap}`),
+            "linuxConfiguration": {
+              "disablePasswordAuthentication": true,
+              "ssh": { "publicKeys": [{ "path": "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]", "keyData": "[parameters('sshPublicKey')]" }] }
+            }
+          },
+          "diagnosticsProfile": { "bootDiagnostics": { "enabled": true } }
+        }
+      });
+    });
+
+    return {
+      "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "location": { "type": "string" },
+        "addressPrefix": { "type": "string" },
+        "subnetPrefix": { "type": "string" },
+        "adminUsername": { "type": "string" },
+        "sshPublicKey": { "type": "string" }
+      },
+      "variables": { "vnetName": rc.vnetName, "nsgName": rc.nsgName },
+      "resources": innerResources,
+      "outputs": isControlRegion ? {
+        "controlVmFqdn": { "type": "string", "value": `[reference(resourceId('Microsoft.Network/publicIPAddresses', '${CONTROL_VM_NAME}-pip')).dnsSettings.fqdn]` }
+      } : {}
+    };
+  }
+
+  // --- Single region ---
+  if (!isMultiRegion) {
+    const rc = regionConfigs[0];
+    const inner = buildRegionTemplate(rc, true);
+    delete inner.parameters.location;
+    delete inner.parameters.addressPrefix;
+    delete inner.parameters.subnetPrefix;
+    inner.parameters.sshPublicKey = { "type": "string", "defaultValue": sshKey };
+    inner.parameters.adminUsername = { "type": "string", "defaultValue": "azureuser" };
+    inner.variables.addressPrefix = rc.addressPrefix;
+    inner.variables.subnetPrefix = rc.subnetPrefix;
+    const jsonStr = JSON.stringify(inner)
+      .replace(/\[parameters\('location'\)\]/g, "[resourceGroup().location]")
+      .replace(/\[parameters\('addressPrefix'\)\]/g, "[variables('addressPrefix')]")
+      .replace(/\[parameters\('subnetPrefix'\)\]/g, "[variables('subnetPrefix')]");
+    return JSON.parse(jsonStr);
+  }
+
+  // --- Multi-region ---
+  const subParams = {};
+  const azureRegions = [
+    "australiacentral","australiaeast","australiasoutheast","brazilsouth","canadacentral","canadaeast",
+    "centralindia","centralus","eastasia","eastus","eastus2","francecentral","germanywestcentral",
+    "italynorth","japaneast","japanwest","koreacentral","northcentralus","northeurope","norwayeast",
+    "polandcentral","qatarcentral","southafricanorth","southcentralus","southeastasia","southindia",
+    "swedencentral","switzerlandnorth","uaenorth","uksouth","ukwest","westcentralus","westeurope",
+    "westus","westus2","westus3"
+  ];
+  const defaultRegions = ['westus2', 'eastus2', 'northeurope', 'westeurope', 'southeastasia'];
+  for (let i = 1; i < regionConfigs.length; i++) {
+    subParams[`region${i + 1}`] = {
+      "type": "string", "defaultValue": defaultRegions[(i - 1) % defaultRegions.length],
+      "allowedValues": azureRegions, "metadata": { "description": `Region ${i + 1} location` }
+    };
+  }
+  subParams["rgPrefix"] = { "type": "string", "defaultValue": "rhui-check-lab" };
+  subParams["adminUsername"] = { "type": "string", "defaultValue": "azureuser" };
+  subParams["sshPublicKey"] = { "type": "string", "defaultValue": sshKey };
+
+  const subVars = { "region1": "[deployment().location]" };
+  const subResources = [];
+
+  regionConfigs.forEach((rc, idx) => {
+    const locExpr = idx === 0 ? "[variables('region1')]" : `[parameters('region${idx + 1}')]`;
+    subResources.push({
+      "type": "Microsoft.Resources/resourceGroups", "apiVersion": "2022-09-01",
+      "name": rc.rgName, "location": locExpr
+    });
+  });
+
+  regionConfigs.forEach((rc, idx) => {
+    const locExpr = idx === 0 ? "[variables('region1')]" : `[parameters('region${idx + 1}')]`;
+    const isControlRegion = idx === 0;
+    const innerTemplate = buildRegionTemplate(rc, isControlRegion);
+    const depends = [`[resourceId('Microsoft.Resources/resourceGroups', ${armInner(rc.rgName)})]`];
+    if (!isControlRegion) depends.push('deploy-r1');
+
+    subResources.push({
+      "type": "Microsoft.Resources/deployments", "apiVersion": "2022-09-01",
+      "name": rc.deployName, "resourceGroup": rc.rgName, "dependsOn": depends,
+      "properties": {
+        "mode": "Incremental", "expressionEvaluationOptions": { "scope": "inner" },
+        "parameters": {
+          "location": { "value": locExpr }, "addressPrefix": { "value": rc.addressPrefix },
+          "subnetPrefix": { "value": rc.subnetPrefix }, "adminUsername": { "value": "[parameters('adminUsername')]" },
+          "sshPublicKey": { "value": "[parameters('sshPublicKey')]" }
+        },
+        "template": innerTemplate
+      }
+    });
+  });
+
+  // VNet peering
+  for (let i = 1; i < regionConfigs.length; i++) {
+    const hub = regionConfigs[0]; const spoke = regionConfigs[i];
+    subResources.push({
+      "type": "Microsoft.Resources/deployments", "apiVersion": "2022-09-01",
+      "name": `peer-r1-to-r${i + 1}`, "resourceGroup": hub.rgName,
+      "dependsOn": [hub.deployName, spoke.deployName],
+      "properties": { "mode": "Incremental", "expressionEvaluationOptions": { "scope": "inner" },
+        "parameters": { "localVnetName": { "value": hub.vnetName },
+          "remoteVnetId": { "value": `[resourceId(subscription().subscriptionId, ${armInner(spoke.rgName)}, 'Microsoft.Network/virtualNetworks', '${spoke.vnetName}')]` } },
+        "template": { "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#", "contentVersion": "1.0.0.0",
+          "parameters": { "localVnetName": { "type": "string" }, "remoteVnetId": { "type": "string" } },
+          "resources": [{ "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings", "apiVersion": "2024-05-01",
+            "name": `[format('{0}/peer-to-r${i + 1}', parameters('localVnetName'))]`,
+            "properties": { "remoteVirtualNetwork": { "id": "[parameters('remoteVnetId')]" }, "allowVirtualNetworkAccess": true, "allowForwardedTraffic": true } }] } }
+    });
+    subResources.push({
+      "type": "Microsoft.Resources/deployments", "apiVersion": "2022-09-01",
+      "name": `peer-r${i + 1}-to-r1`, "resourceGroup": spoke.rgName,
+      "dependsOn": [hub.deployName, spoke.deployName],
+      "properties": { "mode": "Incremental", "expressionEvaluationOptions": { "scope": "inner" },
+        "parameters": { "localVnetName": { "value": spoke.vnetName },
+          "remoteVnetId": { "value": `[resourceId(subscription().subscriptionId, ${armInner(hub.rgName)}, 'Microsoft.Network/virtualNetworks', '${hub.vnetName}')]` } },
+        "template": { "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#", "contentVersion": "1.0.0.0",
+          "parameters": { "localVnetName": { "type": "string" }, "remoteVnetId": { "type": "string" } },
+          "resources": [{ "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings", "apiVersion": "2024-05-01",
+            "name": `[format('{0}/peer-to-r1', parameters('localVnetName'))]`,
+            "properties": { "remoteVirtualNetwork": { "id": "[parameters('remoteVnetId')]" }, "allowVirtualNetworkAccess": true, "allowForwardedTraffic": true } }] } }
+    });
+  }
+
+  return {
+    "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+    "contentVersion": "1.0.0.0", "parameters": subParams, "variables": subVars, "resources": subResources,
+    "outputs": {
+      "controlVmResourceGroup": { "type": "string", "value": regionConfigs[0].rgName },
+      "region1": { "type": "string", "value": "[variables('region1')]" }
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// UI
+// ---------------------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+
+const DEFAULT_TEST_YAML = `---
+###############################################################################
+# RHUI Break → Check → Fix Playbook
+#
+# Play 1: On all hosts (become: true)
+#   - For each of 9 RHUI scenarios: break → run rhui-check.py → fix
+#   - Per-scenario rhui-check.py results captured separately
+#
+# Play 2: On localhost
+#   - Aggregate results into /var/www/html/results.json + index.html
+###############################################################################
+
+- name: "RHUI break, check, and fix"
+  hosts: all
+  become: true
+  gather_facts: true
+  any_errors_fatal: false
+
+  vars:
+    backup_dir: /var/tmp/rhuibreak_backups
+    rhui4_ips:
+      - "52.136.197.163"
+      - "20.225.226.182"
+      - "52.142.4.99"
+      - "20.248.180.252"
+      - "20.24.186.80"
+    rhui3_ips:
+      - "13.91.47.76"
+      - "40.85.190.91"
+      - "52.187.75.218"
+
+  tasks:
+
+    # ================================================================
+    #  Preparation
+    # ================================================================
+
+    - name: "Prep: Create backup directory"
+      ansible.builtin.file:
+        path: "{{ backup_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: "Prep: Query IMDS for image URN"
+      ansible.builtin.uri:
+        url: http://169.254.169.254/metadata/instance/compute/storageProfile/imageReference?api-version=2021-02-01
+        headers:
+          Metadata: "true"
+        return_content: true
+      register: imds_image
+      failed_when: false
+      changed_when: false
+
+    - name: "Prep: Build image URN"
+      ansible.builtin.set_fact:
+        vm_urn: "{{ imds_image.json.publisher | default('unknown') }}:{{ imds_image.json.offer | default('unknown') }}:{{ imds_image.json.sku | default('unknown') }}:{{ imds_image.json.version | default('unknown') }}"
+      when: imds_image.status == 200
+
+    - name: "Prep: Fallback URN when IMDS unavailable"
+      ansible.builtin.set_fact:
+        vm_urn: "unknown:unknown:unknown:unknown"
+      when: imds_image.status != 200
+
+    # ================================================================
+    #  Copy rhui-check.py to targets (once, before all scenarios)
+    # ================================================================
+
+    - name: "Prep: Copy rhui-check.py to target"
+      ansible.builtin.copy:
+        src: rhui-check.py
+        dest: /tmp/rhui-check.py
+        mode: "0755"
+
+    # ================================================================
+    #  Scenario 1 — Block outbound traffic to RHUI IPs (iptables)
+    # ================================================================
+
+    - name: "Break 1: Block RHUI4 + RHUI3 IPs via iptables"
+      ansible.builtin.shell: |
+        for ip in {{ rhui4_ips | join(' ') }} {{ rhui3_ips | join(' ') }}; do
+          iptables -A OUTPUT -d "$ip" -j DROP
+          echo "[BREAK-1] Blocked outbound traffic to $ip"
+        done
+        if command -v iptables-save &>/dev/null; then
+          iptables-save > {{ backup_dir }}/iptables.rules.blocked
+        fi
+        echo "[BREAK-1] Scenario 1 broken: RHUI IPs blocked via iptables"
+      register: break_1
+      changed_when: true
+      failed_when: false
+
+    - name: "Check 1: Run rhui-check.py — iptables blocking RHUI IPs"
+      ansible.builtin.shell: |
+        {{ ansible_python.executable }} /tmp/rhui-check.py 2>&1
+      register: rhui_check_1
+      changed_when: false
+      failed_when: false
+
+    - name: "Fix 1: Remove iptables blocks on RHUI IPs"
+      ansible.builtin.shell: |
+        for ip in {{ rhui4_ips | join(' ') }} {{ rhui3_ips | join(' ') }}; do
+          iptables -D OUTPUT -d "$ip" -j DROP 2>/dev/null || true
+          echo "[FIX-1] Removed block for $ip"
+        done
+        echo "[FIX-1] Scenario 1 fixed: RHUI IPs unblocked"
+      register: fix_1
+      changed_when: true
+      failed_when: false
+
+    # ================================================================
+    #  Scenario 2 — Add incorrect routes (force tunnel)
+    # ================================================================
+
+    - name: "Break 2: Add incorrect routes to RHUI4 IPs"
+      ansible.builtin.shell: |
+        for ip in {{ rhui4_ips | join(' ') }}; do
+          ip route add "$ip" via 127.0.0.1 2>/dev/null || true
+          echo "[BREAK-2] Added incorrect route for $ip"
+        done
+        echo "[BREAK-2] Scenario 2 broken: Incorrect routes added"
+      register: break_2
+      changed_when: true
+      failed_when: false
+
+    - name: "Check 2: Run rhui-check.py — incorrect routes"
+      ansible.builtin.shell: |
+        {{ ansible_python.executable }} /tmp/rhui-check.py 2>&1
+      register: rhui_check_2
+      changed_when: false
+      failed_when: false
+
+    - name: "Fix 2: Remove incorrect routes to RHUI4 IPs"
+      ansible.builtin.shell: |
+        for ip in {{ rhui4_ips | join(' ') }}; do
+          ip route del "$ip" via 127.0.0.1 2>/dev/null || true
+          echo "[FIX-2] Removed incorrect route for $ip"
+        done
+        echo "[FIX-2] Scenario 2 fixed: Incorrect routes removed"
+      register: fix_2
+      changed_when: true
+      failed_when: false
+
+    # ================================================================
+    #  Scenario 3 — Block RHUI via /etc/hosts
+    # ================================================================
+
+    - name: "Break 3: Redirect RHUI hostnames to localhost in /etc/hosts"
+      ansible.builtin.shell: |
+        cp -a /etc/hosts {{ backup_dir }}/hosts.backup.$(date +%s)
+        cat >> /etc/hosts <<'HOSTSEOF'
+
+        # RHUI Break - Scenario 3
+        127.0.0.1 rhui-1.microsoft.com
+        127.0.0.1 rhui-2.microsoft.com
+        127.0.0.1 rhui-3.microsoft.com
+        127.0.0.1 rhui4-1.microsoft.com
+        127.0.0.1 rhui4-2.microsoft.com
+        127.0.0.1 rhui4-3.microsoft.com
+        HOSTSEOF
+        echo "[BREAK-3] Scenario 3 broken: RHUI hostnames redirected to localhost"
+      register: break_3
+      changed_when: true
+      failed_when: false
+
+    - name: "Check 3: Run rhui-check.py — /etc/hosts hijack"
+      ansible.builtin.shell: |
+        {{ ansible_python.executable }} /tmp/rhui-check.py 2>&1
+      register: rhui_check_3
+      changed_when: false
+      failed_when: false
+
+    - name: "Fix 3: Remove RHUI hostname blocks from /etc/hosts"
+      ansible.builtin.shell: |
+        sed -i '/# RHUI Break - Scenario 3/,+6d' /etc/hosts
+        echo "[FIX-3] Scenario 3 fixed: RHUI hostname blocks removed"
+      register: fix_3
+      changed_when: true
+      failed_when: false
+
+    # ================================================================
+    #  Scenario 4 — Corrupt CA certificates
+    # ================================================================
+
+    - name: "Break 4: Corrupt CA certificate bundle"
+      ansible.builtin.shell: |
+        ca_file="/etc/pki/ca-trust/source/ca-bundle.trust.crt"
+        if [[ ! -f "$ca_file" ]]; then
+          ca_file="/usr/share/pki/ca-trust-source/ca-bundle.trust.p11-kit"
+        fi
+        if [[ -f "$ca_file" ]]; then
+          cp -a "$ca_file" {{ backup_dir }}/$(basename "$ca_file").backup.$(date +%s)
+          cp -a "$ca_file" "/tmp/$(basename "$ca_file").scenario4.orig"
+          echo "INVALID CERTIFICATE DATA" >> "$ca_file"
+          update-ca-trust 2>/dev/null || true
+          echo "[BREAK-4] Scenario 4 broken: CA certificates corrupted ($ca_file)"
+        else
+          echo "[BREAK-4] ERROR: Could not find CA certificate source file"
+          exit 1
+        fi
+      register: break_4
+      changed_when: true
+      failed_when: false
+
+    - name: "Check 4: Run rhui-check.py — corrupt CA certificates"
+      ansible.builtin.shell: |
+        {{ ansible_python.executable }} /tmp/rhui-check.py 2>&1
+      register: rhui_check_4
+      changed_when: false
+      failed_when: false
+
+    - name: "Fix 4: Restore CA certificate bundle"
+      ansible.builtin.shell: |
+        ca_file="/etc/pki/ca-trust/source/ca-bundle.trust.crt"
+        backup="/tmp/$(basename "$ca_file").scenario4.orig"
+        if [[ ! -f "$ca_file" ]]; then
+          ca_file="/usr/share/pki/ca-trust-source/ca-bundle.trust.p11-kit"
+          backup="/tmp/$(basename "$ca_file").scenario4.orig"
+        fi
+        if [[ -f "$backup" ]]; then
+          cp -a "$backup" "$ca_file"
+          rm -f "$backup"
+          echo "[FIX-4] Restored CA file from $backup"
+        else
+          echo "[FIX-4] Backup not found, reinstalling ca-certificates"
+          yum reinstall -y ca-certificates 2>/dev/null || dnf reinstall -y ca-certificates 2>/dev/null
+        fi
+        update-ca-trust
+        echo "[FIX-4] Scenario 4 fixed: CA certificates restored"
+      register: fix_4
+      changed_when: true
+      failed_when: false
+
+    # ================================================================
+    #  Scenario 5 — Incorrect proxy configuration
+    # ================================================================
+
+    - name: "Break 5: Add invalid proxy to yum/dnf config"
+      ansible.builtin.shell: |
+        proxy_block=$(cat <<'PROXYEOF'
+
+        # RHUI Break - Scenario 5
+        proxy=http://invalid-proxy.local:3128
+        proxy_username=invalid-user
+        proxy_password=invalid-password
+        PROXYEOF
+        )
+        if [[ -f /etc/dnf/dnf.conf ]]; then
+          cp -a /etc/dnf/dnf.conf {{ backup_dir }}/dnf.conf.backup.$(date +%s)
+          echo "$proxy_block" >> /etc/dnf/dnf.conf
+          echo "[BREAK-5] Added invalid proxy to /etc/dnf/dnf.conf"
+        fi
+        if [[ -f /etc/yum.conf && ! /etc/yum.conf -ef /etc/dnf/dnf.conf ]]; then
+          cp -a /etc/yum.conf {{ backup_dir }}/yum.conf.backup.$(date +%s)
+          echo "$proxy_block" >> /etc/yum.conf
+          echo "[BREAK-5] Added invalid proxy to /etc/yum.conf"
+        fi
+        echo "[BREAK-5] Scenario 5 broken: Invalid proxy configuration added"
+      register: break_5
+      changed_when: true
+      failed_when: false
+
+    - name: "Check 5: Run rhui-check.py — invalid proxy configuration"
+      ansible.builtin.shell: |
+        {{ ansible_python.executable }} /tmp/rhui-check.py 2>&1
+      register: rhui_check_5
+      changed_when: false
+      failed_when: false
+
+    - name: "Fix 5: Remove invalid proxy from yum/dnf config"
+      ansible.builtin.shell: |
+        if [[ -f /etc/dnf/dnf.conf ]]; then
+          sed -i --follow-symlinks '/# RHUI Break - Scenario 5/,+3d' /etc/dnf/dnf.conf
+          echo "[FIX-5] Removed proxy from /etc/dnf/dnf.conf"
+        fi
+        if [[ -f /etc/yum.conf ]]; then
+          sed -i --follow-symlinks '/# RHUI Break - Scenario 5/,+3d' /etc/yum.conf
+          echo "[FIX-5] Removed proxy from /etc/yum.conf"
+        fi
+        echo "[FIX-5] Scenario 5 fixed: Proxy configuration removed"
+      register: fix_5
+      changed_when: true
+      failed_when: false
+
+    # ================================================================
+    #  Scenario 6 — Corrupt RHUI repo file
+    # ================================================================
+
+    - name: "Break 6: Corrupt RHUI package repo file"
+      ansible.builtin.shell: |
+        rhui_pkg=$(rpm -qa 'rhui-*' | head -1)
+        if [[ -z "$rhui_pkg" ]]; then
+          echo "[BREAK-6] ERROR: No RHUI package found"
+          exit 1
+        fi
+        repo_file=$(rpm -ql "$rhui_pkg" | grep '\.repo$' | head -1)
+        if [[ -n "$repo_file" ]]; then
+          cp -a "$repo_file" {{ backup_dir }}/$(basename "$repo_file").backup.$(date +%s)
+          cp -a "$repo_file" "/tmp/$(basename "$repo_file").scenario6.orig"
+          echo "CORRUPTED DATA" > "$repo_file"
+          echo "[BREAK-6] Scenario 6 broken: Corrupted $repo_file"
+        else
+          echo "[BREAK-6] ERROR: No repo file found in $rhui_pkg"
+          exit 1
+        fi
+      register: break_6
+      changed_when: true
+      failed_when: false
+
+    - name: "Check 6: Run rhui-check.py — corrupt RHUI repo file"
+      ansible.builtin.shell: |
+        {{ ansible_python.executable }} /tmp/rhui-check.py 2>&1
+      register: rhui_check_6
+      changed_when: false
+      failed_when: false
+
+    - name: "Fix 6: Restore RHUI package repo file"
+      ansible.builtin.shell: |
+        rhui_pkg=$(rpm -qa 'rhui-*' | head -1)
+        if [[ -z "$rhui_pkg" ]]; then
+          echo "[FIX-6] ERROR: No RHUI package found"; exit 1
+        fi
+        repo_file=$(rpm -ql "$rhui_pkg" | grep '\.repo$' | head -1)
+        backup="/tmp/$(basename "$repo_file").scenario6.orig"
+        if [[ -f "$backup" ]]; then
+          cp -a "$backup" "$repo_file"
+          rm -f "$backup"
+          echo "[FIX-6] Restored repo file from $backup"
+        else
+          echo "[FIX-6] Backup not found, reinstalling $rhui_pkg"
+          if command -v dnf &>/dev/null; then
+            dnf reinstall -y "$rhui_pkg"
+          else
+            yum reinstall -y "$rhui_pkg"
+          fi
+        fi
+        echo "[FIX-6] Scenario 6 fixed: RHUI package files restored"
+      register: fix_6
+      changed_when: true
+      failed_when: false
+
+    # ================================================================
+    #  Scenario 7 — Simulate certificate expiration
+    # ================================================================
+
+    - name: "Break 7: Replace RHUI client certificate with expired cert"
+      ansible.builtin.shell: |
+        rhui_pkg=$(rpm -qa 'rhui-*' | head -1)
+        if [[ -z "$rhui_pkg" ]]; then
+          echo "[BREAK-7] ERROR: No RHUI package found"
+          exit 1
+        fi
+        cert_file=$(rpm -ql "$rhui_pkg" | grep '\.crt$' | head -1)
+        key_file=$(rpm -ql "$rhui_pkg" | grep '\.pem$' | head -1)
+        if [[ -z "$cert_file" ]]; then
+          echo "[BREAK-7] ERROR: No certificate file found"
+          exit 1
+        fi
+        cp -a "$cert_file" {{ backup_dir }}/$(basename "$cert_file").backup.$(date +%s)
+        cp -a "$cert_file" "/tmp/$(basename "$cert_file").scenario7.orig"
+        if [[ -n "$key_file" && -f "$key_file" ]]; then
+          cp -a "$key_file" "/tmp/$(basename "$key_file").scenario7.orig"
+        fi
+        openssl req -x509 -newkey rsa:2048 -keyout /tmp/expired.key -out "$cert_file" \
+          -days -1 -nodes -subj "/CN=expired.microsoft.com" 2>/dev/null || {
+          echo "EXPIRED CERTIFICATE" > "$cert_file"
+        }
+        echo "[BREAK-7] Scenario 7 broken: Certificate corrupted/expired ($cert_file)"
+      register: break_7
+      changed_when: true
+      failed_when: false
+
+    - name: "Check 7: Run rhui-check.py — expired client certificate"
+      ansible.builtin.shell: |
+        {{ ansible_python.executable }} /tmp/rhui-check.py 2>&1
+      register: rhui_check_7
+      changed_when: false
+      failed_when: false
+
+    - name: "Fix 7: Restore RHUI client certificate"
+      ansible.builtin.shell: |
+        rhui_pkg=$(rpm -qa 'rhui-*' | head -1)
+        if [[ -z "$rhui_pkg" ]]; then
+          echo "[FIX-7] ERROR: No RHUI package found"; exit 1
+        fi
+        cert_file=$(rpm -ql "$rhui_pkg" | grep '\.crt$' | head -1)
+        key_file=$(rpm -ql "$rhui_pkg" | grep '\.pem$' | head -1)
+        cert_backup="/tmp/$(basename "$cert_file").scenario7.orig"
+        restored=0
+        if [[ -f "$cert_backup" ]]; then
+          cp -a "$cert_backup" "$cert_file"
+          rm -f "$cert_backup"
+          echo "[FIX-7] Restored certificate from $cert_backup"
+          restored=1
+        fi
+        if [[ -n "$key_file" ]]; then
+          key_backup="/tmp/$(basename "$key_file").scenario7.orig"
+          if [[ -f "$key_backup" ]]; then
+            cp -a "$key_backup" "$key_file"
+            rm -f "$key_backup"
+            echo "[FIX-7] Restored key from $key_backup"
+            restored=1
+          fi
+        fi
+        if [[ $restored -eq 0 ]]; then
+          echo "[FIX-7] Backup not found, reinstalling $rhui_pkg"
+          rpm -e --nodeps "$rhui_pkg" 2>/dev/null || true
+          if command -v dnf &>/dev/null; then
+            yum install -y "$rhui_pkg" 2>/dev/null || dnf install -y "$rhui_pkg"
+          else
+            yum install -y "$rhui_pkg"
+          fi
+        fi
+        rm -f /tmp/expired.key
+        echo "[FIX-7] Scenario 7 fixed: Certificate restored"
+      register: fix_7
+      changed_when: true
+      failed_when: false
+
+    # ================================================================
+    #  Scenario 8 — Corrupt repository configuration
+    # ================================================================
+
+    - name: "Break 8: Corrupt RHUI repo baseurl and disable repos"
+      ansible.builtin.shell: |
+        rhui_pkg=$(rpm -qa 'rhui-*' | head -1)
+        if [[ -z "$rhui_pkg" ]]; then
+          echo "[BREAK-8] ERROR: No RHUI package found"
+          exit 1
+        fi
+        repo_file=$(rpm -ql "$rhui_pkg" | grep '\.repo$' | head -1)
+        if [[ -z "$repo_file" ]]; then
+          echo "[BREAK-8] ERROR: No repo file found"
+          exit 1
+        fi
+        cp -a "$repo_file" {{ backup_dir }}/$(basename "$repo_file").backup.$(date +%s)
+        cp -a "$repo_file" "/tmp/$(basename "$repo_file").scenario8.orig"
+        sed -i 's|baseurl=|baseurl=http://invalid.repo.microsoft.com/|' "$repo_file"
+        sed -i 's|enabled=1|enabled=0|g' "$repo_file"
+        echo "[BREAK-8] Scenario 8 broken: Repository configuration corrupted ($repo_file)"
+      register: break_8
+      changed_when: true
+      failed_when: false
+
+    - name: "Check 8: Run rhui-check.py — corrupt baseurl and disabled repos"
+      ansible.builtin.shell: |
+        {{ ansible_python.executable }} /tmp/rhui-check.py 2>&1
+      register: rhui_check_8
+      changed_when: false
+      failed_when: false
+
+    - name: "Fix 8: Restore RHUI repository configuration"
+      ansible.builtin.shell: |
+        rhui_pkg=$(rpm -qa 'rhui-*' | head -1)
+        if [[ -z "$rhui_pkg" ]]; then
+          echo "[FIX-8] ERROR: No RHUI package found"; exit 1
+        fi
+        repo_file=$(rpm -ql "$rhui_pkg" | grep '\.repo$' | head -1)
+        backup="/tmp/$(basename "$repo_file").scenario8.orig"
+        if [[ -f "$backup" ]]; then
+          cp -a "$backup" "$repo_file"
+          rm -f "$backup"
+          echo "[FIX-8] Restored repo file from $backup"
+        else
+          echo "[FIX-8] Backup not found, reinstalling $rhui_pkg"
+          if command -v dnf &>/dev/null; then
+            dnf reinstall -y "$rhui_pkg"
+          else
+            yum reinstall -y "$rhui_pkg"
+          fi
+        fi
+        echo "[FIX-8] Scenario 8 fixed: Repository configuration restored"
+      register: fix_8
+      changed_when: true
+      failed_when: false
+
+    # ================================================================
+    #  Scenario 9 — DNS resolution issues
+    # ================================================================
+
+    - name: "Break 9: Replace resolv.conf with invalid DNS"
+      ansible.builtin.shell: |
+        cp -a /etc/resolv.conf {{ backup_dir }}/resolv.conf.backup.$(date +%s)
+        cat > /etc/resolv.conf <<'DNSEOF'
+        # RHUI Break - Scenario 9
+        nameserver 127.0.0.1
+        nameserver 192.0.2.1
+        DNSEOF
+        chattr +i /etc/resolv.conf 2>/dev/null || true
+        echo "[BREAK-9] Scenario 9 broken: DNS resolution broken"
+      register: break_9
+      changed_when: true
+      failed_when: false
+
+    - name: "Check 9: Run rhui-check.py — broken DNS resolution"
+      ansible.builtin.shell: |
+        {{ ansible_python.executable }} /tmp/rhui-check.py 2>&1
+      register: rhui_check_9
+      changed_when: false
+      failed_when: false
+
+    - name: "Fix 9: Restore DNS resolution"
+      ansible.builtin.shell: |
+        chattr -i /etc/resolv.conf 2>/dev/null || true
+        latest_backup=$(ls -t {{ backup_dir }}/resolv.conf.backup.* 2>/dev/null | head -1)
+        if [[ -n "$latest_backup" ]]; then
+          cp "$latest_backup" /etc/resolv.conf
+          echo "[FIX-9] Restored from backup: $latest_backup"
+        else
+          cat > /etc/resolv.conf <<'DNSEOF'
+        nameserver 168.63.129.16
+        options timeout:2 attempts:5
+        DNSEOF
+          echo "[FIX-9] Restored default Azure DNS configuration"
+        fi
+        echo "[FIX-9] Scenario 9 fixed: DNS resolution restored"
+      register: fix_9
+      changed_when: true
+      failed_when: false
+
+    # ================================================================
+    #  Cleanup
+    # ================================================================
+
+    - name: "Cleanup: Remove rhui-check.py from target"
+      ansible.builtin.file:
+        path: /tmp/rhui-check.py
+        state: absent
+
+    # ================================================================
+    #  Build per-host result
+    # ================================================================
+
+    - name: "Result: Assemble per-host data"
+      ansible.builtin.set_fact:
+        rhui_result:
+          hostname: "{{ inventory_hostname }}"
+          fqdn: "{{ ansible_fqdn | default(inventory_hostname) }}"
+          ip: "{{ ansible_default_ipv4.address | default('unknown') }}"
+          urn: "{{ vm_urn }}"
+          distro: "{{ ansible_distribution | default('unknown') }}"
+          distro_version: "{{ ansible_distribution_version | default('unknown') }}"
+          kernel: "{{ ansible_kernel | default('unknown') }}"
+          scenarios:
+            scenario_1:
+              break: { rc: "{{ break_1.rc }}", stdout: "{{ break_1.stdout | default('') }}", stderr: "{{ break_1.stderr | default('') }}" }
+              check: { rc: "{{ rhui_check_1.rc }}", stdout: "{{ rhui_check_1.stdout | default('') }}", stderr: "{{ rhui_check_1.stderr | default('') }}" }
+              fix: { rc: "{{ fix_1.rc }}", stdout: "{{ fix_1.stdout | default('') }}", stderr: "{{ fix_1.stderr | default('') }}" }
+            scenario_2:
+              break: { rc: "{{ break_2.rc }}", stdout: "{{ break_2.stdout | default('') }}", stderr: "{{ break_2.stderr | default('') }}" }
+              check: { rc: "{{ rhui_check_2.rc }}", stdout: "{{ rhui_check_2.stdout | default('') }}", stderr: "{{ rhui_check_2.stderr | default('') }}" }
+              fix: { rc: "{{ fix_2.rc }}", stdout: "{{ fix_2.stdout | default('') }}", stderr: "{{ fix_2.stderr | default('') }}" }
+            scenario_3:
+              break: { rc: "{{ break_3.rc }}", stdout: "{{ break_3.stdout | default('') }}", stderr: "{{ break_3.stderr | default('') }}" }
+              check: { rc: "{{ rhui_check_3.rc }}", stdout: "{{ rhui_check_3.stdout | default('') }}", stderr: "{{ rhui_check_3.stderr | default('') }}" }
+              fix: { rc: "{{ fix_3.rc }}", stdout: "{{ fix_3.stdout | default('') }}", stderr: "{{ fix_3.stderr | default('') }}" }
+            scenario_4:
+              break: { rc: "{{ break_4.rc }}", stdout: "{{ break_4.stdout | default('') }}", stderr: "{{ break_4.stderr | default('') }}" }
+              check: { rc: "{{ rhui_check_4.rc }}", stdout: "{{ rhui_check_4.stdout | default('') }}", stderr: "{{ rhui_check_4.stderr | default('') }}" }
+              fix: { rc: "{{ fix_4.rc }}", stdout: "{{ fix_4.stdout | default('') }}", stderr: "{{ fix_4.stderr | default('') }}" }
+            scenario_5:
+              break: { rc: "{{ break_5.rc }}", stdout: "{{ break_5.stdout | default('') }}", stderr: "{{ break_5.stderr | default('') }}" }
+              check: { rc: "{{ rhui_check_5.rc }}", stdout: "{{ rhui_check_5.stdout | default('') }}", stderr: "{{ rhui_check_5.stderr | default('') }}" }
+              fix: { rc: "{{ fix_5.rc }}", stdout: "{{ fix_5.stdout | default('') }}", stderr: "{{ fix_5.stderr | default('') }}" }
+            scenario_6:
+              break: { rc: "{{ break_6.rc }}", stdout: "{{ break_6.stdout | default('') }}", stderr: "{{ break_6.stderr | default('') }}" }
+              check: { rc: "{{ rhui_check_6.rc }}", stdout: "{{ rhui_check_6.stdout | default('') }}", stderr: "{{ rhui_check_6.stderr | default('') }}" }
+              fix: { rc: "{{ fix_6.rc }}", stdout: "{{ fix_6.stdout | default('') }}", stderr: "{{ fix_6.stderr | default('') }}" }
+            scenario_7:
+              break: { rc: "{{ break_7.rc }}", stdout: "{{ break_7.stdout | default('') }}", stderr: "{{ break_7.stderr | default('') }}" }
+              check: { rc: "{{ rhui_check_7.rc }}", stdout: "{{ rhui_check_7.stdout | default('') }}", stderr: "{{ rhui_check_7.stderr | default('') }}" }
+              fix: { rc: "{{ fix_7.rc }}", stdout: "{{ fix_7.stdout | default('') }}", stderr: "{{ fix_7.stderr | default('') }}" }
+            scenario_8:
+              break: { rc: "{{ break_8.rc }}", stdout: "{{ break_8.stdout | default('') }}", stderr: "{{ break_8.stderr | default('') }}" }
+              check: { rc: "{{ rhui_check_8.rc }}", stdout: "{{ rhui_check_8.stdout | default('') }}", stderr: "{{ rhui_check_8.stderr | default('') }}" }
+              fix: { rc: "{{ fix_8.rc }}", stdout: "{{ fix_8.stdout | default('') }}", stderr: "{{ fix_8.stderr | default('') }}" }
+            scenario_9:
+              break: { rc: "{{ break_9.rc }}", stdout: "{{ break_9.stdout | default('') }}", stderr: "{{ break_9.stderr | default('') }}" }
+              check: { rc: "{{ rhui_check_9.rc }}", stdout: "{{ rhui_check_9.stdout | default('') }}", stderr: "{{ rhui_check_9.stderr | default('') }}" }
+              fix: { rc: "{{ fix_9.rc }}", stdout: "{{ fix_9.stdout | default('') }}", stderr: "{{ fix_9.stderr | default('') }}" }
+
+###############################################################################
+# Play 2: Aggregate results into JSON + HTML on localhost
+###############################################################################
+
+- name: "Generate RHUI check report"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+
+    - name: "Collect hosts with results"
+      ansible.builtin.set_fact:
+        _collected: "{{ _collected | default([]) + [item] }}"
+      loop: "{{ groups['all'] }}"
+      when: hostvars[item].rhui_result is defined
+      no_log: true
+
+    - name: "Build combined report"
+      ansible.builtin.set_fact:
+        combined_report:
+          _meta:
+            description: "RHUI Break/Check/Fix Report — {{ _collected | default([]) | length }} hosts"
+            total_hosts: "{{ _collected | default([]) | length }}"
+            generated_at: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+          hosts: "{{ dict(_collected | default([]) | zip(_collected | default([]) | map('extract', hostvars, 'rhui_result'))) }}"
+
+    - name: "Write /var/www/html/results.json"
+      ansible.builtin.copy:
+        dest: /var/www/html/results.json
+        content: "{{ combined_report | to_nice_json }}"
+        mode: "0644"
+
+    - name: "Generate HTML report"
+      ansible.builtin.copy:
+        dest: /var/www/html/index.html
+        mode: "0644"
+        content: |
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>RHUI Break/Check/Fix Report</title>
+          <style>
+          :root{--b:#edebe9;--t:#201f1e;--m:#605e5c;--p:#0078d4;--hb:#0078d4;--mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;--sans:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+          *{box-sizing:border-box}
+          body{margin:0;font:14px var(--sans);color:var(--t);background:#fff;-webkit-font-smoothing:antialiased;overflow:hidden;height:100vh}
+          .hd{background:var(--hb);color:#fff;padding:10px 16px;display:flex;align-items:center;gap:12px}
+          .hd h1{margin:0;font-size:16px;font-weight:800}
+          .hd .sp{flex:1}
+          .gb{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.45);border-radius:8px;padding:3px 6px;font-size:10px;font-weight:700;cursor:pointer;text-decoration:none}
+          .gb:hover{background:rgba(255,255,255,.22)}
+          .gb svg{width:14px;height:14px;fill:currentColor}
+          .app{display:flex;height:calc(100vh - 42px)}
+          .sb{width:300px;min-width:240px;border-right:1px solid var(--b);overflow-y:auto;background:#fafafa;flex-shrink:0}
+          .vi{padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--b);font-size:12px;display:flex;flex-direction:column;gap:2px}
+          .vi:hover{background:#e8f0f8}
+          .vi.on{background:var(--p);color:#fff}
+          .vi.on .vm{color:rgba(255,255,255,.75)}
+          .vn{font-weight:700;font-size:12px}
+          .vm{color:var(--m);font-size:11px}
+          .vp{display:flex;gap:3px;flex-wrap:wrap;margin-top:2px}
+          .mn{flex:1;overflow-y:auto;padding:16px}
+          .pn{display:none}
+          .pn.on{display:block}
+          .pt{font-size:16px;font-weight:800;margin:0 0 4px}
+          .ps{font-size:13px;color:var(--m);margin:0 0 12px}
+          pre.d{background:#f8f8f8;border:1px solid var(--b);border-radius:6px;padding:8px;font:11px/1.35 var(--mono);overflow-x:auto;max-height:none;white-space:pre-wrap;margin:0}
+          .pl{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:900;white-space:nowrap}
+          .pe{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}
+          .pw{background:#fff7e6;color:#856404;border:1px solid #f3d08b}
+          .po{background:#ecfdf3;color:#155724;border:1px solid #b7e3c4}
+          .pi{background:#e8f0f8;color:#004085;border:1px solid #c9d8e6}
+          .sum{margin:12px 0;padding:12px;background:#faf9f8;border:1px solid var(--b);border-radius:10px;font-size:13px}
+          .sum b{font-size:18px}
+          .stabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px}
+          .stab{display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:28px;padding:0 8px;border:1px solid var(--b);border-radius:999px;font-size:12px;font-weight:900;cursor:pointer;background:#fff;color:var(--t);user-select:none;transition:background .1s,border-color .1s}
+          .stab:hover{background:#eef2ff;border-color:var(--p)}
+          .stab.on{background:var(--p);color:#fff;border-color:var(--p)}
+          .stab.det{border-color:#b7e3c4;background:#ecfdf3;color:#155724}
+          .stab.det.on{background:#155724;color:#fff;border-color:#155724}
+          .stab.mis{border-color:#f5c6cb;background:#f8d7da;color:#721c24}
+          .stab.mis.on{background:#721c24;color:#fff;border-color:#721c24}
+          .spanel{display:none}
+          .spanel.on{display:block}
+          .stitle{font-size:14px;font-weight:800;margin:0 0 4px}
+          .sstatus{margin:0 0 10px;font-size:12px}
+          .phase{margin-top:10px}
+          .phase-hd{display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;font-size:12px;font-weight:700;color:var(--m);user-select:none;border-bottom:1px solid var(--b)}
+          .phase-hd:hover{color:var(--t)}
+          .phase-hd .arr{display:inline-block;width:12px;font-size:10px;transition:transform .15s}
+          .phase-hd.open .arr{transform:rotate(90deg)}
+          .phase-bd{display:none;padding:8px 0}
+          .phase-bd.open{display:block}
+          .rc-ok{color:#155724}.rc-fail{color:#721c24}
+          .rc-lbl{font-weight:900;font-size:11px;margin-left:auto}
+          </style>
+          </head>
+          <body>
+          <div class="hd">
+            <h1>RHUI Break / Check / Fix Report</h1>
+            <span class="sp"></span>
+            <a class="gb" href="results.json" download><svg viewBox="0 0 16 16"><path d="M8 12l-4-4h2.5V3h3v5H12L8 12zm-5 1h10v1H3v-1z"/></svg> JSON</a>
+          </div>
+
+          {% set all_rows = [] %}
+          {% set total = combined_report.hosts | length %}
+
+          {% set scenario_names = {
+            'scenario_1': '1. Block RHUI IPs (iptables)',
+            'scenario_2': '2. Incorrect routes (force tunnel)',
+            'scenario_3': '3. /etc/hosts hijack',
+            'scenario_4': '4. Corrupt CA certificates',
+            'scenario_5': '5. Invalid proxy config',
+            'scenario_6': '6. Corrupt RHUI repo file',
+            'scenario_7': '7. Expired client certificate',
+            'scenario_8': '8. Corrupt repo baseurl',
+            'scenario_9': '9. Break DNS resolution'
+          } %}
+
+          <div class="app">
+          <div class="sb" id="sb">
+          <div class="sum">
+            <b>{{ total }}</b> hosts tested &times; 9 scenarios
+          </div>
+          {% for sku, h in combined_report.hosts.items() | sort %}
+            {% set ns = namespace(det=0) %}
+            {% for skey in scenario_names %}
+              {% if h.scenarios[skey].check.rc | string != '0' %}{% set ns.det = ns.det + 1 %}{% endif %}
+            {% endfor %}
+            {% set _ = all_rows.append({'sku': sku, 'h': h, 'idx': loop.index0, 'detected': ns.det}) %}
+            <div class="vi{% if loop.first %} on{% endif %}" onclick="showVM({{ loop.index0 }})" id="n{{ loop.index0 }}">
+              <span class="vn">{{ h.hostname | default(sku) }}</span>
+              <span class="vm">{{ h.urn | default('') }}</span>
+              <span class="vm">{{ h.distro | default('') }} {{ h.distro_version | default('') }} &mdash; {{ h.kernel | default('') }}</span>
+              <span class="vp">
+                {% if ns.det == 9 %}<span class="pl po">{{ ns.det }}/9 detected</span>{% elif ns.det > 0 %}<span class="pl pw">{{ ns.det }}/9 detected</span>{% else %}<span class="pl pe">0/9 detected</span>{% endif %}
+              </span>
+            </div>
+          {% endfor %}
+          </div>
+
+          <div class="mn" id="mn">
+          {% for r in all_rows %}
+          {% set h = r.h %}
+          <div class="pn{% if loop.first %} on{% endif %}" id="v{{ r.idx }}">
+            <div class="pt">{{ h.hostname | default(r.sku) }}</div>
+            <div class="ps">{{ h.urn | default('') }}</div>
+            <div class="ps">{{ h.distro | default('') }} {{ h.distro_version | default('') }} &mdash; Kernel {{ h.kernel | default('') }} &mdash; {{ h.ip | default('') }}</div>
+            <div class="ps">Detection: <b>{{ r.detected }}/9</b> scenarios detected by rhui-check.py</div>
+
+            <div class="stabs" role="tablist">
+            <span style="font-size:12px;font-weight:700;color:var(--m);align-self:center;margin-right:4px">Scenarios:</span>
+            {% for skey, sname in scenario_names.items() %}
+              {% set sc = h.scenarios[skey] | default({}) %}
+              {% set det = sc.check.rc | default('0') | string != '0' %}
+              <button class="stab {% if det %}det{% else %}mis{% endif %}{% if loop.first %} on{% endif %}" role="tab" aria-selected="{% if loop.first %}true{% else %}false{% endif %}" title="{{ sname }}" onclick="showScen({{ r.idx }},{{ loop.index0 }})">{{ loop.index }}</button>
+            {% endfor %}
+            </div>
+
+            {% for skey, sname in scenario_names.items() %}
+              {% set sc = h.scenarios[skey] | default({}) %}
+              {% set det = sc.check.rc | default('0') | string != '0' %}
+              <div class="spanel{% if loop.first %} on{% endif %}" id="sp{{ r.idx }}_{{ loop.index0 }}">
+                <div class="stitle">{{ sname }}</div>
+                <div class="sstatus">{% if det %}<span class="pl po">rc={{ sc.check.rc }} &mdash; detected</span>{% else %}<span class="pl pe">rc={{ sc.check.rc | default('0') }} &mdash; missed</span>{% endif %}</div>
+
+                <pre class="d">{{ sc.check.stdout | default('') }}</pre>
+                {% if sc.check.stderr | default('') | length > 0 %}<pre class="d" style="border-color:#f5c6cb;margin-top:6px">{{ sc.check.stderr }}</pre>{% endif %}
+
+                <div class="phase">
+                  <div class="phase-hd" onclick="togglePhase(this)"><span class="arr">&#9654;</span> Break output <span class="rc-lbl {% if sc.break.rc | default('1') | int == 0 %}rc-ok{% else %}rc-fail{% endif %}">rc={{ sc.break.rc | default('?') }}</span></div>
+                  <div class="phase-bd"><pre class="d">{{ sc.break.stdout | default('') }}</pre></div>
+                </div>
+
+                <div class="phase">
+                  <div class="phase-hd" onclick="togglePhase(this)"><span class="arr">&#9654;</span> Fix output <span class="rc-lbl {% if sc.fix.rc | default('1') | int == 0 %}rc-ok{% else %}rc-fail{% endif %}">rc={{ sc.fix.rc | default('?') }}</span></div>
+                  <div class="phase-bd"><pre class="d">{{ sc.fix.stdout | default('') }}</pre></div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+          {% endfor %}
+          </div>
+          </div>
+
+          <script>
+          function showVM(i){document.querySelectorAll('.vi').forEach(function(e){e.classList.remove('on')});document.querySelectorAll('.pn').forEach(function(e){e.classList.remove('on')});document.getElementById('n'+i).classList.add('on');document.getElementById('v'+i).classList.add('on');document.getElementById('mn').scrollTop=0}
+          function showScen(vm,s){var p=document.getElementById('v'+vm);p.querySelectorAll('.stab').forEach(function(e,j){if(j===s){e.classList.add('on');e.setAttribute('aria-selected','true')}else{e.classList.remove('on');e.setAttribute('aria-selected','false')}});p.querySelectorAll('.spanel').forEach(function(e,j){if(j===s){e.classList.add('on')}else{e.classList.remove('on')}})}
+          function togglePhase(el){el.classList.toggle('open');el.nextElementSibling.classList.toggle('open')}
+          <\/script>
+          </body>
+          </html>
+
+    - name: "Report summary"
+      ansible.builtin.debug:
+        msg: >-
+          RHUI report: {{ _collected | default([]) | length }} hosts tested,
+          9 scenarios each. Results at /var/www/html/index.html
+`;
+
+const RHUI_CHECK_PY_URL = "https://raw.githubusercontent.com/Azure/azure-support-scripts/refs/heads/master/Linux_scripts/rhui-check/rhui-check.py";
+
+function setRhuiCheckPyWarning(message) {
+  $('rhuiCheckPyWarning').textContent = message || '';
+}
+
+async function ensureRhuiCheckPyLoaded() {
+  const current = String($('rhuiCheckPy').value || '').trim();
+  if (current) return;
+
+  try {
+    const resp = await fetch(RHUI_CHECK_PY_URL, { cache: "no-store" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const scriptText = await resp.text();
+    if (!scriptText.trim()) throw new Error("Downloaded rhui-check.py is empty");
+    $('rhuiCheckPy').value = scriptText.replace(/\r\n/g, '\n');
+    setRhuiCheckPyWarning('Warning: rhui-check.py was auto-downloaded from GitHub because the editor was empty.');
+    saveState();
+  } catch (err) {
+    console.error("Failed to load rhui-check.py from upstream:", err);
+  }
+}
+
+const STORAGE_KEY = 'rhuiCheckUiState';
+
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      sshKey: $('sshKey').value || '',
+      testYaml: $('testYaml').value || '',
+      rhuiCheckPy: $('rhuiCheckPy').value || '',
+      filterArch: $('filterArch').value || '',
+      filterGen: $('filterGen').value || '',
+      regionalVcpuLimit: $('regionalVcpuLimit').value || '',
+      forcedVmSize: $('forcedVmSize').value || '',
+      forcedImageKey: getSelectedForcedImageKeys()
+    }));
+  } catch(e) {}
+}
+
+function loadState() {
+  try {
+    setRhuiCheckPyWarning('');
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      $('testYaml').value = DEFAULT_TEST_YAML;
+      $('rhuiCheckPy').value = '';
+      return;
+    }
+    const s = JSON.parse(raw);
+    if (s.sshKey) $('sshKey').value = s.sshKey;
+    $('testYaml').value = s.testYaml || DEFAULT_TEST_YAML;
+    $('rhuiCheckPy').value = s.rhuiCheckPy || '';
+    if (s.filterArch) $('filterArch').value = s.filterArch;
+    if (s.filterGen) $('filterGen').value = s.filterGen;
+    if (s.regionalVcpuLimit) $('regionalVcpuLimit').value = s.regionalVcpuLimit;
+    if (s.forcedVmSize) $('forcedVmSize').value = s.forcedVmSize;
+    if (Array.isArray(s.forcedImageKey)) _forcedImageKeys = new Set(s.forcedImageKey);
+    refreshForcedImageButton();
+  } catch(e) {
+    $('testYaml').value = DEFAULT_TEST_YAML;
+    $('rhuiCheckPy').value = '';
+  }
+}
+
+function renderVmTable() {
+  const regional = buildRegionalPlans();
+  const regionByVm = {};
+  regional.regionPlans.forEach(rp => rp.vmList.forEach(vm => { regionByVm[vm.name] = rp.region; }));
+  const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const td = (v) => { const t = String(v ?? '-'); return `<td><span class="truncate-cell" title="${esc(t)}">${esc(t)}</span></td>`; };
+  const rows = regional.basePlan.vmList.map(vm => {
+    const vmRegion = regionByVm[vm.name] || 'region1';
+    return `<tr>${td(vm.name)}${td(urnLabel(vm.image))}${td(vm.arch)}${td(vm.gen)}${td(vm.size)}${td(vmRegion)}</tr>`;
+  }).join('');
+  $('vmTable').innerHTML = `<table class="summary"><thead><tr><th>VM Name</th><th>Image URN</th><th>Arch</th><th>Gen</th><th>Size</th><th>Region</th></tr></thead><tbody>${rows}</tbody></table>`;
+
+  const sizeCounts = {};
+  regional.basePlan.vmList.forEach(vm => { sizeCounts[vm.size] = (sizeCounts[vm.size] || 0) + 1; });
+  const sizeDesc = Object.entries(sizeCounts).length
+    ? Object.entries(sizeCounts).map(([k,v]) => `${k}: ${v}`).join(', ') : 'none selected';
+  const totalCores = projectedCoreUsage({ vmList: regional.basePlan.vmList });
+  const perRegionDesc = regional.regionPlans.map(rp => `${rp.region}: ${rp.vmList.length} VMs / ${rp.cores} cores`).join(' | ');
+  $('vmCount').textContent = `Image VMs: ${regional.basePlan.vmList.length} — ${sizeDesc} | Total cores: ${totalCores} across ${regional.regionPlans.length} region(s) | ${perRegionDesc}`;
+
+  const quotaLimit = getQuotaLimit();
+  $('quotaStatus').textContent = `Per-region vCPU limit: ${quotaLimit}. ${regional.needsSplit ? `Deployment uses ${regional.regionPlans.length} regions with VNet peering.` : 'Single-region deployment.'}`;
+  $('quotaAlert').textContent = regional.needsSplit
+    ? `Multi-region: deploy as subscription-scope template. ${regional.regionPlans.length} resource groups will be created with hub-spoke VNet peering.` : '';
+  return regional;
+}
+
+function renderRegionTabs(regionPlans) {
+  $('regionTabMeta').textContent = regionPlans.length > 1
+    ? `Subscription-scope template: ${regionPlans.map(rp => `${rp.region} (${rp.vmList.length} VMs)`).join(', ')}. VNet peering enabled.`
+    : `Single-region deployment (within vCPU limit)`;
+}
+
+function renderSplitWarning(regional) {
+  $('splitWarning').textContent = regional.needsSplit
+    ? `Multi-region deployment: ${regional.regionPlans.length} regions with hub-spoke VNet peering. Deploy as subscription-scope template.` : '';
+}
+
+async function update() {
+  const sshKey = String($('sshKey').value || '').trim();
+  const testYaml = String($('testYaml').value || '');
+  const rhuiCheckPy = String($('rhuiCheckPy').value || '');
+  const sshErr = validateSshKey(sshKey);
+  $('sshKeyError').textContent = sshErr;
+
+  const valid = !sshErr;
+  $('copyBtn').disabled = !valid;
+  $('deployPortalBtn').disabled = !valid;
+  $('downloadBtn').disabled = !valid;
+
+  if (!valid) {
+    $('output').value = sshErr ? 'Enter a valid SSH public key to generate the ARM template.' : '';
+    return;
+  }
+
+  const regional = renderVmTable();
+  const arm = await generateTemplate(sshKey, testYaml, rhuiCheckPy, regional.regionPlans);
+  $('output').value = JSON.stringify(arm, null, 2);
+  renderRegionTabs(regional.regionPlans);
+  renderSplitWarning(regional);
+}
+
+$('sshKey').oninput = () => { saveState(); update(); };
+$('testYaml').oninput = () => { saveState(); update(); };
+$('rhuiCheckPy').oninput = () => { setRhuiCheckPyWarning(''); saveState(); update(); };
+
+['filterArch','filterGen'].forEach(id => {
+  $(id).onchange = () => { pruneForcedImageKeys(); refreshForcedVmSizeDropdown(); refreshForcedImageButton(); saveState(); update(); };
+});
+
+$('regionalVcpuLimit').oninput = () => { saveState(); update(); };
+$('forcedVmSize').onchange = () => { refreshForcedImageButton(); saveState(); update(); };
+$('openImagePickerBtn').onclick = () => { openImagePicker(); };
+$('imagePickerDone').onclick = () => { closeImagePicker(); };
+$('imagePickerOverlay').onclick = (e) => { if (e.target === $('imagePickerOverlay')) closeImagePicker(); };
+
+$('helpBtn').onclick = (e) => {
+  e.stopPropagation();
+  const balloon = $('helpBalloon');
+  if (!balloon) return;
+  const nextShow = !balloon.classList.contains('show');
+  balloon.classList.toggle('show', nextShow);
+  balloon.setAttribute('aria-hidden', nextShow ? 'false' : 'true');
+};
+
+document.addEventListener('click', (e) => {
+  const balloon = $('helpBalloon');
+  const wrap = document.querySelector('.help-wrap');
+  if (!balloon || !wrap) return;
+  if (!wrap.contains(e.target)) { balloon.classList.remove('show'); balloon.setAttribute('aria-hidden', 'true'); }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const balloon = $('helpBalloon');
+    if (balloon) { balloon.classList.remove('show'); balloon.setAttribute('aria-hidden', 'true'); }
+    if ($('imagePickerOverlay').classList.contains('show')) { closeImagePicker(); return; }
+    if ($('summaryFlowWindow').classList.contains('show')) { closeSummaryFlow(); return; }
+    if ($('yamlFlowWindow').classList.contains('show')) { closeYamlFlow(); return; }
+    if ($('pyFlowWindow').classList.contains('show')) { closePyFlow(); return; }
+    if ($('jsonFlowWindow').classList.contains('show')) { closeJsonFlow(); return; }
+  }
+  if (e.key === 'Enter' && $('imagePickerOverlay').classList.contains('show')) { e.preventDefault(); closeImagePicker(); }
+});
+
+$('imagePickerSelectAll').onclick = () => {
+  const cbs = $('imagePickerBody').querySelectorAll('input[type="checkbox"]');
+  cbs.forEach(cb => { cb.checked = true; _forcedImageKeys.add(cb.value); }); updateImagePickerCount();
+};
+$('imagePickerClearAll').onclick = () => {
+  const cbs = $('imagePickerBody').querySelectorAll('input[type="checkbox"]');
+  cbs.forEach(cb => { cb.checked = false; }); _forcedImageKeys.clear(); updateImagePickerCount();
+};
+
+// YAML flow window
+function openYamlFlow() { $('yamlFlowOutput').value = $('testYaml').value; $('yamlFlowWindow').classList.add('show'); $('yamlFlowOutput').focus(); }
+function closeYamlFlow() { $('testYaml').value = $('yamlFlowOutput').value; $('yamlFlowWindow').classList.remove('show'); saveState(); update(); }
+$('expandYamlBtn').onclick = () => { openYamlFlow(); };
+$('yamlFlowCloseBtn').onclick = () => { closeYamlFlow(); };
+$('yamlFlowCopyBtn').onclick = async () => { try { await navigator.clipboard.writeText($('yamlFlowOutput').value); } catch(e) { alert('Copy failed.'); } };
+
+// Python flow window
+function openPyFlow() { $('pyFlowOutput').value = $('rhuiCheckPy').value; $('pyFlowWindow').classList.add('show'); $('pyFlowOutput').focus(); }
+function closePyFlow() { $('rhuiCheckPy').value = $('pyFlowOutput').value; $('pyFlowWindow').classList.remove('show'); saveState(); update(); }
+$('expandPyBtn').onclick = () => { openPyFlow(); };
+$('pyFlowCloseBtn').onclick = () => { closePyFlow(); };
+$('pyFlowCopyBtn').onclick = async () => { try { await navigator.clipboard.writeText($('pyFlowOutput').value); } catch(e) { alert('Copy failed.'); } };
+
+// JSON flow window
+function openJsonFlow() { $('jsonFlowOutput').value = $('output').value; $('jsonFlowWindow').classList.add('show'); }
+function closeJsonFlow() { $('jsonFlowWindow').classList.remove('show'); }
+$('expandJsonBtn').onclick = () => { openJsonFlow(); };
+$('jsonFlowCloseBtn').onclick = () => { closeJsonFlow(); };
+$('jsonFlowCopyBtn').onclick = async () => { try { await navigator.clipboard.writeText($('jsonFlowOutput').value); } catch(e) { alert('Copy failed.'); } };
+
+// Summary flow window
+function openSummaryFlow() { $('summaryFlowCount').innerHTML = $('vmCount').textContent; $('summaryFlowTable').innerHTML = $('vmTable').innerHTML; $('summaryFlowWindow').classList.add('show'); }
+function closeSummaryFlow() { $('summaryFlowWindow').classList.remove('show'); }
+$('expandSummaryBtn').onclick = () => { openSummaryFlow(); };
+$('summaryFlowCloseBtn').onclick = () => { closeSummaryFlow(); };
+
+$('clearFiltersBtn').onclick = () => {
+  ['filterArch','filterGen'].forEach(id => { $(id).value = ''; });
+  refreshForcedVmSizeDropdown(); refreshForcedImageButton(); saveState(); update();
+};
+
+$('copyBtn').onclick = async () => {
+  try { await navigator.clipboard.writeText($('output').value); $('copyBtn').textContent = 'Copied!'; setTimeout(() => { $('copyBtn').textContent = 'Copy'; }, 900); }
+  catch(e) { alert('Copy failed.'); }
+};
+
+$('deployPortalBtn').onclick = async () => {
+  try {
+    await navigator.clipboard.writeText($('output').value);
+    const btn = $('deployPortalBtn'); btn.disabled = true; btn.textContent = 'Opening in 5s...';
+    setTimeout(() => { window.open('https://portal.azure.com/#create/Microsoft.Template', '_blank', 'noopener'); btn.textContent = 'Copy + Portal'; btn.disabled = false; }, 5000);
+  } catch(e) { alert('Copy failed.'); }
+};
+
+$('downloadBtn').onclick = () => {
+  const blob = new Blob([$('output').value], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'rhui-check-deploy.json';
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+};
+
+// Populate forced VM size dropdown
+(function populateForcedVmSizeDropdown() {
+  const sel = $('forcedVmSize');
+  if (!sel) return;
+  sizeOptions.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.name;
+    o.textContent = `${s.name} (${(s.tags && s.tags.vcpus) || '?'} vCPUs, ${((s.tags && s.tags.architectures) || [])[0] || '?'})`;
+    sel.appendChild(o);
+  });
+})();
+
+function refreshForcedVmSizeDropdown() {
+  const sel = $('forcedVmSize');
+  if (!sel) return;
+  const prev = sel.value;
+  const relevantImages = _forcedImageKeys.size ? imageOptions.filter(i => _forcedImageKeys.has(i.key)) : getFilteredImages();
+  const compatibleSizeNames = new Set();
+  relevantImages.forEach(img => { compatibleSizesForImage(img).forEach(si => compatibleSizeNames.add(si.name)); });
+  Array.from(sel.options).forEach(o => { if (!o.value) return; o.style.display = compatibleSizeNames.has(o.value) ? '' : 'none'; });
+  if (prev && !compatibleSizeNames.has(prev)) sel.value = '';
+}
+
+$('resetStateBtn').onclick = () => {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  const panel = document.createElement('div');
+  panel.style.cssText = 'background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px;box-shadow:0 16px 40px rgba(0,0,0,0.22);max-width:360px;text-align:center;';
+  panel.innerHTML = '<div style="font-weight:900;font-size:15px;margin-bottom:8px;">Reset all state?</div><div style="color:var(--muted);font-size:13px;margin-bottom:16px;">This clears all saved configuration, filters, and options. The page will reload with defaults.</div>';
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px;justify-content:center;';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.onclick = () => { overlay.remove(); document.removeEventListener('keydown', keyHandler); };
+  const confirmBtn = document.createElement('button');
+  confirmBtn.className = 'danger'; confirmBtn.textContent = 'Reset';
+  confirmBtn.onclick = () => { localStorage.removeItem(STORAGE_KEY); _forcedImageKeys.clear(); location.reload(); };
+  btnRow.appendChild(cancelBtn); btnRow.appendChild(confirmBtn);
+  panel.appendChild(btnRow); overlay.appendChild(panel);
+  overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); document.removeEventListener('keydown', keyHandler); } };
+  const keyHandler = (e) => {
+    if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', keyHandler); }
+    if (e.key === 'Enter') { e.preventDefault(); localStorage.removeItem(STORAGE_KEY); _forcedImageKeys.clear(); location.reload(); }
+  };
+  document.addEventListener('keydown', keyHandler);
+  document.body.appendChild(overlay);
+  confirmBtn.focus();
+};
+
+(async function initializeApp() {
+  loadState();
+  await ensureRhuiCheckPyLoaded();
+  update();
+})();
+</script>
+</body>
+</html>
