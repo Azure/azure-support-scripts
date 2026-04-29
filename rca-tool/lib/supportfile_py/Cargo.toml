@@ -1,0 +1,14 @@
+[package]
+name = "supportfile_py"
+version = "0.1.0"
+edition = "2021"
+description = "PyO3 wrapper for the Supportfile library core"
+license = "MIT"
+
+[lib]
+name = "supportfile"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module", "abi3-py39"] }
+supportfile_core = { package = "supportfile", path = "../supportfile_core" }
