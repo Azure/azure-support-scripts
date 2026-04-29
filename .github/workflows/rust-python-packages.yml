@@ -1,8 +1,15 @@
 name: Rust and Python Package CI
 
-on:
+'on':
+  pull_request:
   push:
-    branches: [ main, master, rca-tool ]
+    branches:
+      - main
+      - master
+      - rca-tool
+    tags:
+      - 'v*'
+      - 'rust-parser-v*'
   workflow_dispatch:
 
 permissions:
@@ -83,15 +90,25 @@ jobs:
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.maturin_target }}-unknown-linux-gnu
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ env.PY_PKG_DIR }} -> target
+
+      - name: Install maturin
+        run: python -m pip install --upgrade pip maturin
 
       - name: Build wheel
-        uses: PyO3/maturin-action@v1
-        with:
-          command: build
-          working-directory: ${{ env.PY_PKG_DIR }}
-          target: ${{ matrix.maturin_target }}
-          manylinux: auto
-          args: --release --out dist
+        working-directory: ${{ env.PY_PKG_DIR }}
+        run: maturin build --release --out dist --target ${{ matrix.maturin_target }}-unknown-linux-gnu --compatibility linux
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4
