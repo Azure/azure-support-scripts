@@ -54,9 +54,13 @@ jobs:
         working-directory: ${{ env.RUST_CORE_DIR }}
         run: cargo build --locked --release --target "${{ matrix.rust_target }}"
 
+      - name: Build rca_cli binary
+        working-directory: ${{ env.RUST_CORE_DIR }}
+        run: cargo build --locked --release --features cli --bin rca_cli --target "${{ matrix.rust_target }}"
+
       - name: Test Rust crate
         working-directory: ${{ env.RUST_CORE_DIR }}
-        run: cargo test --locked --target "${{ matrix.rust_target }}"
+        run: cargo test --locked --features cli --target "${{ matrix.rust_target }}"
 
       - name: Verify crate can be packaged
         working-directory: ${{ env.RUST_CORE_DIR }}
@@ -67,6 +71,14 @@ jobs:
         with:
           name: rust-crate-${{ matrix.arch }}
           path: ${{ env.RUST_CORE_DIR }}/target/package/*.crate
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload rca_cli binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rca_cli-${{ matrix.arch }}
+          path: ${{ env.RUST_CORE_DIR }}/target/${{ matrix.rust_target }}/release/rca_cli
           if-no-files-found: error
           retention-days: 14
 
