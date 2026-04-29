@@ -1,3 +1,37 @@
+<# 
+Disclaimer:
+    The sample scripts are not supported under any Microsoft standard support program or service.
+    The sample scripts are provided AS IS without warranty of any kind.
+    Microsoft further disclaims all implied warranties including, without limitation, any implied warranties of merchantability
+    or of fitness for a particular purpose.
+    The entire risk arising out of the use or performance of the sample scripts and documentation remains with you.
+    In no event shall Microsoft, its authors, or anyone else involved in the creation, production,
+    or delivery of the scripts be liable for any damages whatsoever (including, without limitation,
+    damages for loss of business profits, business interruption, loss of business information, or other pecuniary loss)
+    arising out of the use of or inability to use the sample scripts or documentation,
+    even if Microsoft has been advised of the possibility of such damages.
+
+    For more details, see: https://aka.ms/AzVmIMDSValidation
+
+.SYNOPSIS
+    Validates Azure Instance Metadata Service (IMDS) attestation and certificate chain on Azure VMs.
+
+.DESCRIPTION
+    This script performs the following checks:
+    - Verifies the attestation signature provided by IMDS
+    - Validates that the certificate used in attestation is trusted by building a certificate chain
+    - Tests TCP connectivity to AIA, CRL, and OCSP endpoints required for certificate validation
+    - Provides troubleshooting guidance for missing certificates or connectivity issues
+
+.NOTES
+    Requires administrator privileges.
+    Tested on Windows Server 2016+.
+
+.EXAMPLE
+    Run as administrator:
+    PS> .\Windows_IMDSValidation.ps1
+#>
+
 # Display description on screen
 Write-Host "---------------------------------------------------------------------------------------------------------------------" -ForegroundColor Cyan
 Write-Host "This script is used to verify the attestation signature provided by the Azure Instance Metadata Service (IMDS)." -ForegroundColor Cyan
@@ -29,7 +63,7 @@ try {
     $signature = [System.Convert]::FromBase64String($attestedDoc.signature)
     
     # Create certificate object from signature
-    $cert = $signature
+    $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]($signature)
     
     # Build the chain from the default store
     $chain = New-Object -TypeName System.Security.Cryptography.X509Certificates.X509Chain

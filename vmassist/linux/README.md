@@ -15,7 +15,9 @@ The VM assist scripts must be run as root.  Either enter a root shell using a co
 
 ### automatic download and run
 - run\
-   `bash <(curl -sL https://raw.githubusercontent.com/Azure/azure-support-scripts/master/vmassist/linux//bootstrap-vmassist.sh)`
+   `bash <(curl -sL curl -sL https://aka.ms/vmassist-linux-dl)`
+
+   This will download the current bootstrap script and run it via a shortcut URL.  To review the script before running, view [https://aka.ms/vmassist-linux-dl](https://aka.ms/vmassist-linux-dl) in a web browser
 
 ### manual download
 - download the two scripts individually to the current directory\
@@ -28,7 +30,7 @@ The VM assist scripts must be run as root.  Either enter a root shell using a co
 `./vmassist.sh`
 
 ### Running VM assist
-- Running `bootstrap-vmassist.sh` as above will download and run the diagnostic script from `/tmp/vmassist`
+- Running the bootstrap script from the link above will download the two diagnostic scripts to `/tmp/vmassist` and run them automatically.
 - After downloading by any method, run the `vmassist.sh` from the path reported in the output of `bootstrap-vmassist.sh` as root, or through sudo.  The script can be run as many times as necessary without downloading again
 
 ### syntax

@@ -1,0 +1,85 @@
+{
+    "_comment": "Mock config for Windows_Firewall_Rules_Validation.ps1 — simulates an Azure VM with common issues",
+
+    "FirewallService": "Running",
+
+    "FirewallProfiles": [
+        { "Name": "Domain",  "Enabled": true,  "DefaultInboundAction": "Block", "DefaultOutboundAction": "Allow" },
+        { "Name": "Private", "Enabled": true,  "DefaultInboundAction": "Block", "DefaultOutboundAction": "Allow" },
+        { "Name": "Public",  "Enabled": true,  "DefaultInboundAction": "Block", "DefaultOutboundAction": "Block" }
+    ],
+
+    "PortRules": [
+        { "Port": 3389, "Result": "Allow" },
+        { "Port": 5985, "Result": "Allow" },
+        { "Port": 5986, "Result": "NoRule" },
+        { "Port": 445,  "Result": "Block" },
+        { "Port": 80,   "Result": "Allow" },
+        { "Port": 443,  "Result": "Allow" }
+    ],
+
+    "Endpoints": [
+        { "Host": "169.254.169.254",                       "Port": 80,   "Pass": true },
+        { "Host": "168.63.129.16",                         "Port": 80,   "Pass": true },
+        { "Host": "azkms.core.windows.net",                "Port": 1688, "Pass": true },
+        { "Host": "kms.core.windows.net",                  "Port": 1688, "Pass": true },
+        { "Host": "time.windows.com",                      "Port": 123,  "Pass": false },
+        { "Host": "management.azure.com",                  "Port": 443,  "Pass": true },
+        { "Host": "management.core.windows.net",           "Port": 443,  "Pass": true },
+        { "Host": "portal.azure.com",                      "Port": 443,  "Pass": true },
+        { "Host": "login.microsoftonline.com",             "Port": 443,  "Pass": true },
+        { "Host": "graph.microsoft.com",                   "Port": 443,  "Pass": true },
+        { "Host": "graph.windows.net",                     "Port": 443,  "Pass": true },
+        { "Host": "login.microsoftonline.us",              "Port": 443,  "Pass": false },
+        { "Host": "blob.core.windows.net",                 "Port": 443,  "Pass": false },
+        { "Host": "file.core.windows.net",                 "Port": 443,  "Pass": false },
+        { "Host": "table.core.windows.net",                "Port": 443,  "Pass": false },
+        { "Host": "queue.core.windows.net",                "Port": 443,  "Pass": false },
+        { "Host": "monitor.azure.com",                     "Port": 443,  "Pass": false },
+        { "Host": "ods.opinsights.azure.com",              "Port": 443,  "Pass": false },
+        { "Host": "oms.opinsights.azure.com",              "Port": 443,  "Pass": false },
+        { "Host": "dc.applicationinsights.azure.com",      "Port": 443,  "Pass": true },
+        { "Host": "dc.services.visualstudio.com",          "Port": 443,  "Pass": true },
+        { "Host": "backup.windowsazure.com",               "Port": 443,  "Pass": false },
+        { "Host": "hypervrecoverymanager.windowsazure.com","Port": 443,  "Pass": false },
+        { "Host": "vault.azure.net",                       "Port": 443,  "Pass": false },
+        { "Host": "security.azure.com",                    "Port": 443,  "Pass": true },
+        { "Host": "wdcp.microsoft.com",                    "Port": 443,  "Pass": true },
+        { "Host": "wdcpalt.microsoft.com",                 "Port": 443,  "Pass": true },
+        { "Host": "windowsupdate.microsoft.com",           "Port": 443,  "Pass": true },
+        { "Host": "update.microsoft.com",                  "Port": 443,  "Pass": true },
+        { "Host": "download.windowsupdate.com",            "Port": 443,  "Pass": true },
+        { "Host": "cacerts.digicert.com",                  "Port": 80,   "Pass": true },
+        { "Host": "crl3.digicert.com",                     "Port": 80,   "Pass": true },
+        { "Host": "ocsp.digicert.com",                     "Port": 80,   "Pass": true },
+        { "Host": "crl.microsoft.com",                     "Port": 80,   "Pass": true },
+        { "Host": "oneocsp.microsoft.com",                 "Port": 80,   "Pass": true },
+        { "Host": "www.microsoft.com",                     "Port": 80,   "Pass": true },
+        { "Host": "dev.azure.com",                         "Port": 443,  "Pass": true },
+        { "Host": "api.nuget.org",                         "Port": 443,  "Pass": true },
+        { "Host": "marketplace.visualstudio.com",          "Port": 443,  "Pass": true },
+        { "Host": "azurecr.io",                            "Port": 443,  "Pass": true },
+        { "Host": "mcr.microsoft.com",                     "Port": 443,  "Pass": true }
+    ],
+
+    "PerfInsights": {
+        "StorageAccountName": "perfdiag12345eastus",
+        "Pass": false
+    },
+
+    "WSUS": {
+        "WUServer": "http://wsus.contoso.com:8530",
+        "Pass": false
+    },
+
+    "AzureIPBlockRules": [],
+
+    "Routing": {
+        "DefaultGateway": "10.0.1.1",
+        "LearnedRouteCount": 24,
+        "ForcedTunneling": true
+    },
+
+    "WinRMAllowRules": 2,
+    "RDPAllowRules": 3
+}

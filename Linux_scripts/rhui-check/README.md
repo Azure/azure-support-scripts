@@ -22,11 +22,11 @@ The script was built to successfully run on plain vanilla RHEL7.9 and later PAYG
 ### RHEL 7.x
 
 ```bash
-curl -sL https://raw.githubusercontent.com/Azure/azure-support-scripts/refs/heads/master/Linux_scripts/rhui-check/rhui-check.py | sudo python2 -
+curl -sL https://raw.githubusercontent.com/Azure/azure-support-scripts/refs/heads/master/RunCommand/Linux/rhui-check/rhui-check.py | sudo python2 -
 ```
 
 Or download and transfer the script to the instance:
-https://raw.githubusercontent.com/Azure/azure-support-scripts/refs/heads/master/Linux_scripts/rhui-check/rhui-check.py
+https://raw.githubusercontent.com/Azure/azure-support-scripts/refs/heads/master/RunCommand/Linux/rhui-check/rhui-check.py
 
 Then run:
 
@@ -37,11 +37,11 @@ sudo python2 ./rhui-check.py
 ### RHEL 8.x, RHEL 9.x and above
 
 ```
-curl -sL https://raw.githubusercontent.com/Azure/azure-support-scripts/refs/heads/master/Linux_scripts/rhui-check/rhui-check.py | sudo python3 -
+curl -sL https://raw.githubusercontent.com/Azure/azure-support-scripts/refs/heads/master/RunCommand/Linux/rhui-check/rhui-check.py | sudo python3 -
 ```
 
 Or download and transfer the script to the instance:
-https://raw.githubusercontent.com/Azure/azure-support-scripts/refs/heads/master/Linux_scripts/rhui-check/rhui-check.py
+https://raw.githubusercontent.com/Azure/azure-support-scripts/refs/heads/master/RunCommand/Linux/rhui-check/rhui-check.py
 
 Then run:
 

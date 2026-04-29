@@ -6,8 +6,13 @@ import os
 import re
 import subprocess
 import time
+from datetime import datetime
 import sys
 #import urllib.request
+
+# Capture script start time for non-interactive output
+script_start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 eus = 0
 issues = {}
 
@@ -51,20 +56,19 @@ def start_logging(debug_level = False):
     logger = logging.getLogger(__name__)
 
     plain_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    console_handler = logging.StreamHandler()
-
-    if (sys.stdout.isatty()):
+    
+    # Only add console handler if running in a TTY (interactive terminal)
+    # When run via Azure Run Command, skip console logging for cleaner output
+    if sys.stdout.isatty():
+        console_handler = logging.StreamHandler()
         color_formatter = CustomFormatter()
-        console_handler.setFormatter(color_formatter)    
-    else:
-        console_handler.setFormatter(plain_formatter)    
-
-    console_handler.setLevel(logging.INFO)
-
-    logger.addHandler(console_handler)
-
-    if debug_level:
-        console_handler.setLevel(logging.DEBUG)
+        console_handler.setFormatter(color_formatter)
+        console_handler.setLevel(logging.INFO)
+        
+        if debug_level:
+            console_handler.setLevel(logging.DEBUG)
+        
+        logger.addHandler(console_handler)
 
     try:
         log_filename = '/var/log/rhuicheck.log'
@@ -97,12 +101,17 @@ def validate_ca_certificates():
     except:
         logger.error('Unable to check server side certificates installed in the server.')
         logger.error('Use {} to reinstall the ca-certificates'.format(reinstall_ca_bundle_link))
-        
-        exit(1)
+        if not sys.stdout.isatty():
+            print("ERROR: Unable to verify ca-certificates package")
+        issues['ca_cert_check_failed'] = 'Unable to verify ca-certificates package'
+        return False
    
     if result:
         logger.error('The ca-certificate package is invalid, you can reinstall it. Follow {} to reinstall it manually'.format(reinstall_ca_bundle_link))
-        exit(1)
+        if not sys.stdout.isatty():
+            print("ERROR: ca-certificates package verification failed - package is corrupted or modified")
+        issues['ca_cert_invalid'] = 'ca-certificates package is corrupted or modified'
+        return False
     else:
         return True
 
@@ -160,8 +169,10 @@ def connect_to_host(url, selection, mysection):
         bad_hosts.append(url_host)
         return False
     except requests.exceptions.SSLError:
-        validate_ca_certificates()
-        logger.warning('PROBLEM: MITM proxy misconfiguration. Proxy cannot intercept certs for {}'.format(url))
+        if not validate_ca_certificates():
+            logger.warning('PROBLEM: CA certificates are invalid or corrupted')
+        else:
+            logger.warning('PROBLEM: MITM proxy misconfiguration. Proxy cannot intercept certs for {}'.format(url))
         bad_hosts.append(url_host)
         return False
     except requests.exceptions.ProxyError:
@@ -174,8 +185,10 @@ def connect_to_host(url, selection, mysection):
         bad_hosts.append(url_host)
         return False
     except OSError:
-        validate_ca_certificates()
-        raise()
+        if not validate_ca_certificates():
+            logger.warning('PROBLEM: CA certificates are invalid or corrupted')
+        bad_hosts.append(url_host)
+        return False
     except Exception as e:
         logger.warning('PROBLEM: Unknown error, unable to connect to the RHUI server {}'.format(url))
         bad_hosts.append(url_host)
@@ -219,7 +232,7 @@ def get_pkg_info(package_name):
     logger.debug('Entering pkg_info function')
     try:
         result = subprocess.Popen(['rpm', '-q', '--list', package_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        info = result.stdout.read().decode('utf-8').strip().split('\n')
+        info = result.stdout.read().decode('utf-8').strip().splitlines()
         
         hash_info = {}
         for key in pattern.keys():
@@ -318,7 +331,7 @@ def read_yum_dnf_conf():
     try:
         file = '/etc/yum.conf'
         with open(file) as stream:
-            yumdnfdotconf.read_string('[default]\n' + stream.read())
+            yumdnfdotconf.read_string('[default]' + chr(10) + stream.read())
     except AttributeError:
         yumdnfdotconf.add_section('[default]')
         yumdnfdotconf.read(file)
@@ -400,7 +413,7 @@ def check_rhui_repo_file(path):
         reposconfig = localParser()
         try:
             with open(path) as stream:
-                reposconfig.read_string('[default]\n' + stream.read())
+                reposconfig.read_string('[default]' + chr(10) + stream.read())
         except AttributeError:
             reposconfig.add_section('[default]')
             reposconfig.read(path)
@@ -530,7 +543,7 @@ def connect_to_repos(reposconfig, check_repos, issues):
               continue
 
         try:
-            baseurl_info = reposconfig.get(repo_name, 'baseurl').strip().split('\n')
+            baseurl_info = reposconfig.get(repo_name, 'baseurl').strip().splitlines()
         except configparser.NoOptionError:
             reinstall_link = 'https://aka.ms/tsrhuicert?source=recommendations&tabs=rhel7-eus%2Crhel7-noneus%2Crhel7-rhel-sap-apps%2Crhel8-rhel-sap-apps%2Crhel9-rhel-sap-apps#solution-2-reinstall-the-eus-non-eus-or-sap-rhui-package'
             logger.critical('The baseurl is a critical component of the repository stanza, and it is not found for repo {}'.format(repo_name))
@@ -590,7 +603,11 @@ except Exception as e:
     # rhel10/python3.12(?) 
     logger.critical("Unable to import 'requests' module")
     # check if it is due to issues with the ca-certificates package.
-    validate_ca_certificates()
+    if not validate_ca_certificates():
+        logger.critical("CA certificates issue detected - this may be preventing requests module from loading")
+        if not sys.stdout.isatty():
+            print("ERROR: Unable to import requests module - CA certificates may be corrupted")
+        exit(1)
     logger.critical(e)
     raise
 
@@ -628,9 +645,65 @@ for package_name in rpm_names():
         connect_to_repos(reposconfig, enabled_repos, issues)
 
 
+# Print clean summary for non-TTY environments (like Azure Run Command)
+if not sys.stdout.isatty():
+    print("")
+    print("="*70)
+    print("RHUI Connectivity Check Results")
+    print(f"Started at: {script_start_time}")
+    print("="*70)
+
 if issues:
+    if not sys.stdout.isatty():
+        print("")
+        print("Status: FAILED")
+        print("")
+        print("Issues detected:")
+        for issue, description in issues.items():
+            print(f"  - {issue}: {description}")
+        print("")
+        print("Detailed logs: /var/log/rhuicheck.log")
+        print("")
+        print("Recommended actions:")
+        if 'ca_cert_invalid' in issues or 'ca_cert_check_failed' in issues:
+            print("  * Reinstall ca-certificates package: yum/dnf reinstall ca-certificates")
+            print("  * Run: update-ca-trust")
+        if 'invalid_cert' in issues:
+            print("  * Reinstall RHUI package to restore certificate")
+        if 'rhuirepo_missing' in issues:
+            print("  * Install the appropriate RHUI package")
+        if 'rhuirepo_not_enabled' in issues:
+            print("  * Enable Microsoft RHUI repositories")
+        if 'eus_missing' in issues:
+            print("  * Create /etc/yum/vars/releasever file for EUS repos")
+        if 'extra_eus' in issues:
+            print("  * Remove /etc/yum/vars/releasever file for non-EUS repos")
+        if 'unable_to_connect' in issues:
+            print("  * Check network connectivity to RHUI servers")
+            print("  * Verify firewall/NSG rules allow RHUI IP addresses")
+            print("  * Check /etc/hosts for incorrect RHUI entries")
+        if 'invalid_repoconfig' in issues:
+            print("  * Reinstall RHUI package to restore repository configuration")
+        print("")
+        print("For detailed troubleshooting: https://aka.ms/tsrhuicert")
+        print("="*70)
+        print("")
     exit(1)
 else:
     logger.info('All communication tests to the RHUI infrastructure have passed, if problems persist, remove third party repositories and test again.')
     logger.info('The RHUI repository configuration file is {}, move any other configuration file to a temporary location and test again.'.format(data['repofile']))
+    
+    if not sys.stdout.isatty():
+        print("")
+        print("Status: SUCCESS")
+        print("")
+        print("All RHUI connectivity tests passed successfully!")
+        print(f"")
+        print(f"RHUI package: {package_name}")
+        print(f"Repository config: {data['repofile']}")
+        print("")
+        print("Detailed logs: /var/log/rhuicheck.log")
+        print("="*70)
+        print("")
+    
     exit(0)
