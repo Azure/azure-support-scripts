@@ -1,0 +1,150 @@
+name: Rust and Python Package CI
+
+on:
+  push:
+    branches: [ main, master, rca-tool ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUST_CORE_DIR: rca-tool/lib/supportfile_core
+  PY_PKG_DIR: rca-tool/lib/supportfile_py
+
+jobs:
+  build-rust-core:
+    name: Build Rust core (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-gnu
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-gnu
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            ${{ env.RUST_CORE_DIR }} -> target
+            ${{ env.PY_PKG_DIR }} -> target
+
+      - name: Build Rust crate
+        working-directory: ${{ env.RUST_CORE_DIR }}
+        run: cargo build --locked --release --target "${{ matrix.rust_target }}"
+
+      - name: Test Rust crate
+        working-directory: ${{ env.RUST_CORE_DIR }}
+        run: cargo test --locked --target "${{ matrix.rust_target }}"
+
+      - name: Verify crate can be packaged
+        working-directory: ${{ env.RUST_CORE_DIR }}
+        run: cargo package --locked
+
+      - name: Upload Rust crate artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-crate-${{ matrix.arch }}
+          path: ${{ env.RUST_CORE_DIR }}/target/package/*.crate
+          if-no-files-found: error
+          retention-days: 14
+
+  build-python-wheel:
+    name: Build Python wheel (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            maturin_target: x86_64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            maturin_target: aarch64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          working-directory: ${{ env.PY_PKG_DIR }}
+          target: ${{ matrix.maturin_target }}
+          manylinux: auto
+          args: --release --out dist
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-wheels-${{ matrix.arch }}
+          path: ${{ env.PY_PKG_DIR }}/dist/*.whl
+          if-no-files-found: error
+          retention-days: 14
+
+  # Publishing to external registries is temporarily disabled.
+  # Wheels and crates are uploaded as GitHub artifacts (see build-* jobs above)
+  # for verification before re-enabling the publish steps below.
+  #
+  # publish-cargo:
+  #   name: Publish Rust crate to crates.io
+  #   if: startsWith(github.ref, 'refs/tags/')
+  #   needs:
+  #     - build-rust-core
+  #     - build-python-wheel
+  #   runs-on: ubuntu-24.04
+  #
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Setup Rust toolchain
+  #       uses: dtolnay/rust-toolchain@stable
+  #
+  #     - name: Publish crate
+  #       working-directory: ${{ env.RUST_CORE_DIR }}
+  #       env:
+  #         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+  #       run: cargo publish --locked --token "$CARGO_REGISTRY_TOKEN"
+  #
+  # publish-pypi:
+  #   name: Publish Python wheels to PyPI
+  #   if: startsWith(github.ref, 'refs/tags/')
+  #   needs:
+  #     - build-python-wheel
+  #   runs-on: ubuntu-24.04
+  #   permissions:
+  #     id-token: write
+  #
+  #   steps:
+  #     - name: Download wheel artifacts
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         pattern: python-wheels-*
+  #         path: dist
+  #         merge-multiple: true
+  #
+  #     - name: Publish wheels
+  #       uses: pypa/gh-action-pypi-publish@release/v1
+  #       with:
+  #         packages-dir: dist
+  #         skip-existing: true
