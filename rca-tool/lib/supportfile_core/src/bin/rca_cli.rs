@@ -592,8 +592,28 @@ fn detect_format(path: &Path) -> &'static str {
         "tar.gz"
     } else if name.ends_with(".zip") {
         "zip"
+    } else if name.ends_with(".log") || name.ends_with(".txt") || name.ends_with(".out") {
+        "plaintext"
     } else {
-        "tar" // best effort
+        // Sniff magic bytes to distinguish a headerless tar from a console log.
+        match File::open(path) {
+            Ok(mut f) => {
+                let mut buf = [0u8; 6];
+                let n = f.read(&mut buf).unwrap_or(0);
+                if n >= 6 && buf == [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00] {
+                    "tar.xz"
+                } else if n >= 2 && buf[0] == 0x1f && buf[1] == 0x8b {
+                    "tar.gz"
+                } else if n >= 4 && buf[..4] == [0x50, 0x4b, 0x03, 0x04] {
+                    "zip"
+                } else if n > 0 && buf[..n].iter().all(|&b| b == 0x09 || b == 0x0a || b == 0x0d || (0x20..=0x7e).contains(&b)) {
+                    "plaintext"
+                } else {
+                    "tar"
+                }
+            }
+            Err(_) => "tar",
+        }
     }
 }
 
@@ -604,6 +624,74 @@ fn open_tar_reader(path: &Path) -> std::io::Result<Box<dyn Read>> {
         "tar.gz" => Box::new(GzDecoder::new(file)),
         _ => Box::new(file),
     })
+}
+
+/// If the given member bytes start with a gzip or xz magic header, decompress
+/// them in-memory and strip the trailing `.gz` / `.xz` from `name` so that
+/// parser file-pattern regexes can match the underlying filename. Returns the
+/// (possibly rewritten) name and the (possibly decompressed) byte buffer.
+///
+/// Designed for nested compression inside tar/zip archives — e.g. rotated
+/// `messages-YYYYMMDD.gz` log files inside a `.tar.xz` supportconfig.
+fn maybe_decompress_inner(
+    name: String,
+    buf: Vec<u8>,
+    debug: bool,
+) -> (String, Vec<u8>) {
+    // gzip: 1f 8b
+    if buf.len() >= 2 && buf[0] == 0x1f && buf[1] == 0x8b {
+        let mut out = Vec::new();
+        match GzDecoder::new(buf.as_slice()).read_to_end(&mut out) {
+            Ok(_) => {
+                let stripped = name.strip_suffix(".gz").unwrap_or(&name).to_string();
+                if debug {
+                    eprintln!(
+                        "[debug] inner gzip member {name} -> {stripped} ({} -> {} bytes)",
+                        buf.len(),
+                        out.len()
+                    );
+                }
+                return (stripped, out);
+            }
+            Err(e) => {
+                if debug {
+                    eprintln!("[debug] inner gzip decompress failed for {name}: {e}");
+                }
+            }
+        }
+    }
+    // xz: fd 37 7a 58 5a 00
+    if buf.len() >= 6 && buf[..6] == [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00] {
+        let mut out = Vec::new();
+        match XzDecoder::new(buf.as_slice()).read_to_end(&mut out) {
+            Ok(_) => {
+                let stripped = name.strip_suffix(".xz").unwrap_or(&name).to_string();
+                if debug {
+                    eprintln!(
+                        "[debug] inner xz member {name} -> {stripped} ({} -> {} bytes)",
+                        buf.len(),
+                        out.len()
+                    );
+                }
+                return (stripped, out);
+            }
+            Err(e) => {
+                if debug {
+                    eprintln!("[debug] inner xz decompress failed for {name}: {e}");
+                }
+            }
+        }
+    }
+    (name, buf)
+}
+
+/// Convert a byte buffer to `String` without copying when the bytes are
+/// already valid UTF-8. Falls back to a lossy copy otherwise.
+fn bytes_to_string(buf: Vec<u8>) -> String {
+    match String::from_utf8(buf) {
+        Ok(s) => s,
+        Err(e) => String::from_utf8_lossy(e.as_bytes()).into_owned(),
+    }
 }
 
 /// Open an `.xz` stream using liblzma's multi-threaded decoder
@@ -764,9 +852,36 @@ fn process_archive(
                 }
                 continue;
             }
-            let content = String::from_utf8_lossy(&buf).into_owned();
-            process_entry(&name, &content, &specs, &active, &mut results, debug);
+            let (logical_name, raw) = maybe_decompress_inner(name, buf, debug);
+            let content = bytes_to_string(raw);
+            process_entry(&logical_name, &content, &specs, &active, &mut results, debug);
         }
+        return Ok(results);
+    }
+
+    if detect_format(path) == "plaintext" {
+        // Mirror the Leptos web UI's `analyze_plaintext` path: read the file
+        // as a single console log and route it through the parser registry
+        // using a synthetic `messages` basename so the event parsers' file
+        // patterns match.
+        let mut file =
+            File::open(path).map_err(|e| format!("opening {}: {e}", path.display()))?;
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf)
+            .map_err(|e| format!("reading {}: {e}", path.display()))?;
+        let original_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("input.log")
+            .to_string();
+        let (_logical_name, raw) = maybe_decompress_inner(original_name.clone(), buf, debug);
+        let content = bytes_to_string(raw);
+        // Use a synthetic path that ends in `/messages` (with the original
+        // name preserved as a parent directory) so file-pattern regexes
+        // like `/(messages|localmessages|...)` match while the original
+        // filename remains visible in the file inventory.
+        let synthetic = format!("{original_name}/messages");
+        process_entry(&synthetic, &content, &specs, &active, &mut results, debug);
         return Ok(results);
     }
 
@@ -800,8 +915,9 @@ fn process_archive(
             }
             continue;
         }
-        let content = String::from_utf8_lossy(&buf).into_owned();
-        process_entry(&path_in_tar, &content, &specs, &active, &mut results, debug);
+        let (logical_name, raw) = maybe_decompress_inner(path_in_tar, buf, debug);
+        let content = bytes_to_string(raw);
+        process_entry(&logical_name, &content, &specs, &active, &mut results, debug);
     }
 
     Ok(results)

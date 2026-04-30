@@ -145,9 +145,20 @@ fn make_warning(
 }
 
 fn parse_syslog_prefix(line: &str) -> (Option<String>, Option<String>, String) {
-    let iso_re = Regex::new(r"^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)").unwrap();
-    let syslog_re = Regex::new(r"^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?)").unwrap();
-    let syslog_parts_re = Regex::new(r"^\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?\s+(\S+)\s+.+?:\s*(.+)$").unwrap();
+    use std::sync::OnceLock;
+    static ISO_RE: OnceLock<Regex> = OnceLock::new();
+    static SYSLOG_RE: OnceLock<Regex> = OnceLock::new();
+    static SYSLOG_PARTS_RE: OnceLock<Regex> = OnceLock::new();
+
+    let iso_re = ISO_RE.get_or_init(|| {
+        Regex::new(r"^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)").unwrap()
+    });
+    let syslog_re = SYSLOG_RE.get_or_init(|| {
+        Regex::new(r"^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?)").unwrap()
+    });
+    let syslog_parts_re = SYSLOG_PARTS_RE.get_or_init(|| {
+        Regex::new(r"^\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?\s+(\S+)\s+.+?:\s*(.+)$").unwrap()
+    });
 
     let timestamp = iso_re
         .captures(line)
@@ -186,15 +197,22 @@ fn is_systemd_resource(resource: &str) -> bool {
 }
 
 fn is_system_resource(resource: &str) -> bool {
-    Regex::new(r"^(?i)(Getty|Login|Console|Session|User|Seat|agetty|mingetty|mgetty|plymouth|systemd-|dbus|polkit|NetworkManager|ModemManager|firewalld|sshd|crond?|rsyslog|auditd|chronyd?|ntpd?)$")
-        .unwrap()
-        .is_match(resource)
+    use std::sync::OnceLock;
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"^(?i)(Getty|Login|Console|Session|User|Seat|agetty|mingetty|mgetty|plymouth|systemd-|dbus|polkit|NetworkManager|ModemManager|firewalld|sshd|crond?|rsyslog|auditd|chronyd?|ntpd?)$")
+            .unwrap()
+    })
+    .is_match(resource)
 }
 
 fn is_non_cluster_node(node: &str) -> bool {
-    Regex::new(r"^(?i)(tty\d*|pts/?\d*|console|localhost|127\.0\.0\.1|::1|\d+)$")
-        .unwrap()
-        .is_match(node)
+    use std::sync::OnceLock;
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"^(?i)(tty\d*|pts/?\d*|console|localhost|127\.0\.0\.1|::1|\d+)$").unwrap()
+    })
+    .is_match(node)
 }
 
 // ---------------------------------------------------------------------------
