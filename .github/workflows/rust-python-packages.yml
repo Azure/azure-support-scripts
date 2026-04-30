@@ -36,7 +36,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -67,7 +67,7 @@ jobs:
         run: cargo package --locked
 
       - name: Upload Rust crate artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rust-crate-${{ matrix.arch }}
           path: ${{ env.RUST_CORE_DIR }}/target/package/*.crate
@@ -75,7 +75,7 @@ jobs:
           retention-days: 14
 
       - name: Upload rca_cli binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rca_cli-${{ matrix.arch }}
           path: ${{ env.RUST_CORE_DIR }}/target/${{ matrix.rust_target }}/release/rca_cli
@@ -98,7 +98,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -106,7 +106,7 @@ jobs:
           targets: ${{ matrix.maturin_target }}-unknown-linux-gnu
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -123,38 +123,38 @@ jobs:
         run: maturin build --release --out dist --target ${{ matrix.maturin_target }}-unknown-linux-gnu --compatibility linux
 
       - name: Upload wheel artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-wheels-${{ matrix.arch }}
           path: ${{ env.PY_PKG_DIR }}/dist/*.whl
           if-no-files-found: error
           retention-days: 14
 
-  # Publishing to external registries is temporarily disabled.
-  # Wheels and crates are uploaded as GitHub artifacts (see build-* jobs above)
-  # for verification before re-enabling the publish steps below.
-  #
-  # publish-cargo:
-  #   name: Publish Rust crate to crates.io
-  #   if: startsWith(github.ref, 'refs/tags/')
-  #   needs:
-  #     - build-rust-core
-  #     - build-python-wheel
-  #   runs-on: ubuntu-24.04
-  #
-  #   steps:
-  #     - name: Checkout repository
-  #       uses: actions/checkout@v4
-  #
-  #     - name: Setup Rust toolchain
-  #       uses: dtolnay/rust-toolchain@stable
-  #
-  #     - name: Publish crate
-  #       working-directory: ${{ env.RUST_CORE_DIR }}
-  #       env:
-  #         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-  #       run: cargo publish --locked --token "$CARGO_REGISTRY_TOKEN"
-  #
+  # Publishing to external registries.
+  # Wheels and crates are also uploaded as GitHub artifacts (see build-* jobs
+  # above) for verification.
+
+  publish-cargo:
+    name: Publish Rust crate to crates.io
+    if: startsWith(github.ref, 'refs/tags/')
+    needs:
+      - build-rust-core
+      - build-python-wheel
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish crate
+        working-directory: ${{ env.RUST_CORE_DIR }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --locked --token "$CARGO_REGISTRY_TOKEN"
+
   # publish-pypi:
   #   name: Publish Python wheels to PyPI
   #   if: startsWith(github.ref, 'refs/tags/')
@@ -166,7 +166,7 @@ jobs:
   #
   #   steps:
   #     - name: Download wheel artifacts
-  #       uses: actions/download-artifact@v4
+  #       uses: actions/download-artifact@v5
   #       with:
   #         pattern: python-wheels-*
   #         path: dist

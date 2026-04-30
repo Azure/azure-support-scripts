@@ -14,14 +14,16 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
+import lzma
 import os
 import re
 import sys
 import tarfile
 import zipfile
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Pattern
+from typing import Any, Callable, Dict, List, Optional, Pattern, Tuple
 
 try:
     import supportfile
@@ -446,6 +448,71 @@ def _is_zip(path: str) -> bool:
     return path.lower().endswith(".zip") and zipfile.is_zipfile(path)
 
 
+_PLAINTEXT_EXTS = (".log", ".txt", ".out")
+_GZIP_MAGIC = b"\x1f\x8b"
+_XZ_MAGIC = b"\xfd7zXZ\x00"
+
+
+def _is_plaintext(path: str) -> bool:
+    """Detect a plaintext log file (no archive container).
+
+    Recognises common log extensions and falls back to magic-byte sniffing:
+    if the file is not gzip/xz/zip and not a tar, treat it as plaintext.
+    """
+    lower = path.lower()
+    # Strip a trailing ".log" duplication like ".log.log"
+    if lower.endswith(_PLAINTEXT_EXTS):
+        return True
+    try:
+        with open(path, "rb") as fobj:
+            head = fobj.read(512)
+    except OSError:
+        return False
+    if head.startswith(_GZIP_MAGIC) or head.startswith(_XZ_MAGIC):
+        return False
+    if head.startswith(b"PK\x03\x04"):
+        return False
+    if tarfile.is_tarfile(path):
+        return False
+    # Heuristic: mostly printable ASCII / UTF-8 in the first chunk.
+    if not head:
+        return False
+    printable = sum(1 for b in head if b == 9 or b == 10 or b == 13 or 32 <= b < 127)
+    return printable / len(head) > 0.85
+
+
+def _maybe_decompress_inner(name: str, data: bytes, debug: bool) -> Tuple[str, bytes]:
+    """Decompress an archive member that is itself gzip/xz compressed.
+
+    Mirrors ``maybe_decompress_inner`` in the Rust CLI: SOS reports often
+    contain ``syslog-*.gz`` / ``kern.log-*.gz`` inside an outer ``.tar.xz``,
+    which would otherwise be passed as binary garbage to text parsers.
+    """
+    try:
+        if data.startswith(_GZIP_MAGIC):
+            decoded = gzip.decompress(data)
+            new_name = name[:-3] if name.lower().endswith(".gz") else name
+            if debug:
+                sys.stderr.write(
+                    f"[debug] inner gzip: {name} -> {new_name} "
+                    f"({len(data)} -> {len(decoded)} bytes)\n"
+                )
+            return new_name, decoded
+        if data.startswith(_XZ_MAGIC):
+            decoded = lzma.decompress(data)
+            new_name = name[:-3] if name.lower().endswith(".xz") else name
+            if debug:
+                sys.stderr.write(
+                    f"[debug] inner xz: {name} -> {new_name} "
+                    f"({len(data)} -> {len(decoded)} bytes)\n"
+                )
+            return new_name, decoded
+    except (OSError, EOFError, lzma.LZMAError) as exc:
+        if debug:
+            sys.stderr.write(f"[debug] inner decompress failed for {name}: {exc}\n")
+    return name, data
+
+
 def _process_one(
     member_path: str,
     content: str,
@@ -513,6 +580,21 @@ def process_archive(
 
     results = ArchiveResults()
 
+    if _is_plaintext(path):
+        try:
+            with open(path, "rb") as fobj:
+                data = fobj.read()
+        except OSError as exc:
+            if debug:
+                sys.stderr.write(f"[debug] read error {path}: {exc}\n")
+            return results
+        # Use a synthetic path so message-style parsers (which match on
+        # /messages, /syslog, etc.) actually fire on a bare .log file.
+        synthetic = os.path.basename(path) + "/messages"
+        content = data.decode("utf-8", errors="replace")
+        _process_one(synthetic, content, active, results, debug)
+        return results
+
     if _is_zip(path):
         with zipfile.ZipFile(path) as zf:
             for info in zf.infolist():
@@ -520,12 +602,14 @@ def process_archive(
                     continue
                 try:
                     with zf.open(info) as fobj:
-                        content = fobj.read().decode("utf-8", errors="replace")
+                        data = fobj.read()
                 except (OSError, RuntimeError) as exc:
                     if debug:
                         sys.stderr.write(f"[debug] read error {info.filename}: {exc}\n")
                     continue
-                _process_one(info.filename, content, active, results, debug)
+                name, data = _maybe_decompress_inner(info.filename, data, debug)
+                content = data.decode("utf-8", errors="replace")
+                _process_one(name, content, active, results, debug)
         return results
 
     with _open_archive(path) as archive:
@@ -536,12 +620,14 @@ def process_archive(
                 fobj = archive.extractfile(member)
                 if fobj is None:
                     continue
-                content = fobj.read().decode("utf-8", errors="replace")
+                data = fobj.read()
             except (OSError, KeyError) as exc:
                 if debug:
                     sys.stderr.write(f"[debug] read error {member.name}: {exc}\n")
                 continue
-            _process_one(member.name, content, active, results, debug)
+            name, data = _maybe_decompress_inner(member.name, data, debug)
+            content = data.decode("utf-8", errors="replace")
+            _process_one(name, content, active, results, debug)
 
     return results
 
