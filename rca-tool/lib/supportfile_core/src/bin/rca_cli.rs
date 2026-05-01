@@ -16,16 +16,19 @@
 //! cargo run --example rca_cli -- --list-parsers
 //! ```
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::env;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 use std::process::ExitCode;
+use std::sync::Arc;
 
+use crossbeam_channel::bounded;
 use flate2::read::GzDecoder;
 use liblzma::read::XzDecoder;
 use liblzma::stream::{MtStreamBuilder, Stream};
+use rayon::iter::{ParallelBridge, ParallelIterator};
 use regex::Regex;
 use serde_json::{Map, Value};
 use supportfile as sf;
@@ -574,6 +577,66 @@ struct ArchiveResults {
     file_types: BTreeMap<String, usize>,
 }
 
+impl Default for ArchiveResults {
+    fn default() -> Self {
+        Self {
+            file_count: 0,
+            matched_files: 0,
+            parser_results: BTreeMap::new(),
+            file_types: BTreeMap::new(),
+        }
+    }
+}
+
+fn value_is_empty(v: &Value) -> bool {
+    match v {
+        Value::Object(o) => !o.get("found").and_then(Value::as_bool).unwrap_or(false),
+        Value::Array(a) => a.is_empty(),
+        _ => false,
+    }
+}
+
+/// Combine two `ArchiveResults` (typically one per worker thread) into one.
+///
+/// - Numeric counters and the `file_types` histogram are summed.
+/// - `parser_results` are merged per parser according to its registry entry:
+///   `multi_file` parsers go through [`merge`] (deep array concatenation /
+///   counter sums); single-file parsers prefer the non-empty value, matching
+///   the sequential semantics in [`process_entry`].
+fn merge_archive_results(
+    multi_file_lookup: &HashMap<&str, bool>,
+    mut a: ArchiveResults,
+    b: ArchiveResults,
+) -> ArchiveResults {
+    a.file_count += b.file_count;
+    a.matched_files += b.matched_files;
+    for (k, v) in b.file_types {
+        *a.file_types.entry(k).or_insert(0) += v;
+    }
+    for (key, val_b) in b.parser_results {
+        match a.parser_results.remove(&key) {
+            None => {
+                a.parser_results.insert(key, val_b);
+            }
+            Some(val_a) => {
+                let is_multi = multi_file_lookup
+                    .get(key.as_str())
+                    .copied()
+                    .unwrap_or(false);
+                let merged = if is_multi {
+                    merge(val_a, val_b)
+                } else if value_is_empty(&val_b) {
+                    val_a
+                } else {
+                    val_b
+                };
+                a.parser_results.insert(key, merged);
+            }
+        }
+    }
+    a
+}
+
 fn detect_format(path: &Path) -> &'static str {
     let name = path
         .file_name()
@@ -729,6 +792,28 @@ struct CompiledParser {
     re: Regex,
 }
 
+/// Check whether *any* active parser's file pattern matches `member_path`.
+///
+/// Used as a fast pre-filter before reading the content of an archive member,
+/// so that large files which no parser cares about are skipped entirely
+/// (no `read_to_end`, no inner-decompress, no UTF-8 decode).
+fn any_parser_matches(member_path: &str, active: &[CompiledParser]) -> bool {
+    let probe = format!("/{member_path}");
+    active.iter().any(|cp| cp.re.is_match(&probe))
+}
+
+/// Bookkeeping-only update for skipped (non-matching) entries: increment
+/// `file_count` and the file-type histogram without reading content.
+fn record_skipped(member_path: &str, results: &mut ArchiveResults) {
+    results.file_count += 1;
+    let ext = Path::new(member_path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| format!(".{s}"))
+        .unwrap_or_else(|| "(none)".to_string());
+    *results.file_types.entry(ext).or_insert(0) += 1;
+}
+
 /// Apply the matching parsers to a single archive member's text content.
 fn process_entry(
     member_path: &str,
@@ -845,6 +930,18 @@ fn process_archive(
                 continue;
             }
             let name = entry.name().to_string();
+            // Pre-filter: skip the read entirely if no parser cares about
+            // either the original name or the inner-decompressed name.
+            let candidate = name
+                .strip_suffix(".gz")
+                .or_else(|| name.strip_suffix(".xz"))
+                .unwrap_or(&name);
+            if !any_parser_matches(&name, &active)
+                && !any_parser_matches(candidate, &active)
+            {
+                record_skipped(&name, &mut results);
+                continue;
+            }
             let mut buf = Vec::new();
             if let Err(e) = entry.read_to_end(&mut buf) {
                 if debug {
@@ -885,42 +982,107 @@ fn process_archive(
         return Ok(results);
     }
 
-    let reader = open_tar_reader(path).map_err(|e| format!("opening {}: {e}", path.display()))?;
-    let mut archive = Archive::new(reader);
+    // ---- Tar branch (parallel) -------------------------------------------
+    //
+    // The reader thread walks the tar sequentially (libtar can't be split),
+    // pre-filters by path, increments bookkeeping for skipped entries, and
+    // pushes (logical_name, raw_bytes) for matching entries through a bounded
+    // crossbeam channel. Inner-archive decompression and UTF-8 decoding plus
+    // the regex-heavy parser dispatch happen in parallel on the rayon thread
+    // pool via `par_bridge` + `fold` + `reduce`.
+    let active = Arc::new(active);
+    let specs = Arc::new(specs);
+    let multi_file_lookup: HashMap<&str, bool> =
+        specs.iter().map(|s| (s.name, s.multi_file)).collect();
 
-    for entry in archive
-        .entries()
-        .map_err(|e| format!("reading entries: {e}"))?
-    {
-        let mut entry = match entry {
-            Ok(e) => e,
-            Err(e) => {
+    let workers = rayon::current_num_threads().max(1);
+    let (tx, rx) = bounded::<(String, Vec<u8>)>(workers * 4);
+
+    let path_for_reader = path.to_path_buf();
+    let active_for_reader = Arc::clone(&active);
+    let reader_handle = std::thread::spawn(move || -> Result<ArchiveResults, String> {
+        let mut local = ArchiveResults::default();
+        let reader = open_tar_reader(&path_for_reader)
+            .map_err(|e| format!("opening {}: {e}", path_for_reader.display()))?;
+        let mut archive = Archive::new(reader);
+        for entry in archive
+            .entries()
+            .map_err(|e| format!("reading entries: {e}"))?
+        {
+            let mut entry = match entry {
+                Ok(e) => e,
+                Err(e) => {
+                    if debug {
+                        eprintln!("[debug] entry error: {e}");
+                    }
+                    continue;
+                }
+            };
+            if !entry.header().entry_type().is_file() {
+                continue;
+            }
+            let path_in_tar = match entry.path() {
+                Ok(p) => p.to_string_lossy().into_owned(),
+                Err(_) => continue,
+            };
+            let candidate = path_in_tar
+                .strip_suffix(".gz")
+                .or_else(|| path_in_tar.strip_suffix(".xz"))
+                .unwrap_or(&path_in_tar);
+            if !any_parser_matches(&path_in_tar, &active_for_reader)
+                && !any_parser_matches(candidate, &active_for_reader)
+            {
+                record_skipped(&path_in_tar, &mut local);
+                continue;
+            }
+            let mut buf = Vec::new();
+            if let Err(e) = entry.read_to_end(&mut buf) {
                 if debug {
-                    eprintln!("[debug] entry error: {e}");
+                    eprintln!("[debug] read error {path_in_tar}: {e}");
                 }
                 continue;
             }
-        };
-        if !entry.header().entry_type().is_file() {
-            continue;
-        }
-        let path_in_tar = match entry.path() {
-            Ok(p) => p.to_string_lossy().into_owned(),
-            Err(_) => continue,
-        };
-        let mut buf = Vec::new();
-        if let Err(e) = entry.read_to_end(&mut buf) {
-            if debug {
-                eprintln!("[debug] read error {path_in_tar}: {e}");
+            if tx.send((path_in_tar, buf)).is_err() {
+                break;
             }
-            continue;
         }
-        let (logical_name, raw) = maybe_decompress_inner(path_in_tar, buf, debug);
-        let content = bytes_to_string(raw);
-        process_entry(&logical_name, &content, &specs, &active, &mut results, debug);
-    }
+        // Dropping `tx` here closes the channel so the workers' iterator
+        // terminates and `reduce` can return.
+        drop(tx);
+        Ok(local)
+    });
 
-    Ok(results)
+    let active_for_workers = Arc::clone(&active);
+    let specs_for_workers = Arc::clone(&specs);
+    let worker_results: ArchiveResults = rx
+        .into_iter()
+        .par_bridge()
+        .fold(
+            ArchiveResults::default,
+            |mut acc, (name, buf)| {
+                let (logical_name, raw) = maybe_decompress_inner(name, buf, debug);
+                let content = bytes_to_string(raw);
+                process_entry(
+                    &logical_name,
+                    &content,
+                    &specs_for_workers,
+                    &active_for_workers,
+                    &mut acc,
+                    debug,
+                );
+                acc
+            },
+        )
+        .reduce(ArchiveResults::default, |a, b| {
+            merge_archive_results(&multi_file_lookup, a, b)
+        });
+
+    let reader_results = reader_handle
+        .join()
+        .map_err(|_| "reader thread panicked".to_string())??;
+    let merged = merge_archive_results(&multi_file_lookup, reader_results, worker_results);
+
+    Ok(merged)
 }
 
 // ---------------------------------------------------------------------------

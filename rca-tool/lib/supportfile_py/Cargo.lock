@@ -238,7 +238,7 @@ dependencies = [
 
 [[package]]
 name = "supportfile"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "regex",
  "serde",
@@ -247,7 +247,7 @@ dependencies = [
 
 [[package]]
 name = "supportfile_py"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "pyo3",
  "supportfile",

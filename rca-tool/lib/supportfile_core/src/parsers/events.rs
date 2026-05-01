@@ -1,9 +1,16 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 fn extract_timestamp(line: &str) -> Option<String> {
-    let iso_re = Regex::new(r"^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)").unwrap();
-    let syslog_re = Regex::new(r"^(\w{3})\s+(\d{1,2})\s+(\d{2}:\d{2}:\d{2}(?:\.\d+)?)").unwrap();
+    static ISO_RE: OnceLock<Regex> = OnceLock::new();
+    static SYSLOG_RE: OnceLock<Regex> = OnceLock::new();
+    let iso_re = ISO_RE.get_or_init(|| {
+        Regex::new(r"^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)").unwrap()
+    });
+    let syslog_re = SYSLOG_RE.get_or_init(|| {
+        Regex::new(r"^(\w{3})\s+(\d{1,2})\s+(\d{2}:\d{2}:\d{2}(?:\.\d+)?)").unwrap()
+    });
     if let Some(c) = iso_re.captures(line) {
         return c.get(1).map(|m| m.as_str().to_string());
     }
@@ -99,12 +106,15 @@ pub struct XfsErrorsResult {
 }
 
 pub fn parse_emergency_mode(content: &str, source_path: &str) -> EmergencyModeResult {
+    static EMERGENCY_RE: OnceLock<Regex> = OnceLock::new();
+    let emergency_re =
+        EMERGENCY_RE.get_or_init(|| Regex::new(r"(?i)You are in emergency mode").unwrap());
     let mut events = Vec::new();
     for (i, line) in content.lines().enumerate() {
         if !line.contains("emergency mode") {
             continue;
         }
-        if Regex::new(r"(?i)You are in emergency mode").unwrap().is_match(line) {
+        if emergency_re.is_match(line) {
             let line_no = i + 1;
             events.push(SimpleEvent {
                 timestamp: extract_timestamp(line).unwrap_or_else(|| "Date not detected".to_string()),
@@ -125,9 +135,16 @@ pub fn parse_emergency_mode(content: &str, source_path: &str) -> EmergencyModeRe
 }
 
 pub fn parse_kernel_reboots(content: &str, source_path: &str) -> KernelRebootsResult {
-    let kernel_re = Regex::new(r"(?i)(?:kernel:\s*)?(?:\[\s*[\d\.]+\]\s*(?:\[\s*T\d+\]\s*)?)?Linux version\s+([\d\.\-\w]+)").unwrap();
-    let shutdown_re = Regex::new(r"(?i)systemd.*Shutting down|systemd.*Starting Reboot|systemd.*Stopped target.*Shutdown").unwrap();
-    let reboot_re = Regex::new(r"(?i)kernel:\s*reboot:").unwrap();
+    static KERNEL_RE: OnceLock<Regex> = OnceLock::new();
+    static SHUTDOWN_RE: OnceLock<Regex> = OnceLock::new();
+    static REBOOT_RE: OnceLock<Regex> = OnceLock::new();
+    let kernel_re = KERNEL_RE.get_or_init(|| {
+        Regex::new(r"(?i)(?:kernel:\s*)?(?:\[\s*[\d\.]+\]\s*(?:\[\s*T\d+\]\s*)?)?Linux version\s+([\d\.\-\w]+)").unwrap()
+    });
+    let shutdown_re = SHUTDOWN_RE.get_or_init(|| {
+        Regex::new(r"(?i)systemd.*Shutting down|systemd.*Starting Reboot|systemd.*Stopped target.*Shutdown").unwrap()
+    });
+    let reboot_re = REBOOT_RE.get_or_init(|| Regex::new(r"(?i)kernel:\s*reboot:").unwrap());
 
     let mut events = Vec::new();
     for (i, line) in content.lines().enumerate() {
@@ -186,13 +203,32 @@ pub fn parse_kernel_reboots(content: &str, source_path: &str) -> KernelRebootsRe
 }
 
 pub fn parse_oom_killer(content: &str, source_path: &str) -> OomKillerResult {
-    let kill_re = Regex::new(r"(?i)Out of memory:.*Kill(?:ed)? process\s+(\d+)\s+\(([^)]+)\)").unwrap();
-    let score_re = Regex::new(r"(?i)score\s+(\d+)").unwrap();
-    let vm_re = Regex::new(r"(?i)total-vm:(\d+)kB").unwrap();
-    let invoked_re = Regex::new(r"(?i)\]\s+([^\s]+)\s+invoked oom-killer:").unwrap();
-    let order_re = Regex::new(r"(?i)order=(\d+)").unwrap();
-    let pid_re = Regex::new(r"(?i)reaped process\s+(\d+)").unwrap();
-    let process_re = Regex::new(r"\]\s+([^\s:]+):").unwrap();
+    static KILL_RE: OnceLock<Regex> = OnceLock::new();
+    static SCORE_RE: OnceLock<Regex> = OnceLock::new();
+    static VM_RE: OnceLock<Regex> = OnceLock::new();
+    static INVOKED_RE: OnceLock<Regex> = OnceLock::new();
+    static ORDER_RE: OnceLock<Regex> = OnceLock::new();
+    static PID_RE: OnceLock<Regex> = OnceLock::new();
+    static PROCESS_RE: OnceLock<Regex> = OnceLock::new();
+    static INVOKED_LINE_RE: OnceLock<Regex> = OnceLock::new();
+    static REAPER_LINE_RE: OnceLock<Regex> = OnceLock::new();
+    static ALLOC_RE: OnceLock<Regex> = OnceLock::new();
+    let kill_re = KILL_RE.get_or_init(|| {
+        Regex::new(r"(?i)Out of memory:.*Kill(?:ed)? process\s+(\d+)\s+\(([^)]+)\)").unwrap()
+    });
+    let score_re = SCORE_RE.get_or_init(|| Regex::new(r"(?i)score\s+(\d+)").unwrap());
+    let vm_re = VM_RE.get_or_init(|| Regex::new(r"(?i)total-vm:(\d+)kB").unwrap());
+    let invoked_re = INVOKED_RE
+        .get_or_init(|| Regex::new(r"(?i)\]\s+([^\s]+)\s+invoked oom-killer:").unwrap());
+    let order_re = ORDER_RE.get_or_init(|| Regex::new(r"(?i)order=(\d+)").unwrap());
+    let pid_re = PID_RE.get_or_init(|| Regex::new(r"(?i)reaped process\s+(\d+)").unwrap());
+    let process_re = PROCESS_RE.get_or_init(|| Regex::new(r"\]\s+([^\s:]+):").unwrap());
+    let invoked_line_re =
+        INVOKED_LINE_RE.get_or_init(|| Regex::new(r"(?i)invoked oom-killer:").unwrap());
+    let reaper_line_re =
+        REAPER_LINE_RE.get_or_init(|| Regex::new(r"(?i)oom_reaper:").unwrap());
+    let alloc_re =
+        ALLOC_RE.get_or_init(|| Regex::new(r"(?i)Cannot allocate memory").unwrap());
 
     let mut events: Vec<OomEvent> = Vec::new();
     for (i, line) in content.lines().enumerate() {
@@ -220,7 +256,7 @@ pub fn parse_oom_killer(content: &str, source_path: &str) -> OomKillerResult {
             continue;
         }
 
-        if Regex::new(r"(?i)invoked oom-killer:").unwrap().is_match(line) {
+        if invoked_line_re.is_match(line) {
             let duplicate = events
                 .iter()
                 .any(|e| e.event_type == "oom_invoked" && e.line_number.abs_diff(line_no) < 3);
@@ -244,7 +280,7 @@ pub fn parse_oom_killer(content: &str, source_path: &str) -> OomKillerResult {
             continue;
         }
 
-        if Regex::new(r"(?i)oom_reaper:").unwrap().is_match(line) {
+        if reaper_line_re.is_match(line) {
             let duplicate = events
                 .iter()
                 .any(|e| e.event_type == "oom_reaper" && e.line_number.abs_diff(line_no) < 3);
@@ -268,7 +304,7 @@ pub fn parse_oom_killer(content: &str, source_path: &str) -> OomKillerResult {
             continue;
         }
 
-        if Regex::new(r"(?i)Cannot allocate memory").unwrap().is_match(line) {
+        if alloc_re.is_match(line) {
             let duplicate = events
                 .iter()
                 .any(|e| e.event_type == "alloc_failure" && e.line_number.abs_diff(line_no) < 3);
@@ -295,8 +331,13 @@ pub fn parse_oom_killer(content: &str, source_path: &str) -> OomKillerResult {
 }
 
 pub fn parse_xfs_errors(content: &str, source_path: &str) -> XfsErrorsResult {
-    let xfs_pattern = Regex::new(r"(?i)XFS\s+\(([^)]+)\):\s*(.+)").unwrap();
-    let critical_re = Regex::new(r"(?i)please unmount.*rectify|metadata.*corruption|corruption.*detected|corruption warning|internal error|shutting down filesystem|filesystem has been shut down|duplicate UUID.*can't mount|unrecovered unlinked inode").unwrap();
+    static XFS_RE: OnceLock<Regex> = OnceLock::new();
+    static CRITICAL_RE: OnceLock<Regex> = OnceLock::new();
+    let xfs_pattern =
+        XFS_RE.get_or_init(|| Regex::new(r"(?i)XFS\s+\(([^)]+)\):\s*(.+)").unwrap());
+    let critical_re = CRITICAL_RE.get_or_init(|| {
+        Regex::new(r"(?i)please unmount.*rectify|metadata.*corruption|corruption.*detected|corruption warning|internal error|shutting down filesystem|filesystem has been shut down|duplicate UUID.*can't mount|unrecovered unlinked inode").unwrap()
+    });
 
     let mut events = Vec::new();
     for (i, line) in content.lines().enumerate() {

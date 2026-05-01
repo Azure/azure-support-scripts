@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "supportfile"
-version = "0.1.0"
+version = "0.1.1"
 description = "Supportfile library for support file analysis"
 readme = "README.md"
 license = { text = "MIT" }

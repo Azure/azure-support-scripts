@@ -1,6 +1,6 @@
 [package]
 name = "supportfile"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Supportfile library core for support file analysis"
 license = "MIT"
@@ -13,7 +13,14 @@ crate-type = ["rlib"]
 default = []
 # Enables the bundled `rca_cli` command-line analyzer. Pulled in automatically
 # when building the binary target (see `required-features` below).
-cli = ["dep:tar", "dep:liblzma", "dep:flate2", "dep:zip"]
+cli = [
+    "dep:tar",
+    "dep:liblzma",
+    "dep:flate2",
+    "dep:zip",
+    "dep:rayon",
+    "dep:crossbeam-channel",
+]
 
 [dependencies]
 regex = "1"
@@ -28,8 +35,21 @@ tar = { version = "0.4", optional = true }
 liblzma = { version = "0.4", features = ["parallel"], optional = true }
 flate2 = { version = "1", optional = true }
 zip = { version = "2", default-features = false, features = ["deflate"], optional = true }
+# Worker-pool parallelism for the `rca_cli` parser dispatch loop. The reader
+# thread streams archive members; rayon workers run the regex-heavy parsers
+# in parallel and the per-thread `ArchiveResults` are merged in `reduce`.
+rayon = { version = "1", optional = true }
+crossbeam-channel = { version = "0.5", optional = true }
 
 [[bin]]
 name = "rca_cli"
 path = "src/bin/rca_cli.rs"
 required-features = ["cli"]
+
+# Release profile tuning: link-time optimization (LTO) and a single codegen
+# unit produce a noticeably smaller, faster `rca_cli` binary at the cost of
+# a longer release build. Worth it for the published artifact and benchmarks.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "symbols"

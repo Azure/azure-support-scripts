@@ -14,6 +14,43 @@ import lzma from 'lzma-native';
 import { SCC_RULES } from './parser-loader.js';
 import { PerformanceTracker } from './performance-loader.js';
 
+const PLAINTEXT_EXTS = new Set(['.log', '.txt', '.out']);
+const GZIP_MAGIC = Buffer.from([0x1f, 0x8b]);
+const XZ_MAGIC = Buffer.from([0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00]);
+const ZIP_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+
+/**
+ * Detect a bare plaintext log file (not an archive container).
+ * Recognises common log extensions and falls back to magic-byte sniffing.
+ */
+function isPlaintextLog(filePath) {
+    const ext = path.extname(filePath).toLowerCase();
+    if (PLAINTEXT_EXTS.has(ext)) return true;
+    let head;
+    try {
+        const fd = fs.openSync(filePath, 'r');
+        head = Buffer.alloc(512);
+        const n = fs.readSync(fd, head, 0, 512, 0);
+        fs.closeSync(fd);
+        head = head.subarray(0, n);
+    } catch {
+        return false;
+    }
+    if (head.length === 0) return false;
+    if (head.subarray(0, 2).equals(GZIP_MAGIC)) return false;
+    if (head.subarray(0, 6).equals(XZ_MAGIC)) return false;
+    if (head.subarray(0, 4).equals(ZIP_MAGIC)) return false;
+    // Tar magic "ustar" lives at offset 257
+    if (head.length >= 263 && head.subarray(257, 262).toString('ascii') === 'ustar') {
+        return false;
+    }
+    let printable = 0;
+    for (const b of head) {
+        if (b === 9 || b === 10 || b === 13 || (b >= 32 && b < 127)) printable++;
+    }
+    return printable / head.length > 0.85;
+}
+
 /**
  * Process an archive file and run all parsers on its contents (streaming)
  * @param {string} archivePath - Path to the archive file
@@ -53,6 +90,10 @@ export async function processArchive(archivePath, options = {}) {
     // .txz is another common extension for .tar.xz (used by SUSE/openSUSE SCC reports)
     const isXz = ext === '.xz' || ext === '.txz' || basename.endsWith('.tar.xz');
     const isGz = ext === '.gz' || basename.endsWith('.tar.gz') || basename.endsWith('.tgz');
+    const isPlaintext = !isXz && !isGz && isPlaintextLog(archivePath);
+    if (isPlaintext) {
+        debugLog(`Detected plaintext log file: ${archivePath}`);
+    }
     
     return new Promise((resolve, reject) => {
         const extract = tar.extract();
@@ -324,6 +365,21 @@ export async function processArchive(archivePath, options = {}) {
         } else if (isGz) {
             debugLog('Using Gzip decompression');
             fileStream.pipe(createGunzip()).pipe(extract);
+        } else if (isPlaintext) {
+            debugLog('Wrapping plaintext file as synthetic tar entry');
+            // Wrap the plaintext file in a single-entry in-memory tar so the
+            // existing entry handler (with all its merging/multi-file logic)
+            // runs unchanged. The synthetic name <basename>/messages ensures
+            // syslog-style file_pattern regexes match.
+            const pack = tar.pack();
+            const syntheticName = `${path.basename(archivePath)}/messages`;
+            const stat = fs.statSync(archivePath);
+            const entry = pack.entry({ name: syntheticName, size: stat.size }, err => {
+                if (err) extract.emit('error', err);
+                pack.finalize();
+            });
+            fileStream.pipe(entry);
+            pack.pipe(extract);
         } else {
             debugLog('No decompression needed');
             fileStream.pipe(extract);

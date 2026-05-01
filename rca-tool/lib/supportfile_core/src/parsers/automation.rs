@@ -1,5 +1,6 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AutomationEvent {
@@ -23,8 +24,14 @@ pub struct AutomationResult {
 }
 
 fn extract_timestamp(line: &str) -> Option<String> {
-    let iso_re = Regex::new(r"^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)").unwrap();
-    let syslog_re = Regex::new(r"^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?)").unwrap();
+    static ISO_RE: OnceLock<Regex> = OnceLock::new();
+    static SYSLOG_RE: OnceLock<Regex> = OnceLock::new();
+    let iso_re = ISO_RE.get_or_init(|| {
+        Regex::new(r"^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)").unwrap()
+    });
+    let syslog_re = SYSLOG_RE.get_or_init(|| {
+        Regex::new(r"^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?)").unwrap()
+    });
     iso_re
         .captures(line)
         .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
@@ -32,24 +39,40 @@ fn extract_timestamp(line: &str) -> Option<String> {
 }
 
 fn strip_ansi_codes(input: &str) -> String {
-    Regex::new(r"\x1B\[[0-9;]*[A-Za-z]")
-        .unwrap()
-        .replace_all(input, "")
-        .into_owned()
+    static ANSI_RE: OnceLock<Regex> = OnceLock::new();
+    let re = ANSI_RE.get_or_init(|| Regex::new(r"\x1B\[[0-9;]*[A-Za-z]").unwrap());
+    re.replace_all(input, "").into_owned()
 }
 
 pub fn parse_automation_events(content: &str, source_path: &str) -> AutomationResult {
+    static ANSIBLE_CMD_RE: OnceLock<Regex> = OnceLock::new();
+    static ANSIBLE_SETUP_RE: OnceLock<Regex> = OnceLock::new();
+    static PUPPET_AGENT_RE: OnceLock<Regex> = OnceLock::new();
+    static PUPPET_APPLY_RE: OnceLock<Regex> = OnceLock::new();
+    static PUPPET_RUN_RE: OnceLock<Regex> = OnceLock::new();
+    static CHEF_CLIENT_RE: OnceLock<Regex> = OnceLock::new();
+    static CHEF_SOLO_RE: OnceLock<Regex> = OnceLock::new();
+    static CHEF_APPLY_RE: OnceLock<Regex> = OnceLock::new();
+
+    let ansible_cmd_re =
+        ANSIBLE_CMD_RE.get_or_init(|| Regex::new(r"ansible-command:\s*(.+)").unwrap());
+    let ansible_setup_re =
+        ANSIBLE_SETUP_RE.get_or_init(|| Regex::new(r"ansible-setup:\s*(.+)").unwrap());
+    let puppet_agent_re =
+        PUPPET_AGENT_RE.get_or_init(|| Regex::new(r"puppet-agent:\s*(.+)").unwrap());
+    let puppet_apply_re =
+        PUPPET_APPLY_RE.get_or_init(|| Regex::new(r"(puppet apply.+)").unwrap());
+    let puppet_run_re =
+        PUPPET_RUN_RE.get_or_init(|| Regex::new(r"puppet-run:\s*(.+)").unwrap());
+    let chef_client_re =
+        CHEF_CLIENT_RE.get_or_init(|| Regex::new(r"chef-client\[\d+\]:\s*(.+)").unwrap());
+    let chef_solo_re =
+        CHEF_SOLO_RE.get_or_init(|| Regex::new(r"chef-solo\[\d+\]:\s*(.+)").unwrap());
+    let chef_apply_re =
+        CHEF_APPLY_RE.get_or_init(|| Regex::new(r"chef-apply\[\d+\]:\s*(.+)").unwrap());
+
     let lines: Vec<&str> = content.lines().collect();
     let mut events = Vec::new();
-
-    let ansible_cmd_re = Regex::new(r"ansible-command:\s*(.+)").unwrap();
-    let ansible_setup_re = Regex::new(r"ansible-setup:\s*(.+)").unwrap();
-    let puppet_agent_re = Regex::new(r"puppet-agent:\s*(.+)").unwrap();
-    let puppet_apply_re = Regex::new(r"(puppet apply.+)").unwrap();
-    let puppet_run_re = Regex::new(r"puppet-run:\s*(.+)").unwrap();
-    let chef_client_re = Regex::new(r"chef-client\[\d+\]:\s*(.+)").unwrap();
-    let chef_solo_re = Regex::new(r"chef-solo\[\d+\]:\s*(.+)").unwrap();
-    let chef_apply_re = Regex::new(r"chef-apply\[\d+\]:\s*(.+)").unwrap();
 
     for (i, line) in lines.iter().enumerate() {
         if !(line.contains("ansible-") || line.contains("puppet") || line.contains("chef-")) {
