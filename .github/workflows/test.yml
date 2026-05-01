@@ -56,10 +56,6 @@ jobs:
       run: npm ci
       working-directory: rca-tool/cli
         
-    - name: Build legacy Web Interface (with JSDoc)
-      run: bash build.sh
-      working-directory: rca-tool
-
     - name: Build Leptos Web Interface
       run: ./build.sh
       working-directory: rca-tool/web-leptos
