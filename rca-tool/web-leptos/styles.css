@@ -99,6 +99,12 @@ body {
     box-sizing: border-box;
 }
 
+*,
+*::before,
+*::after {
+    box-sizing: inherit;
+}
+
 .page-drop-target {
     min-height: calc(100vh - 40px);
     border-radius: 12px;
@@ -135,9 +141,28 @@ h1 {
 }
 
 .container {
-    max-width: 800px;
-    margin: 0 auto;
+    width: 100%;
+    max-width: none;
+    margin: 0;
     position: relative;
+}
+
+.main-content,
+#output,
+.analysis-header,
+details.success-block,
+details.warning-block,
+details.danger-block,
+details.info-block,
+details.content-details,
+.section-body,
+.subsection,
+.subsection-danger,
+.warning-box,
+.json-dump {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
 }
 
 /* Info Box Styles */
@@ -206,12 +231,12 @@ h1 {
 .drop-zone {
     border: 2px dashed var(--border-color);
     border-radius: 10px;
-    width: 500px;
-    max-width: 90%;
+    width: 100%;
+    max-width: 100%;
     min-height: 200px;
     text-align: center;
     padding: 20px;
-    margin: 20px auto;
+    margin: 20px 0;
     font-family: Arial, sans-serif;
     display: flex;
     flex-direction: column;
@@ -570,7 +595,9 @@ code {
     background: var(--code-bg);
     border-radius: 2px;
     overflow-x: auto;
-    white-space: nowrap;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 /* Subsection Styles */
@@ -668,6 +695,9 @@ details > summary {
     padding: 8px 10px;
     text-align: left;
     border-bottom: 1px solid var(--content-border);
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .data-table tr:last-child td {

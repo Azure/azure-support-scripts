@@ -1,4 +1,3 @@
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -67,7 +66,7 @@ pub fn parse_hv_balloon(content: &str, source_path: &str) -> HvBalloonResult {
     }
 
     result.raw_content = content.trim().to_string();
-    let pair_re = Regex::new(r"^(\S+(?:\s+\S+)*?)\s*:\s*(.+)$").unwrap();
+    let pair_re = crate::cached_regex!(r"^(\S+(?:\s+\S+)*?)\s*:\s*(.+)$");
 
     for line in content.lines() {
         if let Some(caps) = pair_re.captures(line) {
@@ -84,11 +83,10 @@ pub fn parse_hv_balloon(content: &str, source_path: &str) -> HvBalloonResult {
                 }
                 "capabilities" => result.capabilities = Some(value.to_string()),
                 "state" => {
-                    if let Some(state_caps) = Regex::new(r"^(\d+)").unwrap().captures(value) {
+                    if let Some(state_caps) = crate::cached_regex!(r"^(\d+)").captures(value) {
                         result.state = state_caps.get(1).and_then(|m| m.as_str().parse::<i64>().ok());
                     }
-                    result.state_text = Regex::new(r"\(([^)]+)\)")
-                        .unwrap()
+                    result.state_text = crate::cached_regex!(r"\(([^)]+)\)")
                         .captures(value)
                         .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
                         .or_else(|| match result.state {
@@ -156,7 +154,7 @@ pub fn parse_extfrag(content: &str, source_path: &str) -> ExtfragResult {
         return result;
     }
 
-    let line_re = Regex::new(r"^Node\s+(\d+),\s+zone\s+(\S+)\s+(.+)$").unwrap();
+    let line_re = crate::cached_regex!(r"^Node\s+(\d+),\s+zone\s+(\S+)\s+(.+)$");
     let mut current_field = if content.contains("unusable_index") {
         "unusable"
     } else {

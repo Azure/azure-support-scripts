@@ -2,8 +2,8 @@
 # Instrument source files with Istanbul for coverage collection in Web Workers.
 #
 # This script instruments src/parsers/, src/utils.js, and src/worker.js
-# with Istanbul counters and copies the instrumented files into web/dist/
-# (overwriting the un-instrumented copies produced by the Vite build).
+# with Istanbul counters and copies the instrumented files into
+# web-leptos/dist/assets/ (overwriting the un-instrumented Leptos build output).
 #
 # Run AFTER `bash build.sh` and BEFORE `npx playwright test`.
 #
@@ -15,7 +15,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR/.."
-DIST_DIR="$PROJECT_ROOT/web/dist"
+DIST_DIR="$PROJECT_ROOT/web-leptos/dist/assets"
 TMPDIR=$(mktemp -d)
 
 trap 'rm -rf "$TMPDIR"' EXIT

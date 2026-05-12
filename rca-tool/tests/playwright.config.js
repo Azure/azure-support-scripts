@@ -20,11 +20,11 @@ export default defineConfig({
           // Console summary printed after each run
           ['console-details'],
         ],
-        // Include app files served from /web/dist/ AND worker source files (file://)
+        // Include app files served from /web-leptos/dist/ and worker source files (file://)
         entryFilter: (entry) => {
-          // Main-thread Vite bundle
-          if (entry.url.includes('/web/dist/')
-              && !entry.url.includes('/web/dist/docs/')
+          // Main-thread Leptos bundle and static assets
+          if (entry.url.includes('/web-leptos/dist/')
+              && !entry.url.includes('/web-leptos/dist/docs/')
               && !entry.url.includes('node_modules')) {
             return true;
           }
@@ -60,9 +60,9 @@ export default defineConfig({
       use: { 
         ...devices['Desktop Edge'],
         channel: 'msedge',
-        // Legacy Vite UI is published under /web/ now that Leptos is the default root UI.
+        // Leptos is the default deployed UI at the site root.
         // Ensure trailing slash so relative paths work correctly.
-        baseURL: (process.env.DEPLOYED_URL || 'https://fede2cr.github.io/azure-support-scripts/web').replace(/\/?$/, '/'),
+        baseURL: (process.env.DEPLOYED_URL || 'https://fede2cr.github.io/azure-support-scripts').replace(/\/?$/, '/'),
       },
     },
   ],

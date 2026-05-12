@@ -2153,6 +2153,19 @@ EOF
 create_fixture "test-cluster-events"
 
 ################################################################################
+# Test: Pacemaker high CPU detection from cluster logs
+# Verifies that clusterEvents parser detects pacemaker-controld high CPU load
+# notices and surfaces them in the Cluster Events section.
+################################################################################
+echo ""
+echo "=== Creating test-cluster-high-cpu.tar.xz ==="
+mkdir -p test-data/var/log/pacemaker
+cat > test-data/var/log/pacemaker/pacemaker.log << 'EOF'
+Apr 16 09:10:00 node01 pacemaker-controld[2404]: notice: High CPU load detected: 23.270000
+EOF
+create_fixture "test-cluster-high-cpu"
+
+################################################################################
 # Test: Cluster events detection from sosreport (RHEL format)
 # Verifies that clusterEvents parser handles sosreport structure:
 # - pacemaker.log in sos_strings as .tailed file

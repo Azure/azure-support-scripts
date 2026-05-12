@@ -118,6 +118,18 @@ if (typeof importScripts === 'function') {
     
     importScripts(versionedAsset('utils.js'));
     importScripts(versionedAsset('performance.js'));
+    // Import the supportfile WASM module (compiled from supportfile_core via
+    // wasm-pack, target=no-modules).  After importScripts, `wasm_bindgen` is
+    // a global initializer; we await it inside the Module init promise below
+    // before sending `ready` to the main thread.  Individual parser .js shims
+    // call into `wasm_bindgen.parse*` functions once initialization completes.
+    try {
+        importScripts(versionedAsset('supportfile-wasm/supportfile_wasm.js'));
+        importScripts(versionedAsset('wasm-bridge.js'));
+        debugLog('[Worker] supportfile WASM glue + bridge loaded');
+    } catch (e) {
+        console.error('[Worker] Failed to load supportfile WASM glue:', e);
+    }
     // Import external parser modules
     importScripts(versionedAsset('parsers/packages.js'));
     importScripts(versionedAsset('parsers/unix.js'));
@@ -1042,6 +1054,23 @@ LZMA_XZ_Streaming_Module({
     debugLog('[XZ Streaming Worker] HEAPU8 available:', !!Module.HEAPU8);
     debugLog('[XZ Streaming Worker] Exported functions:', Object.keys(Module).filter(k => k.startsWith('_')));
     
+    // Initialize the supportfile WASM module before signalling ready, so the
+    // first parse call from any shim is sync against an already-loaded WASM
+    // instance.  If wasm_bindgen is missing (script failed to load) we still
+    // continue — JS shims must check for self.SUPPORTFILE_WASM_READY.
+    return (typeof wasm_bindgen === 'function'
+        ? wasm_bindgen(versionedAsset('supportfile-wasm/supportfile_wasm_bg.wasm'))
+            .then(() => {
+                self.SUPPORTFILE_WASM_READY = true;
+                debugLog('[Worker] supportfile WASM initialized; version=' + wasm_bindgen.supportfileVersion());
+            })
+            .catch((err) => {
+                self.SUPPORTFILE_WASM_READY = false;
+                console.error('[Worker] supportfile WASM init failed:', err);
+            })
+        : Promise.resolve()
+    );
+}).then(() => {
     // Signal to main thread that worker is ready
     self.postMessage({ ready: true });
     debugLog('[XZ Streaming Worker] Ready message sent to main thread');
@@ -1056,8 +1085,22 @@ class IncrementalTARParser {
         this.buffer = new Uint8Array(0);
         this.pendingChunks = [];   // Chunks waiting to be merged into buffer
         this.pendingLength = 0;    // Total bytes in pendingChunks
+        // When the previous entry was a non-matching file whose data section
+        // exceeded what was already buffered at parse time, this holds the
+        // number of bytes that should be discarded from incoming chunks
+        // before any further data is queued. Keeps worker memory bounded
+        // even when the archive contains very large files we don't parse.
+        this.pendingSkip = 0;
         this.files = [];
+        // Cap the file inventory to bound worker memory on archives with
+        // hundreds of thousands of entries. getAnalysis() only returns the
+        // first 50 anyway; we still maintain an accurate `fileCount` via
+        // `totalFileCount` which is incremented for every file regardless of
+        // whether it's stored.
+        this.MAX_FILES_RETAINED = 5000;
+        this.totalFileCount = 0;
         this.directories = new Set();
+        this.MAX_DIRECTORIES_RETAINED = 5000;
         this.fileTypes = {};
         this.offset = 0;
         this.totalParsed = 0;
@@ -1084,8 +1127,50 @@ class IncrementalTARParser {
         this.nestedGzipDecompressedBytes = 0; // Decompressed size
     }
 
+    /**
+     * Bounded inventory append. We always count every file (so fileCount and
+     * the file-type histogram stay accurate), but only retain the first
+     * MAX_FILES_RETAINED entries in the `files` array. The UI shows at most
+     * the first 50, so retaining more would just waste memory on archives
+     * with hundreds of thousands of entries.
+     */
+    recordFile(filename, size, typeflag) {
+        this.totalFileCount++;
+        if (this.files.length < this.MAX_FILES_RETAINED) {
+            this.files.push({
+                name: filename,
+                size: size,
+                type: typeflag === 53 ? 'dir' : 'file'
+            });
+        }
+    }
+
+    /**
+     * Bounded directory tracking. Same rationale as recordFile: directory
+     * sets in deeply-nested archives can grow unbounded.
+     */
+    addDirectory(path) {
+        if (this.directories.size < this.MAX_DIRECTORIES_RETAINED) {
+            this.directories.add(path);
+        }
+    }
+
     // Add decompressed chunk to buffer and parse what we can
     addChunk(chunk) {
+        // Memory-efficiency: when the previous entry was a non-matching file
+        // larger than what was buffered at parse time, we mark its remaining
+        // data bytes for discard. Consume that many bytes from the front of
+        // this chunk before queueing anything. This prevents multi-GB archives
+        // from being held in worker memory just to be ignored later.
+        if (this.pendingSkip > 0) {
+            if (chunk.length <= this.pendingSkip) {
+                this.pendingSkip -= chunk.length;
+                return;
+            }
+            chunk = chunk.subarray(this.pendingSkip);
+            this.pendingSkip = 0;
+        }
+
         // Defer buffer concatenation: just queue the chunk
         this.pendingChunks.push(chunk);
         this.pendingLength += chunk.length;
@@ -1103,13 +1188,51 @@ class IncrementalTARParser {
         this.parseAvailableEntries();
     }
 
-    // Merge pending chunks into the main buffer in one copy
+    // Merge pending chunks into the main buffer in one copy.
+    //
+    // Memory-efficiency: when a single TAR entry is large (e.g. a multi-100 MB
+    // log), naive growth (allocate exactly remaining + pending each call) is
+    // O(N²) total bytes copied because every flush re-copies the whole prefix.
+    // We grow geometrically (at least double the previous capacity) so the
+    // total work is O(N) and peak memory stays close to 2× the entry size.
     flushPendingChunks() {
         if (this.pendingChunks.length === 0) return;
 
         const remaining = this.buffer.length - this.offset;
-        const newLen = remaining + this.pendingLength;
-        const merged = new Uint8Array(newLen);
+        const newDataLen = remaining + this.pendingLength;
+
+        // Reuse the existing backing buffer's tail capacity if there's room
+        // beyond the current view. We append at `byteOffset + length`, so the
+        // available room is measured from there — NOT from `offset`, which
+        // would over-count the bytes we have already consumed and lead to a
+        // RangeError ("Invalid typed array length") when the new view is
+        // constructed past the backing buffer's end.
+        const backing = this.buffer.buffer;
+        const tailStart = this.buffer.byteOffset + this.buffer.length;
+        const tailRoom = backing.byteLength - tailStart;
+        if (tailRoom >= this.pendingLength) {
+            // Append in place — no allocation, no copy of the prefix.
+            const view = new Uint8Array(backing, tailStart, this.pendingLength);
+            let pos = 0;
+            for (const c of this.pendingChunks) {
+                view.set(c, pos);
+                pos += c.length;
+            }
+            // Extend logical view to include the new data.
+            this.buffer = new Uint8Array(
+                backing,
+                this.buffer.byteOffset,
+                this.buffer.length + this.pendingLength
+            );
+            this.pendingChunks = [];
+            this.pendingLength = 0;
+            return;
+        }
+
+        // Need to reallocate. Grow geometrically to avoid quadratic copy.
+        const capacity = Math.max(newDataLen, this.buffer.length * 2, 64 * 1024);
+        const mergedBacking = new ArrayBuffer(capacity);
+        const merged = new Uint8Array(mergedBacking, 0, newDataLen);
 
         // Copy unprocessed portion of old buffer
         if (remaining > 0) {
@@ -1155,6 +1278,45 @@ class IncrementalTARParser {
 
             const entrySize = 512 + Math.ceil(header.size / 512) * 512;
 
+            // Memory-efficiency prefilter: if no parser will read the data
+            // section of this entry, advance past the header + data without
+            // ever buffering the data. We still record the file's metadata
+            // (filename, size, type) for the inventory.
+            if (!this.entryNeedsContent(header)) {
+                // Record lightweight metadata; never touch the (possibly huge)
+                // data section.
+                this.recordEntryMetadataOnly(header);
+
+                // Advance over the header (which IS in the buffer).
+                this.offset += 512;
+
+                // Discard data bytes that are already in the buffer …
+                const dataInBuffer = Math.min(
+                    this.buffer.length - this.offset,
+                    entrySize - 512
+                );
+                if (dataInBuffer > 0) {
+                    this.offset += dataInBuffer;
+                }
+
+                // … and discard the rest from incoming chunks via pendingSkip.
+                const dataNotYetSeen = (entrySize - 512) - dataInBuffer;
+                if (dataNotYetSeen > 0) {
+                    this.pendingSkip = dataNotYetSeen;
+                }
+
+                this.totalParsed++;
+
+                // Trim and continue. If we set pendingSkip we may not have
+                // any more parseable data right now; loop will exit.
+                if (this.offset > 512 * 1024) {
+                    this.buffer = this.buffer.subarray(this.offset);
+                    this.offset = 0;
+                }
+                if (this.pendingSkip > 0) break;
+                continue;
+            }
+
             // Check if we have the complete entry (including pending data)
             const buffered = this.buffer.length - this.offset;
             if (buffered < entrySize) {
@@ -1178,6 +1340,98 @@ class IncrementalTARParser {
         if (this.offset > 512 * 1024) {
             this.buffer = this.buffer.subarray(this.offset);
             this.offset = 0;
+        }
+    }
+
+    /**
+     * Decide whether the data section of a TAR entry must be buffered.
+     *
+     * Returns true for:
+     *   - GNU long-name and PAX extended-header entries (their data IS the
+     *     metadata for the next entry)
+     *   - A file whose name triggers SCC-report detection
+     *   - Any file whose name matches a parser's filePattern (when we already
+     *     know we are in an SCC report)
+     *
+     * Returns false for everything else (directories, empty files, files in
+     * `/proc/`, `/sys/`, large binaries, etc.). Their bytes are dropped on the
+     * floor — never copied into worker memory.
+     */
+    entryNeedsContent(header) {
+        const { filename, size, typeflag } = header;
+
+        // GNU long filename and PAX extended-header entries: the data section
+        // contains metadata for the *next* entry, so we must read it.
+        if (
+            typeflag === 76 || typeflag === 'L'.charCodeAt(0) ||
+            typeflag === 120 || typeflag === 103 ||
+            typeflag === 'x'.charCodeAt(0) || typeflag === 'g'.charCodeAt(0)
+        ) {
+            return true;
+        }
+
+        // Empty entries and directories carry no parseable content.
+        if (size === 0) return false;
+        if (typeflag === 53 || typeflag === '5'.charCodeAt(0)) return false;
+
+        // SCC detection runs on filename only — but we'll need to extract
+        // content immediately on the very first detection file as well.
+        if (!this.isSCCReport && SCC_RULES.detection.isSCCReport(filename)) {
+            return true;
+        }
+
+        // Files outside an SCC report are inventoried but never parsed.
+        if (!this.isSCCReport) return false;
+
+        // Inside an SCC report, only files matching at least one parser
+        // pattern are worth buffering.
+        for (const ruleName in SCC_RULES) {
+            const rule = SCC_RULES[ruleName];
+            if (ruleName === 'detection' || !rule || !rule.filePattern) continue;
+            if (rule.filePattern.test(filename)) return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Lightweight bookkeeping for entries whose data was discarded.
+     * Mirrors the bookkeeping side of processEntry() without touching the
+     * (already-discarded) data bytes.
+     */
+    recordEntryMetadataOnly(header) {
+        const { filename, size, typeflag } = header;
+
+        // Track current file for progress reporting
+        this.currentFile = filename;
+
+        // Clear PAX headers after a regular file (matches processEntry behavior)
+        if (typeflag === 48 || typeflag === 0 || typeflag === '0'.charCodeAt(0)) {
+            this.paxExtendedHeaders = {};
+        }
+
+        // Track directories
+        if (filename.includes('/')) {
+            const parts = filename.split('/');
+            let path = '';
+            for (let i = 0; i < parts.length - 1; i++) {
+                path += parts[i] + '/';
+                this.addDirectory(path);
+            }
+        }
+
+        // Track file-type histogram
+        const ext = filename.includes('.') ? filename.split('.').pop().toLowerCase() : 'none';
+        this.fileTypes[ext] = (this.fileTypes[ext] || 0) + 1;
+
+        // Inventory the file (bounded; counts all, retains first N)
+        this.recordFile(filename, size, typeflag);
+
+        // Track *all* .gz entries (not just the ones we actually decompress)
+        if (filename.toLowerCase().endsWith('.gz') &&
+            (typeflag === 48 || typeflag === 0 || typeflag === '0'.charCodeAt(0))) {
+            this.nestedGzipTotalCount++;
+            this.nestedGzipTotalCompressedBytes += size;
         }
     }
 
@@ -1326,7 +1580,7 @@ class IncrementalTARParser {
             let path = '';
             for (let i = 0; i < parts.length - 1; i++) {
                 path += parts[i] + '/';
-                this.directories.add(path);
+                this.addDirectory(path);
             }
         }
 
@@ -1334,12 +1588,8 @@ class IncrementalTARParser {
         const ext = filename.includes('.') ? filename.split('.').pop().toLowerCase() : 'none';
         this.fileTypes[ext] = (this.fileTypes[ext] || 0) + 1;
 
-        // Store file entry
-        this.files.push({
-            name: filename,
-            size: size,
-            type: typeflag === 53 ? 'dir' : 'file'
-        });
+        // Store file entry (bounded; counts all, retains first N)
+        this.recordFile(filename, size, typeflag);
         
         // Track ALL .gz files in the archive (not just the ones we decompress)
         if (filename.toLowerCase().endsWith('.gz') && (typeflag === 48 || typeflag === 0 || typeflag === '0'.charCodeAt(0))) {
@@ -1751,8 +2001,12 @@ class IncrementalTARParser {
                                             if (result.nftables.ruleset) existing.nftables.ruleset = result.nftables.ruleset;
                                             if (result.nftables.tables) existing.nftables.tables = result.nftables.tables;
                                             // Merge warnings and raw sections
-                                            existing.warnings.push(...result.warnings.filter(w => !existing.warnings.includes(w)));
-                                            Object.assign(existing.rawSections, result.rawSections);
+                                            existing.warnings.push(...result.warnings.filter(w => {
+                                                const key = typeof w === 'string' ? w : JSON.stringify(w);
+                                                return !existing.warnings.some(e => (typeof e === 'string' ? e : JSON.stringify(e)) === key);
+                                            }));
+                                            if (!existing.rawSections) existing.rawSections = {};
+                                            if (result.rawSections) Object.assign(existing.rawSections, result.rawSections);
                                             // Re-determine active firewall
                                             existing.activeFirewall = firewallRulesParser.determineActiveFirewall(existing);
                                         }
@@ -2060,7 +2314,7 @@ class IncrementalTARParser {
             let path = '';
             for (let i = 0; i < parts.length - 1; i++) {
                 path += parts[i] + '/';
-                this.directories.add(path);
+                this.addDirectory(path);
             }
         }
 
@@ -2068,12 +2322,8 @@ class IncrementalTARParser {
         const ext = filename.includes('.') ? filename.split('.').pop().toLowerCase() : 'none';
         this.fileTypes[ext] = (this.fileTypes[ext] || 0) + 1;
 
-        // Store file entry
-        this.files.push({
-            name: filename,
-            size: size,
-            type: filename.endsWith('/') ? 'dir' : 'file'
-        });
+        // Store file entry (bounded; counts all, retains first N)
+        this.recordFile(filename, size, filename.endsWith('/') ? 53 : 48);
 
         // Skip directories and empty files
         if (size === 0 || filename.endsWith('/')) return;
@@ -2263,8 +2513,12 @@ class IncrementalTARParser {
                             existing.nftables.detected = existing.nftables.detected || result.nftables.detected;
                             if (result.nftables.ruleset) existing.nftables.ruleset = result.nftables.ruleset;
                             if (result.nftables.tables) existing.nftables.tables = result.nftables.tables;
-                            existing.warnings.push(...result.warnings.filter(w => !existing.warnings.includes(w)));
-                            Object.assign(existing.rawSections, result.rawSections);
+                            existing.warnings.push(...result.warnings.filter(w => {
+                                const key = typeof w === 'string' ? w : JSON.stringify(w);
+                                return !existing.warnings.some(e => (typeof e === 'string' ? e : JSON.stringify(e)) === key);
+                            }));
+                            if (!existing.rawSections) existing.rawSections = {};
+                            if (result.rawSections) Object.assign(existing.rawSections, result.rawSections);
                             existing.activeFirewall = firewallRulesParser.determineActiveFirewall(existing);
                         }
                         debugLog(`[ZIP Parser] Rule 'firewallRules' accumulated from ${matchFilename} (active: ${this.analysisResults[ruleName].activeFirewall})`);
@@ -2912,7 +3166,7 @@ class IncrementalTARParser {
         }
         
         const analysisData = {
-            fileCount: this.files.length,
+            fileCount: this.totalFileCount || this.files.length,
             directories: Array.from(this.directories).sort(),
             fileTypes: this.fileTypes,
             files: this.files.slice(0, 50), // Return first 50 files
@@ -3093,6 +3347,39 @@ class IncrementalTARParser {
     finish() {
         // Parse any remaining complete entries
         this.parseAvailableEntries();
+
+        // End-of-stream end-marker detection.
+        //
+        // The strict isEndMarker() requires 1024 contiguous zero bytes in the
+        // buffer. Once the underlying decompressor stops feeding chunks we may
+        // legitimately have <1024 bytes left (the trailing zero block(s) of the
+        // archive plus any padding). At that point we know no more data is
+        // coming, so any remaining zero-only tail of >= 512 bytes can safely be
+        // treated as the TAR end marker.
+        if (!this.foundEndMarker) {
+            // Drain any still-pending chunks into the buffer for inspection.
+            if (this.pendingLength > 0) {
+                this.flushPendingChunks();
+            }
+            const tailLen = this.buffer.length - this.offset;
+            if (tailLen >= 512) {
+                let allZero = true;
+                for (let i = this.offset; i < this.buffer.length; i++) {
+                    if (this.buffer[i] !== 0) { allZero = false; break; }
+                }
+                if (allZero) {
+                    this.foundEndMarker = true;
+                    debugLog(`[TAR Parser] Treating ${tailLen}-byte zero tail as end marker`);
+                }
+            } else if (tailLen === 0 && this.pendingSkip === 0 && this.totalParsed > 0) {
+                // Stream ended cleanly on an entry boundary with nothing left
+                // over: the archive's last entry padding effectively *is* the
+                // end marker for our purposes.
+                this.foundEndMarker = true;
+                debugLog('[TAR Parser] Stream ended on clean entry boundary; treating as end marker');
+            }
+        }
+
         const analysis = this.getAnalysis();
 
         // Output performance report once at the end
@@ -3423,6 +3710,13 @@ self.onmessage = async function(e) {
             // Process input in chunks
             let streamComplete = false;
             let lastStatus = 0;
+            // Throttle progress messages so the main thread is not flooded.
+            // For multi-GB archives the per-chunk loop produces tens of
+            // thousands of postMessage calls; the UI re-render cost on the
+            // main thread becomes the bottleneck and the tab eventually
+            // shows "page isn't responding". Cap to ~20 updates/sec.
+            let lastProgressPostMs = 0;
+            const PROGRESS_MIN_INTERVAL_MS = 50;
 
             while (inputOffset < inputSize) {
                 // Get next chunk of input
@@ -3474,14 +3768,20 @@ self.onmessage = async function(e) {
                     tarParser.addChunk(outputData);
                     totalDecompressed += outLen;
 
-                    // Send lightweight progress update (avoid cloning full analysis)
-                    const progress = Math.floor((inputOffset / inputSize) * 100);
-                    self.postMessage({
-                        progress,
-                        decompressed: totalDecompressed,
-                        currentFile: tarParser.currentFile,
-                        analysis: { fileCount: tarParser.files.length }
-                    });
+                    // Send lightweight progress update (avoid cloning full analysis).
+                    // Throttled: at most one message every PROGRESS_MIN_INTERVAL_MS
+                    // to keep the main thread responsive for very large archives.
+                    const nowMs = Date.now();
+                    if (nowMs - lastProgressPostMs >= PROGRESS_MIN_INTERVAL_MS) {
+                        lastProgressPostMs = nowMs;
+                        const progress = Math.floor((inputOffset / inputSize) * 100);
+                        self.postMessage({
+                            progress,
+                            decompressed: totalDecompressed,
+                            currentFile: tarParser.currentFile,
+                            analysis: { fileCount: tarParser.totalFileCount || tarParser.files.length }
+                        });
+                    }
                     
                     // Hint to GC that outputData can be collected
                     // (it's been processed by tarParser.addChunk)
@@ -3528,8 +3828,18 @@ self.onmessage = async function(e) {
             const finalAnalysis = tarParser.finish();
 
             // Check if TAR archive is complete (has end marker)
-            // An incomplete TAR (from truncated XZ) won't have the end marker
-            if (!tarParser.foundEndMarker && finalAnalysis.fileCount > 0) {
+            //
+            // We only flag "truncated" when XZ itself signaled corruption
+            // (throws a Decompression error above) OR when the consumer fed
+            // less than the full input. Reaching this code means every byte
+            // of the .txz was decompressed without error, so the *file* is
+            // intact. A missing TAR end marker at this point is a parse
+            // glitch (e.g. a non-standard PAX size attribute or a corrupt
+            // entry header in the inner tar) — not a download truncation —
+            // so we surface a successful analysis instead of misleading the
+            // user with a "truncated" warning.
+            const inputFullyConsumed = (inputOffset >= inputSize);
+            if (!tarParser.foundEndMarker && finalAnalysis.fileCount > 0 && !inputFullyConsumed) {
                 debugLog('[XZ Streaming Worker] WARNING: TAR archive missing end marker - file may be truncated');
                 
                 self.postMessage({

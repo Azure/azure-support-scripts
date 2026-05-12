@@ -60,8 +60,7 @@ const REQUIRED_PACKAGES: &[(&str, PackageRule)] = &[
 type PackageEntry = (String, String, usize);
 
 fn extract_numeric_version(input: &str) -> Option<String> {
-    Regex::new(r"(\d+\.\d+(?:\.\d+)?)")
-        .unwrap()
+    crate::cached_regex!(r"(\d+\.\d+(?:\.\d+)?)")
         .captures(input)
         .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
 }
@@ -267,7 +266,7 @@ fn parse_zypper_history(content: &str) -> (Vec<PackageEntry>, Vec<String>) {
 }
 
 fn parse_dnf_yum_log(content: &str) -> (Vec<PackageEntry>, Vec<String>) {
-    let installed_re = Regex::new(r"(?:^\d{4}-\d{2}-\d{2}|^[A-Z][a-z]{2}\s+\d+).*?Installed:\s*(.+)").unwrap();
+    let installed_re = crate::cached_regex!(r"(?:^\d{4}-\d{2}-\d{2}|^[A-Z][a-z]{2}\s+\d+).*?Installed:\s*(.+)");
     let mut entries = Vec::new();
     let mut raw_lines = Vec::new();
 
@@ -377,7 +376,7 @@ pub fn parse_distro_packages(content: &str, source_path: &str) -> DistroPackages
             r"(?i)^# rpm -qa --queryformat.*NAME.*DISTRIBUTION.*VERSION",
         )
         .unwrap();
-        let queryformat_sigpgp = Regex::new(r"(?i)^# rpm -qa --queryformat.*SIGPGP").unwrap();
+        let queryformat_sigpgp = crate::cached_regex!(r"(?i)^# rpm -qa --queryformat.*SIGPGP");
         let mut kept: Vec<&str> = Vec::new();
         let mut in_pkg_list = false;
         for line in trimmed.lines() {

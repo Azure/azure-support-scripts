@@ -305,7 +305,7 @@ pub fn parse_lvm_config(content: &str, source_path: &str) -> LvmConfigResult {
         warnings: Vec::new(),
         source_path: source_path.to_string(),
     };
-    let lv_re = Regex::new(r"^(\S+)\s+(\S+)\s+(\S+)\s+(<?\d+[\.\d]*[KMGTPmkgtp]?)$").unwrap();
+    let lv_re = crate::cached_regex!(r"^(\S+)\s+(\S+)\s+(\S+)\s+(<?\d+[\.\d]*[KMGTPmkgtp]?)$");
 
     for (idx, raw_line) in content.lines().enumerate() {
         if is_lvm_noise(raw_line) {
@@ -401,12 +401,12 @@ pub fn parse_raid_config(content: &str, source_path: &str) -> RaidConfigResult {
         source_path: source_path.to_string(),
     };
 
-    let header_re = Regex::new(r"^(md\d+)\s*:\s*(\w+)\s+(\w+)\s+(.+)$").unwrap();
-    let dev_re = Regex::new(r"(\w+)\[\d+\](?:\((\w+)\))?").unwrap();
-    let blocks_re = Regex::new(r"(\d+)\s+blocks").unwrap();
-    let pct_re = Regex::new(r"([\d.]+)%").unwrap();
-    let finish_re = Regex::new(r"finish=([^\s]+)").unwrap();
-    let speed_re = Regex::new(r"speed=([^\s]+)").unwrap();
+    let header_re = crate::cached_regex!(r"^(md\d+)\s*:\s*(\w+)\s+(\w+)\s+(.+)$");
+    let dev_re = crate::cached_regex!(r"(\w+)\[\d+\](?:\((\w+)\))?");
+    let blocks_re = crate::cached_regex!(r"(\d+)\s+blocks");
+    let pct_re = crate::cached_regex!(r"([\d.]+)%");
+    let finish_re = crate::cached_regex!(r"finish=([^\s]+)");
+    let speed_re = crate::cached_regex!(r"speed=([^\s]+)");
 
     let mut current: Option<RaidArray> = None;
     for (idx, line) in content.lines().enumerate() {
@@ -531,10 +531,10 @@ pub fn parse_btrfs_config(content: &str, source_path: &str) -> BtrfsConfigResult
         source_path: source_path.to_string(),
     };
 
-    let label_re = Regex::new(r"Label:\s*(?:'([^']*)'|none)\s+uuid:\s*(\S+)").unwrap();
+    let label_re = crate::cached_regex!(r"Label:\s*(?:'([^']*)'|none)\s+uuid:\s*(\S+)");
     let dev_re =
-        Regex::new(r"devid\s+\d+\s+size\s+(\S+)\s+used\s+\S+\s+path\s+(\S+)").unwrap();
-    let sub_re = Regex::new(r"ID\s+(\d+)\s+.*\s+path\s+(.+)$").unwrap();
+        crate::cached_regex!(r"devid\s+\d+\s+size\s+(\S+)\s+used\s+\S+\s+path\s+(\S+)");
+    let sub_re = crate::cached_regex!(r"ID\s+(\d+)\s+.*\s+path\s+(.+)$");
 
     let mut current_fs: Option<BtrfsFilesystem> = None;
     for (idx, line) in content.lines().enumerate() {
@@ -591,11 +591,11 @@ pub fn parse_block_devices(content: &str, source_path: &str) -> BlockDevicesResu
     let mut mount_points = BTreeMap::new();
     let mut device_map = BTreeMap::<String, BlockDeviceInfo>::new();
 
-    let blkid_re = Regex::new(r"^(\/dev\/\S+):\s*(.*)$").unwrap();
-    let type_re = Regex::new(r#"TYPE=\"([^\"]+)\""#).unwrap();
-    let uuid_re = Regex::new(r#"UUID=\"([^\"]+)\""#).unwrap();
+    let blkid_re = crate::cached_regex!(r"^(\/dev\/\S+):\s*(.*)$");
+    let type_re = crate::cached_regex!(r#"TYPE=\"([^\"]+)\""#);
+    let uuid_re = crate::cached_regex!(r#"UUID=\"([^\"]+)\""#);
     let blkid_alt_re =
-        Regex::new(r"^(\/dev\/\S+):\s+(\S+)\s+\[uuid=([^\]]*)\]").unwrap();
+        crate::cached_regex!(r"^(\/dev\/\S+):\s+(\S+)\s+\[uuid=([^\]]*)\]");
 
     for (idx, raw_line) in content.lines().enumerate() {
         let line_no = idx + 1;
@@ -731,7 +731,47 @@ pub fn parse_block_devices(content: &str, source_path: &str) -> BlockDevicesResu
 // fstab
 // ---------------------------------------------------------------------------
 
+/// SCC's `fs-diskio.txt` bundles multiple files into one stream, with the
+/// `/etc/fstab` content introduced by a `# /etc/fstab` header line and
+/// terminated by the next `#==` section marker. Blank lines and commented
+/// fstab entries (e.g. `#/dev/system/swap`) are legitimate fstab content
+/// and must NOT terminate the section. Returns `None` if no header is found
+/// (i.e. the input already looks like a raw fstab).
+fn extract_fstab_from_scc(content: &str) -> Option<String> {
+    let header_re = crate::cached_regex!(r"^#\s*/etc/fstab\s*$");
+    if !content.lines().any(|l| header_re.is_match(l)) {
+        return None;
+    }
+    let mut lines: Vec<&str> = Vec::new();
+    let mut in_section = false;
+    for line in content.lines() {
+        if !in_section {
+            if header_re.is_match(line) {
+                in_section = true;
+            }
+            continue;
+        }
+        if line.starts_with("#==") {
+            break;
+        }
+        lines.push(line);
+    }
+    while lines.first().map_or(false, |l| l.trim().is_empty()) {
+        lines.remove(0);
+    }
+    while lines.last().map_or(false, |l| l.trim().is_empty()) {
+        lines.pop();
+    }
+    if lines.is_empty() { None } else { Some(lines.join("\n")) }
+}
+
 pub fn parse_fstab_analysis(content: &str, source_path: &str) -> FstabAnalysisResult {
+    // If we were given the SCC multipart file (fs-diskio.txt) instead of a
+    // raw fstab, extract just the `# /etc/fstab` section. Without this, we
+    // happily parse lsblk/df/blkid rows as fstab entries.
+    let extracted = extract_fstab_from_scc(content);
+    let effective_content: &str = extracted.as_deref().unwrap_or(content);
+
     let mut entries = Vec::new();
     let mut warnings = Vec::new();
     let os_mounts = ["/", "/boot", "/boot/efi", "/usr", "/var", "/tmp", "/home", "/opt"];
@@ -741,7 +781,7 @@ pub fn parse_fstab_analysis(content: &str, source_path: &str) -> FstabAnalysisRe
         "bpf", "binfmt_misc", "autofs", "sunrpc",
     ];
 
-    for (idx, raw_line) in content.lines().enumerate() {
+    for (idx, raw_line) in effective_content.lines().enumerate() {
         let line_no = idx + 1;
         let trimmed = raw_line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
@@ -889,7 +929,7 @@ pub fn parse_mtab_analysis(content: &str, source_path: &str) -> MtabAnalysisResu
         "squashfs", "rootfs", "ramfs",
     ];
     let mount_re =
-        Regex::new(r"^(\S+)\s+on\s+(\S+)\s+type\s+(\S+)\s+\(([^)]*)\)").unwrap();
+        crate::cached_regex!(r"^(\S+)\s+on\s+(\S+)\s+type\s+(\S+)\s+\(([^)]*)\)");
 
     for (idx, raw_line) in content.lines().enumerate() {
         let line_no = idx + 1;

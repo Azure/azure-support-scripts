@@ -1,4 +1,3 @@
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -100,18 +99,18 @@ pub fn parse_firewall_rules(content: &str, source_path: &str) -> FirewallRulesRe
     if trimmed.contains("firewalld") || trimmed.contains("firewall-cmd") || trimmed.contains("FirewallBackend") {
         // Avoid false positives where the only mention is in a comment header
         // (e.g. SCC `# rpm -V nftables-...` lines or rpm name strings).
-        let has_real_firewalld_signal = Regex::new(r"(?im)^[^#].*\bfirewalld\b|firewall-cmd|^FirewallBackend\s*=|FirewallD is not running|Active:\s*(active|inactive)").unwrap().is_match(trimmed);
+        let has_real_firewalld_signal = crate::cached_regex!(r"(?im)^[^#].*\bfirewalld\b|firewall-cmd|^FirewallBackend\s*=|FirewallD is not running|Active:\s*(active|inactive)").is_match(trimmed);
         if has_real_firewalld_signal {
             result.firewalld.detected = true;
             result.found = true;
         }
 
-        let active_re = Regex::new(r"(?im)Active:\s+active\s+\(running\)").unwrap();
-        let running_only_re = Regex::new(r"(?im)^running$").unwrap();
+        let active_re = crate::cached_regex!(r"(?im)Active:\s+active\s+\(running\)");
+        let running_only_re = crate::cached_regex!(r"(?im)^running$");
         if active_re.is_match(trimmed) || running_only_re.is_match(trimmed) {
             result.firewalld.running = true;
         }
-        let inactive_re = Regex::new(r"(?i)Active:\s+inactive|FirewallD is not running").unwrap();
+        let inactive_re = crate::cached_regex!(r"(?i)Active:\s+inactive|FirewallD is not running");
         if inactive_re.is_match(trimmed) {
             result.firewalld.running = false;
             let inactive_line = find_line(content, |line| inactive_re.is_match(line));
@@ -125,7 +124,7 @@ pub fn parse_firewall_rules(content: &str, source_path: &str) -> FirewallRulesRe
             });
         }
 
-        if let Some(caps) = Regex::new(r"(?m)^FirewallBackend\s*=\s*(.+)$").unwrap().captures(trimmed) {
+        if let Some(caps) = crate::cached_regex!(r"(?m)^FirewallBackend\s*=\s*(.+)$").captures(trimmed) {
             result.firewalld.backend = caps.get(1).map(|m| m.as_str().trim().to_string());
         }
         if trimmed.contains("(active)") || trimmed.contains("services:") {
@@ -139,7 +138,7 @@ pub fn parse_firewall_rules(content: &str, source_path: &str) -> FirewallRulesRe
     // Detect a real nftables ruleset – require an actual `table <fam> NAME {`
     // declaration, not just a stray substring (avoids false positives from
     // comment lines like `# /usr/sbin/nft list tables` or rpm names).
-    let nft_table_re = Regex::new(r"(?m)^\s*table\s+(?:inet|ip|ip6|arp|bridge|netdev)\s+\S+\s*\{").unwrap();
+    let nft_table_re = crate::cached_regex!(r"(?m)^\s*table\s+(?:inet|ip|ip6|arp|bridge|netdev)\s+\S+\s*\{");
     let has_nft_table = nft_table_re.is_match(trimmed);
     if has_nft_table {
         result.nftables.detected = true;
@@ -154,7 +153,7 @@ pub fn parse_firewall_rules(content: &str, source_path: &str) -> FirewallRulesRe
         result.found = true;
     }
     // Capture missing-module notices regardless of whether rules were found.
-    if let Some(caps) = Regex::new(r"The\s+(\S+)\s+module is not loaded").unwrap().captures(trimmed) {
+    if let Some(caps) = crate::cached_regex!(r"The\s+(\S+)\s+module is not loaded").captures(trimmed) {
         if let Some(module) = caps.get(1).map(|m| m.as_str().to_string()) {
             result.iptables.modules.push(module);
         }

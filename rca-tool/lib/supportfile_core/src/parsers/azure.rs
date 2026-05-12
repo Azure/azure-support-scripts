@@ -1,4 +1,3 @@
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -245,7 +244,7 @@ pub fn parse_azure_vm_properties(content: &str, source_path: &str) -> AzureVmPro
 
     let mut values = HashMap::new();
     for line in content.lines() {
-        if let Some(caps) = Regex::new(r"^(\w+):\s*(.+)$").unwrap().captures(line.trim()) {
+        if let Some(caps) = crate::cached_regex!(r"^(\w+):\s*(.+)$").captures(line.trim()) {
             values.insert(caps.get(1).map(|m| m.as_str()).unwrap_or_default().to_string(), caps.get(2).map(|m| m.as_str()).unwrap_or_default().trim().to_string());
         }
     }
@@ -284,18 +283,18 @@ pub fn parse_suse_cloud_register(content: &str, source_path: &str) -> SuseCloudR
     for (line_idx, line) in truncated.lines().enumerate().take(1000) {
         let line_no = line_idx + 1;
         let trimmed = line.trim();
-        if let Some(caps) = Regex::new(r"SUSEConnect\s+--url\s+(https?://[^\s]+)").unwrap().captures(trimmed) {
+        if let Some(caps) = crate::cached_regex!(r"SUSEConnect\s+--url\s+(https?://[^\s]+)").captures(trimmed) {
             registration_server = caps.get(1).map(|m| m.as_str().trim().to_string());
             server_line = Some(line_no);
             break;
         }
-        if let Some(caps) = Regex::new(r"(?i)url\s*=\s*(.+)").unwrap().captures(trimmed) {
+        if let Some(caps) = crate::cached_regex!(r"(?i)url\s*=\s*(.+)").captures(trimmed) {
             registration_server = caps.get(1).map(|m| m.as_str().trim().to_string());
             server_line = Some(line_no);
             break;
         }
         if registration_server.is_none() {
-            if let Some(caps) = Regex::new(r"(?i)server\s*=\s*(.+)").unwrap().captures(trimmed) {
+            if let Some(caps) = crate::cached_regex!(r"(?i)server\s*=\s*(.+)").captures(trimmed) {
                 registration_server = caps.get(1).map(|m| m.as_str().trim().to_string());
                 server_line = Some(line_no);
                 break;
@@ -430,14 +429,14 @@ pub fn parse_waagent_config(content: &str, source_path: &str) -> WaagentConfigRe
 
 pub fn parse_waagent_log(content: &str, source_path: &str) -> WaagentLogResult {
     let lines: Vec<&str> = content.lines().collect();
-    let ts_regex = Regex::new(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.\d+Z\s+").unwrap();
-    let heartbeat_regex = Regex::new(r"WALinuxAgent-(\S+)\s+is running").unwrap();
-    let corr_regex = Regex::new(r"correlation ID: ([0-9a-f-]+)").unwrap();
-    let name_regex = Regex::new(r"name=([^,\s]+)").unwrap();
-    let op_regex = Regex::new(r"op=([^,\s]+)").unwrap();
-    let msg_regex = Regex::new(r"message=(.+)").unwrap();
-    let ext_regex = Regex::new(r"extension\s+(\S+)").unwrap();
-    let tuple_regex = Regex::new(r#"\(\\?\"([^\"\\]+)\\?\",\s*\\?\"([^\"\\]+)\\?\"\)"#).unwrap();
+    let ts_regex = crate::cached_regex!(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.\d+Z\s+");
+    let heartbeat_regex = crate::cached_regex!(r"WALinuxAgent-(\S+)\s+is running");
+    let corr_regex = crate::cached_regex!(r"correlation ID: ([0-9a-f-]+)");
+    let name_regex = crate::cached_regex!(r"name=([^,\s]+)");
+    let op_regex = crate::cached_regex!(r"op=([^,\s]+)");
+    let msg_regex = crate::cached_regex!(r"message=(.+)");
+    let ext_regex = crate::cached_regex!(r"extension\s+(\S+)");
+    let tuple_regex = crate::cached_regex!(r#"\(\\?\"([^\"\\]+)\\?\",\s*\\?\"([^\"\\]+)\\?\"\)"#);
 
     let mut version_history = Vec::new();
     let mut current_version: Option<String> = None;
@@ -510,7 +509,7 @@ pub fn parse_waagent_log(content: &str, source_path: &str) -> WaagentLogResult {
     let mut extension_status_summary = None;
     for line in lines.iter().rev() {
         if line.contains("Extension status:") {
-            if let Some(caps) = Regex::new(r"Extension status:\s*\[(.+)\]").unwrap().captures(line) {
+            if let Some(caps) = crate::cached_regex!(r"Extension status:\s*\[(.+)\]").captures(line) {
                 let raw = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
                 let entries = tuple_regex
                     .captures_iter(raw)

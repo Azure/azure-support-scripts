@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 fn extract_timestamp(line: &str) -> Option<String> {
-    let iso_re = Regex::new(r"^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)").unwrap();
-    let syslog_re = Regex::new(r"^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?)").unwrap();
+    let iso_re = crate::cached_regex!(r"^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)");
+    let syslog_re = crate::cached_regex!(r"^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?)");
     iso_re
         .captures(line)
         .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
@@ -192,7 +192,7 @@ pub fn parse_ssh_service_issues(content: &str, source_path: &str) -> ServiceEven
         if !(line.contains("OpenSSH") || line.contains("/var/empty/sshd")) {
             continue;
         }
-        if Regex::new(r"(?i)Failed to start OpenSSH server daemon").unwrap().is_match(line) {
+        if crate::cached_regex!(r"(?i)Failed to start OpenSSH server daemon").is_match(line) {
             events.push(ServiceEvent {
                 timestamp: extract_timestamp(line).unwrap_or_else(|| "Date not detected".to_string()),
                 line_number: i + 1,
@@ -202,7 +202,7 @@ pub fn parse_ssh_service_issues(content: &str, source_path: &str) -> ServiceEven
                 source_path: source_path.to_string(),
             });
         }
-        if Regex::new(r"(?i)/var/empty/sshd must be owned by root and not group or world-writable").unwrap().is_match(line) {
+        if crate::cached_regex!(r"(?i)/var/empty/sshd must be owned by root and not group or world-writable").is_match(line) {
             events.push(ServiceEvent {
                 timestamp: extract_timestamp(line).unwrap_or_else(|| "Date not detected".to_string()),
                 line_number: i + 1,
@@ -305,7 +305,7 @@ pub fn parse_ms_defender_config(content: &str, source_path: &str) -> ConfigCheck
 pub fn parse_involflt_version(content: &str, source_path: &str) -> InvolfltVersionResult {
     let mut result = InvolfltVersionResult {
         found: false,
-        loaded: Regex::new(r"(?m)^involflt\s+\d+").unwrap().is_match(content),
+        loaded: crate::cached_regex!(r"(?m)^involflt\s+\d+").is_match(content),
         version: None,
         build_date: None,
         filename: None,
@@ -314,20 +314,20 @@ pub fn parse_involflt_version(content: &str, source_path: &str) -> InvolfltVersi
         source_path: source_path.to_string(),
     };
 
-    if let Some(caps) = Regex::new(r"(?m)^version:\s*(.+)$").unwrap().captures(content) {
+    if let Some(caps) = crate::cached_regex!(r"(?m)^version:\s*(.+)$").captures(content) {
         result.version = caps.get(1).map(|m| m.as_str().trim().to_string());
         result.build_date = result
             .version
             .as_ref()
-            .and_then(|v| Regex::new(r"([A-Za-z]+\s+\d+\s+\d{4})").unwrap().captures(v))
+            .and_then(|v| crate::cached_regex!(r"([A-Za-z]+\s+\d+\s+\d{4})").captures(v))
             .and_then(|c| c.get(1).map(|m| m.as_str().to_string()));
         result.found = true;
     }
-    if let Some(caps) = Regex::new(r"(?m)^filename:\s*(.+)$").unwrap().captures(content) {
+    if let Some(caps) = crate::cached_regex!(r"(?m)^filename:\s*(.+)$").captures(content) {
         result.filename = caps.get(1).map(|m| m.as_str().trim().to_string());
         result.found = true;
     }
-    if let Some(caps) = Regex::new(r"(?m)^description:\s*(.+)$").unwrap().captures(content) {
+    if let Some(caps) = crate::cached_regex!(r"(?m)^description:\s*(.+)$").captures(content) {
         result.description = caps.get(1).map(|m| m.as_str().trim().to_string());
         result.found = true;
     }
@@ -338,7 +338,7 @@ pub fn parse_involflt_version(content: &str, source_path: &str) -> InvolfltVersi
 }
 
 pub fn parse_involflt_kernel_version(content: &str, source_path: &str) -> InvolfltKernelVersionResult {
-    let re = Regex::new(r"(?i)involflt\[involflt_init[^\]]*\]:\s*Version\s*-\s*([\d.]+)").unwrap();
+    let re = crate::cached_regex!(r"(?i)involflt\[involflt_init[^\]]*\]:\s*Version\s*-\s*([\d.]+)");
     let mut version = None;
     let mut source_line = None;
     for (i, line) in content.lines().enumerate() {

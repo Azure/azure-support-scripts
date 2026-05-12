@@ -1,4 +1,3 @@
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -80,8 +79,7 @@ pub fn parse_vmcore_dmesg(content: &str, source_path: &str) -> VmcoreCrash {
     let mut in_call_trace = false;
     for (line_idx, line) in content.lines().enumerate() {
         let line_no = line_idx + 1;
-        if let Some(c) = Regex::new(r"Kernel panic - not syncing:\s*(.+)")
-            .unwrap()
+        if let Some(c) = crate::cached_regex!(r"Kernel panic - not syncing:\s*(.+)")
             .captures(line)
         {
             crash.panic_reason = Some(c[1].trim().to_string());
@@ -89,14 +87,12 @@ pub fn parse_vmcore_dmesg(content: &str, source_path: &str) -> VmcoreCrash {
             in_call_trace = false;
             crash.call_trace.clear();
         }
-        if let Some(c) = Regex::new(r"Hardware name:\s*(.+)")
-            .unwrap()
+        if let Some(c) = crate::cached_regex!(r"Hardware name:\s*(.+)")
             .captures(line)
         {
             crash.hardware = Some(c[1].trim().replace(", BIOS", ""));
         }
-        if let Some(c) = Regex::new(r"CPU:\s*(\d+)\s+PID:\s*(\d+)\s+Comm:\s*(\S+).*(Not tainted|Tainted:\s*\S*)\s+(\S+?)(?:\s+#\d+)?\s*$")
-            .unwrap()
+        if let Some(c) = crate::cached_regex!(r"CPU:\s*(\d+)\s+PID:\s*(\d+)\s+Comm:\s*(\S+).*(Not tainted|Tainted:\s*\S*)\s+(\S+?)(?:\s+#\d+)?\s*$")
             .captures(line)
         {
             crash.cpu = c[1].parse::<i32>().ok();
@@ -143,8 +139,7 @@ pub fn parse_crash_listing(content: &str, source_path: &str) -> Option<CrashList
 
     for (line_idx, line) in content.lines().enumerate() {
         let line_no = line_idx + 1;
-        if let Some(c) = Regex::new(r"^(\/var\/crash\/.+):$")
-            .unwrap()
+        if let Some(c) = crate::cached_regex!(r"^(\/var\/crash\/.+):$")
             .captures(line.trim())
         {
             current_dir = Some(c[1].to_string());
@@ -154,13 +149,11 @@ pub fn parse_crash_listing(content: &str, source_path: &str) -> Option<CrashList
         if dir == "/var/crash" {
             continue;
         }
-        if let Some(c) = Regex::new(r"\s+(\d+)\s+\w+\s+\d+\s+[\d:]+\s+(vmcore)$")
-            .unwrap()
+        if let Some(c) = crate::cached_regex!(r"\s+(\d+)\s+\w+\s+\d+\s+[\d:]+\s+(vmcore)$")
             .captures(line)
         {
             let size_bytes = c[1].parse::<i64>().unwrap_or(0);
-            let crash_date = Regex::new(r"(\d{4}-\d{2}-\d{2}[:-]\d{2}[:-]\d{2}[:-]\d{2})")
-                .unwrap()
+            let crash_date = crate::cached_regex!(r"(\d{4}-\d{2}-\d{2}[:-]\d{2}[:-]\d{2}[:-]\d{2})")
                 .captures(dir)
                 .and_then(|m| m.get(1).map(|x| x.as_str().to_string()));
             entries.push(CrashListingEntry {
@@ -201,14 +194,13 @@ pub fn parse_kdump_conf(content: &str, source_path: &str) -> KdumpConf {
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
-        if let Some(c) = Regex::new(r"^path\s+(.+)$").unwrap().captures(trimmed) {
+        if let Some(c) = crate::cached_regex!(r"^path\s+(.+)$").captures(trimmed) {
             conf.path = c[1].trim().to_string();
         }
-        if let Some(c) = Regex::new(r"^core_collector\s+(.+)$").unwrap().captures(trimmed) {
+        if let Some(c) = crate::cached_regex!(r"^core_collector\s+(.+)$").captures(trimmed) {
             conf.core_collector = Some(c[1].trim().to_string());
         }
-        if let Some(c) = Regex::new(r"^(?:default|failure_action)\s+(.+)$")
-            .unwrap()
+        if let Some(c) = crate::cached_regex!(r"^(?:default|failure_action)\s+(.+)$")
             .captures(trimmed)
         {
             conf.default_action = Some(c[1].trim().to_string());

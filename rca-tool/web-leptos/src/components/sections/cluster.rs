@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use supportfile::parse_pacemaker_high_cpu;
 use serde_json::Value;
 
 use super::helpers::*;
@@ -961,6 +962,13 @@ fn render_cluster_events(events: &Value) -> Option<AnyView> {
         .unwrap_or(fencing_events.len() as u64) as usize;
     let total_events = total_migrations + total_fencing;
 
+    let rust_high_cpu_input = resource_migrations
+        .iter()
+        .filter_map(|migration| migration.get("logLine").and_then(|v| v.as_str()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let rust_high_cpu_events = parse_pacemaker_high_cpu(&rust_high_cpu_input, "");
+
     Some(
         view! {
             <details class="warning-block" open=true>
@@ -1023,6 +1031,33 @@ fn render_cluster_events(events: &Value) -> Option<AnyView> {
                                     .collect::<Vec<_>>()}
                             </ul>
                         </>
+                    })}
+
+                    {(!rust_high_cpu_events.is_empty()).then(|| view! {
+                        <div class="subsection">
+                            <p><strong>{format!("Rust parser preview: Pacemaker high CPU events ({})", rust_high_cpu_events.len())}</strong></p>
+                            <p class="text-muted">
+                                "This list is produced by the shared Supportfile library used for the WASM UI and the Python prototype."
+                            </p>
+                            <ul class="disk-list">
+                                {rust_high_cpu_events
+                                    .clone()
+                                    .into_iter()
+                                    .map(|event| {
+                                        view! {
+                                            <li class="event-item">
+                                                <div class="event-timestamp text-warning">{event.timestamp}</div>
+                                                <div>
+                                                    <strong class="text-warning">{event.source_node}</strong>
+                                                    {format!(" - {:.6}% CPU via {}", event.cpu_load, event.resource)}
+                                                </div>
+                                                <div class="event-raw-line">{event.raw_line}</div>
+                                            </li>
+                                        }
+                                    })
+                                    .collect::<Vec<_>>()}
+                            </ul>
+                        </div>
                     })}
 
                     {(!fencing_events.is_empty()).then(|| view! {

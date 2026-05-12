@@ -1,4 +1,3 @@
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -89,7 +88,7 @@ fn add_ipv6(iface: &mut InterfaceInfo, address: String, scope: String) {
 /// `# <heading>` line after the marker and body is everything until the next
 /// marker.
 fn extract_scc_sections(content: &str) -> Vec<(String, String)> {
-    let marker_re = Regex::new(r"^#==\[.*\]==").unwrap();
+    let marker_re = crate::cached_regex!(r"^#==\[.*\]==");
     let mut sections: Vec<(String, String)> = Vec::new();
     let mut current_heading: Option<String> = None;
     let mut current_body: Vec<String> = Vec::new();
@@ -125,14 +124,14 @@ fn extract_scc_sections(content: &str) -> Vec<(String, String)> {
 }
 
 fn parse_ip_addr_block(content: &str, result: &mut NetworkInterfacesResult, source_path: &str) {
-    let iface_re = Regex::new(r"^\d+:\s+(\S+?):\s+<([^>]*)>\s*(.*)").unwrap();
-    let oneline_re = Regex::new(r"^\d+:\s+(\S+)\s+(inet6?)\s+(\S+)(?:\s+brd\s+\S+)?\s+scope\s+(\S+)").unwrap();
-    let mac_re = Regex::new(r"link/ether\s+([0-9a-f:]+)").unwrap();
-    let inet_re = Regex::new(r"inet\s+(\S+)\s+(?:brd\s+\S+\s+)?scope\s+(\S+)").unwrap();
-    let inet6_re = Regex::new(r"inet6\s+(\S+)\s+scope\s+(\S+)").unwrap();
-    let state_re = Regex::new(r"state\s+(\S+)").unwrap();
-    let mtu_re = Regex::new(r"mtu\s+(\d+)").unwrap();
-    let master_re = Regex::new(r"master\s+(\S+)").unwrap();
+    let iface_re = crate::cached_regex!(r"^\d+:\s+(\S+?):\s+<([^>]*)>\s*(.*)");
+    let oneline_re = crate::cached_regex!(r"^\d+:\s+(\S+)\s+(inet6?)\s+(\S+)(?:\s+brd\s+\S+)?\s+scope\s+(\S+)");
+    let mac_re = crate::cached_regex!(r"link/ether\s+([0-9a-f:]+)");
+    let inet_re = crate::cached_regex!(r"inet\s+(\S+)\s+(?:brd\s+\S+\s+)?scope\s+(\S+)");
+    let inet6_re = crate::cached_regex!(r"inet6\s+(\S+)\s+scope\s+(\S+)");
+    let state_re = crate::cached_regex!(r"state\s+(\S+)");
+    let mtu_re = crate::cached_regex!(r"mtu\s+(\d+)");
+    let master_re = crate::cached_regex!(r"master\s+(\S+)");
     let mut current_iface_name: Option<String> = None;
     for (line_idx, line) in content.lines().enumerate() {
         let line_no = line_idx + 1;
@@ -220,12 +219,12 @@ fn parse_ethtool_block(content: &str, result: &mut NetworkInterfacesResult, ifac
     if content.is_empty() {
         return;
     }
-    if Regex::new(r"(?i)Cannot get driver|not supported").unwrap().is_match(content) {
+    if crate::cached_regex!(r"(?i)Cannot get driver|not supported").is_match(content) {
         return;
     }
-    let driver_re = Regex::new(r"(?m)^driver:\s*(\S+)").unwrap();
-    let firmware_re = Regex::new(r"(?m)^firmware-version:\s*(.+)$").unwrap();
-    let bus_re = Regex::new(r"(?m)^bus-info:\s*(\S+)").unwrap();
+    let driver_re = crate::cached_regex!(r"(?m)^driver:\s*(\S+)");
+    let firmware_re = crate::cached_regex!(r"(?m)^firmware-version:\s*(.+)$");
+    let bus_re = crate::cached_regex!(r"(?m)^bus-info:\s*(\S+)");
     let iface = ensure_iface(result, iface_name, source_path, None);
     if let Some(caps) = driver_re.captures(content) {
         let driver = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
@@ -244,10 +243,10 @@ fn parse_ethtool_block(content: &str, result: &mut NetworkInterfacesResult, ifac
 }
 
 fn parse_ifcfg_block(content: &str, result: &mut NetworkInterfacesResult, iface_name: &str, source_path: &str) {
-    let bootproto_re = Regex::new(r#"(?m)^BOOTPROTO\s*=\s*['"]?([^'"\n]+)"#).unwrap();
-    let ipaddr_re = Regex::new(r#"(?m)^IPADDR\s*=\s*['"]?([^'"\n]+)"#).unwrap();
-    let prefix_re = Regex::new(r#"(?m)^(?:PREFIX|PREFIXLEN)\s*=\s*['"]?([^'"\n]+)"#).unwrap();
-    let netmask_re = Regex::new(r#"(?m)^NETMASK\s*=\s*['"]?([^'"\n]+)"#).unwrap();
+    let bootproto_re = crate::cached_regex!(r#"(?m)^BOOTPROTO\s*=\s*['"]?([^'"\n]+)"#);
+    let ipaddr_re = crate::cached_regex!(r#"(?m)^IPADDR\s*=\s*['"]?([^'"\n]+)"#);
+    let prefix_re = crate::cached_regex!(r#"(?m)^(?:PREFIX|PREFIXLEN)\s*=\s*['"]?([^'"\n]+)"#);
+    let netmask_re = crate::cached_regex!(r#"(?m)^NETMASK\s*=\s*['"]?([^'"\n]+)"#);
     let iface = ensure_iface(result, iface_name, source_path, None);
     if let Some(boot) = bootproto_re
         .captures(content)
@@ -301,11 +300,11 @@ fn dotted_mask_to_cidr(mask: &str) -> Option<u8> {
 /// (`/var/log/messages` or `/var/log/cloud-init-output.log`). If multiple
 /// boot cycles are present, only the LAST block is applied.
 fn parse_cloud_init_ci_info(content: &str, result: &mut NetworkInterfacesResult, source_path: &str) {
-    let net_dev_re = Regex::new(r"(?i)ci-info:.*Net device info").unwrap();
-    let pipe_re = Regex::new(r"ci-info:.*\|").unwrap();
-    let route_re = Regex::new(r"(?i)ci-info:.*Route\s+IPv[46]\s+info").unwrap();
-    let separator_re = Regex::new(r"ci-info:.*\+[-+]+\+").unwrap();
-    let row_re = Regex::new(r"ci-info:\s*\|(.+)\|").unwrap();
+    let net_dev_re = crate::cached_regex!(r"(?i)ci-info:.*Net device info");
+    let pipe_re = crate::cached_regex!(r"ci-info:.*\|");
+    let route_re = crate::cached_regex!(r"(?i)ci-info:.*Route\s+IPv[46]\s+info");
+    let separator_re = crate::cached_regex!(r"ci-info:.*\+[-+]+\+");
+    let row_re = crate::cached_regex!(r"ci-info:\s*\|(.+)\|");
 
     let mut blocks: Vec<Vec<(String, usize)>> = Vec::new();
     let mut in_block = false;
@@ -491,7 +490,7 @@ pub fn parse_network_interfaces(content: &str, source_path: &str) -> NetworkInte
 
     // Log files containing cloud-init `ci-info` Net device tables.
     if basename == "messages" || basename == "cloud-init-output.log" {
-        if Regex::new(r"(?i)ci-info:.*Net device info").unwrap().is_match(content) {
+        if crate::cached_regex!(r"(?i)ci-info:.*Net device info").is_match(content) {
             parse_cloud_init_ci_info(content, &mut result, source_path);
         }
         return result;
@@ -506,14 +505,14 @@ pub fn parse_network_interfaces(content: &str, source_path: &str) -> NetworkInte
                 continue;
             }
             // ip addr (but not 'ip addr show type ...')
-            let ip_addr_re = Regex::new(r"\bip\s+addr\b").unwrap();
-            let ip_addr_show_type_re = Regex::new(r"ip\s+addr\s+show\s+type").unwrap();
+            let ip_addr_re = crate::cached_regex!(r"\bip\s+addr\b");
+            let ip_addr_show_type_re = crate::cached_regex!(r"ip\s+addr\s+show\s+type");
             if ip_addr_re.is_match(h) && !ip_addr_show_type_re.is_match(h) {
                 parse_ip_addr_block(&body, &mut result, source_path);
                 continue;
             }
             // ethtool -i <iface>
-            if let Some(caps) = Regex::new(r"ethtool\s+-i\s+(\w+)").unwrap().captures(h) {
+            if let Some(caps) = crate::cached_regex!(r"ethtool\s+-i\s+(\w+)").captures(h) {
                 let iface_name = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
                 if !iface_name.is_empty() {
                     parse_ethtool_block(&body, &mut result, &iface_name, source_path);
@@ -521,7 +520,7 @@ pub fn parse_network_interfaces(content: &str, source_path: &str) -> NetworkInte
                 continue;
             }
             // ifcfg-<iface>
-            if let Some(caps) = Regex::new(r"ifcfg-(\S+)").unwrap().captures(h) {
+            if let Some(caps) = crate::cached_regex!(r"ifcfg-(\S+)").captures(h) {
                 let iface_name = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
                 if !iface_name.is_empty() {
                     parse_ifcfg_block(&body, &mut result, &iface_name, source_path);
@@ -534,22 +533,22 @@ pub fn parse_network_interfaces(content: &str, source_path: &str) -> NetworkInte
     }
 
     // Generic line-by-line parsing (handles ip addr standalone files, nmcli, wicked, netplan).
-    let iface_re = Regex::new(r"^\d+:\s+(\S+?):\s+<([^>]*)>\s*(.*)").unwrap();
-    let mac_re = Regex::new(r"link/ether\s+([0-9a-f:]+)").unwrap();
-    let inet_re = Regex::new(r"inet\s+(\S+)\s+(?:brd\s+\S+\s+)?scope\s+(\S+)").unwrap();
-    let inet6_re = Regex::new(r"inet6\s+(\S+)\s+scope\s+(\S+)").unwrap();
-    let driver_re = Regex::new(r"(?m)^driver:\s*(\S+)").unwrap();
-    let firmware_re = Regex::new(r"(?m)^firmware-version:\s*(.+)$").unwrap();
-    let bus_re = Regex::new(r"(?m)^bus-info:\s*(\S+)").unwrap();
-    let device_re = Regex::new(r#"(?m)^DEVICE\s*=\s*['\"]?([^'\"\n]+)"#).unwrap();
-    let bootproto_re = Regex::new(r#"(?m)^BOOTPROTO\s*=\s*['\"]?([^'\"\n]+)"#).unwrap();
-    let ipaddr_re = Regex::new(r#"(?m)^IPADDR\s*=\s*['\"]?([^'\"\n]+)"#).unwrap();
-    let prefix_re = Regex::new(r#"(?m)^(?:PREFIX|PREFIXLEN)\s*=\s*['\"]?([^'\"\n]+)"#).unwrap();
-    let nmcli_iface_re = Regex::new(r"(?m)^connection\.interface-name:\s+(\S+)").unwrap();
-    let nmcli_method_re = Regex::new(r"(?m)^ipv4\.method:\s+(\S+)").unwrap();
-    let wicked_iface_re = Regex::new(r"^(\S+)\s+(up|down|setup-in-progress|enslaved)").unwrap();
-    let wicked_lease_re = Regex::new(r"leases:\s+ipv4\s+(\S+)").unwrap();
-    let netplan_iface_re = Regex::new(r"^\s{4}(\w+):").unwrap();
+    let iface_re = crate::cached_regex!(r"^\d+:\s+(\S+?):\s+<([^>]*)>\s*(.*)");
+    let mac_re = crate::cached_regex!(r"link/ether\s+([0-9a-f:]+)");
+    let inet_re = crate::cached_regex!(r"inet\s+(\S+)\s+(?:brd\s+\S+\s+)?scope\s+(\S+)");
+    let inet6_re = crate::cached_regex!(r"inet6\s+(\S+)\s+scope\s+(\S+)");
+    let driver_re = crate::cached_regex!(r"(?m)^driver:\s*(\S+)");
+    let firmware_re = crate::cached_regex!(r"(?m)^firmware-version:\s*(.+)$");
+    let bus_re = crate::cached_regex!(r"(?m)^bus-info:\s*(\S+)");
+    let device_re = crate::cached_regex!(r#"(?m)^DEVICE\s*=\s*['\"]?([^'\"\n]+)"#);
+    let bootproto_re = crate::cached_regex!(r#"(?m)^BOOTPROTO\s*=\s*['\"]?([^'\"\n]+)"#);
+    let ipaddr_re = crate::cached_regex!(r#"(?m)^IPADDR\s*=\s*['\"]?([^'\"\n]+)"#);
+    let prefix_re = crate::cached_regex!(r#"(?m)^(?:PREFIX|PREFIXLEN)\s*=\s*['\"]?([^'\"\n]+)"#);
+    let nmcli_iface_re = crate::cached_regex!(r"(?m)^connection\.interface-name:\s+(\S+)");
+    let nmcli_method_re = crate::cached_regex!(r"(?m)^ipv4\.method:\s+(\S+)");
+    let wicked_iface_re = crate::cached_regex!(r"^(\S+)\s+(up|down|setup-in-progress|enslaved)");
+    let wicked_lease_re = crate::cached_regex!(r"leases:\s+ipv4\s+(\S+)");
+    let netplan_iface_re = crate::cached_regex!(r"^\s{4}(\w+):");
 
     let mut current_iface_name: Option<String> = None;
     for (line_idx, line) in content.lines().enumerate() {
@@ -559,14 +558,14 @@ pub fn parse_network_interfaces(content: &str, source_path: &str) -> NetworkInte
             let flags = caps.get(2).map(|m| m.as_str()).unwrap_or_default();
             let rest = caps.get(3).map(|m| m.as_str()).unwrap_or_default();
             let iface = ensure_iface(&mut result, &name, source_path, Some(line_no));
-            iface.state = if let Some(state_caps) = Regex::new(r"state\s+(\S+)").unwrap().captures(rest) {
+            iface.state = if let Some(state_caps) = crate::cached_regex!(r"state\s+(\S+)").captures(rest) {
                 state_caps.get(1).map(|m| m.as_str().to_string())
             } else if flags.contains("UP") {
                 Some("UP".to_string())
             } else {
                 Some("DOWN".to_string())
             };
-            iface.mtu = Regex::new(r"mtu\s+(\d+)").unwrap().captures(rest).and_then(|c| c.get(1).and_then(|m| m.as_str().parse::<i64>().ok()));
+            iface.mtu = crate::cached_regex!(r"mtu\s+(\d+)").captures(rest).and_then(|c| c.get(1).and_then(|m| m.as_str().parse::<i64>().ok()));
             iface.iface_type = if flags.contains("LOOPBACK") {
                 Some("loopback".to_string())
             } else if flags.contains("SLAVE") {
@@ -574,7 +573,7 @@ pub fn parse_network_interfaces(content: &str, source_path: &str) -> NetworkInte
             } else {
                 Some("ethernet".to_string())
             };
-            iface.master = Regex::new(r"master\s+(\S+)").unwrap().captures(rest).and_then(|c| c.get(1).map(|m| m.as_str().to_string()));
+            iface.master = crate::cached_regex!(r"master\s+(\S+)").captures(rest).and_then(|c| c.get(1).map(|m| m.as_str().to_string()));
             current_iface_name = Some(name);
             result.found = true;
             continue;
@@ -688,9 +687,9 @@ pub fn parse_network_interfaces(content: &str, source_path: &str) -> NetworkInte
             }
             if let Some(name) = netplan_iface.clone() {
                 let iface = ensure_iface(&mut result, &name, source_path, None);
-                if Regex::new(r"(?i)^\s*dhcp4:\s*(true|yes)").unwrap().is_match(line) {
+                if crate::cached_regex!(r"(?i)^\s*dhcp4:\s*(true|yes)").is_match(line) {
                     iface.bootproto = Some("dhcp".to_string());
-                } else if Regex::new(r"(?i)^\s*dhcp4:\s*(false|no)").unwrap().is_match(line) {
+                } else if crate::cached_regex!(r"(?i)^\s*dhcp4:\s*(false|no)").is_match(line) {
                     iface.bootproto = Some("static".to_string());
                 }
             }

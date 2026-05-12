@@ -1,4 +1,3 @@
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -426,14 +425,14 @@ pub fn parse_basic_environment(content: &str, source_path: &str) -> BasicEnviron
         if skip_section || trimmed.is_empty() {
             continue;
         }
-        if let Some(c) = Regex::new(r#"^PRETTY_NAME=(?:\"|')?([^\"']+)(?:\"|')?$"#).unwrap().captures(trimmed) {
+        if let Some(c) = crate::cached_regex!(r#"^PRETTY_NAME=(?:\"|')?([^\"']+)(?:\"|')?$"#).captures(trimmed) {
             pretty_name = Some(c[1].trim().to_string());
             break;
         }
-        if let Some(c) = Regex::new(r#"^NAME=(?:\"|')?([^\"']+)(?:\"|')?$"#).unwrap().captures(trimmed) {
+        if let Some(c) = crate::cached_regex!(r#"^NAME=(?:\"|')?([^\"']+)(?:\"|')?$"#).captures(trimmed) {
             name = Some(c[1].trim().to_string());
         }
-        if let Some(c) = Regex::new(r"^Product:\s*(.+)$").unwrap().captures(trimmed) {
+        if let Some(c) = crate::cached_regex!(r"^Product:\s*(.+)$").captures(trimmed) {
             product = Some(c[1].trim().to_string());
         }
     }
@@ -441,10 +440,10 @@ pub fn parse_basic_environment(content: &str, source_path: &str) -> BasicEnviron
     let mut sap = false;
     let mut epic = false;
     for field in [pretty_name.as_ref(), product.as_ref(), name.as_ref()].into_iter().flatten() {
-        if Regex::new(r"(?i)\bSAP\b|for\s+SAP|SAP\s+Applications").unwrap().is_match(field) {
+        if crate::cached_regex!(r"(?i)\bSAP\b|for\s+SAP|SAP\s+Applications").is_match(field) {
             sap = true;
         }
-        if Regex::new(r"(?i)\bEPIC\b|Enterprise\s+Portal\s+Integration|for\s+EPIC").unwrap().is_match(field) {
+        if crate::cached_regex!(r"(?i)\bEPIC\b|Enterprise\s+Portal\s+Integration|for\s+EPIC").is_match(field) {
             epic = true;
         }
     }
@@ -467,15 +466,13 @@ pub fn parse_os_release(content: &str, source_path: &str) -> OsReleaseResult {
 
     let first_line = content.lines().next().unwrap_or("").trim();
     if !content.contains('=') && !first_line.is_empty() {
-        if let Some(c) = Regex::new(r"^(.+?)\s+release\s+([\d.]+)")
-            .unwrap()
+        if let Some(c) = crate::cached_regex!(r"^(.+?)\s+release\s+([\d.]+)")
             .captures(first_line)
         {
             name = Some(c[1].trim().to_string());
             version_id = Some(c[2].to_string());
             pretty_name = Some(first_line.to_string());
-        } else if let Some(c) = Regex::new(r"^(SUSE.+?)\s+(\d+)")
-            .unwrap()
+        } else if let Some(c) = crate::cached_regex!(r"^(SUSE.+?)\s+(\d+)")
             .captures(first_line)
         {
             name = Some(c[1].trim().to_string());
@@ -488,20 +485,20 @@ pub fn parse_os_release(content: &str, source_path: &str) -> OsReleaseResult {
             if trimmed.is_empty() || trimmed.starts_with('#') {
                 continue;
             }
-            if let Some(c) = Regex::new(r#"^NAME=[\"']?([^\"']+)[\"']?$"#).unwrap().captures(trimmed) {
+            if let Some(c) = crate::cached_regex!(r#"^NAME=[\"']?([^\"']+)[\"']?$"#).captures(trimmed) {
                 name = Some(c[1].to_string());
             }
-            if let Some(c) = Regex::new(r#"^VERSION=[\"']?([^\"']+)[\"']?$"#).unwrap().captures(trimmed) {
+            if let Some(c) = crate::cached_regex!(r#"^VERSION=[\"']?([^\"']+)[\"']?$"#).captures(trimmed) {
                 version = Some(c[1].to_string());
             }
-            if let Some(c) = Regex::new(r#"^VERSION_ID=[\"']?([^\"']+)[\"']?$"#).unwrap().captures(trimmed) {
+            if let Some(c) = crate::cached_regex!(r#"^VERSION_ID=[\"']?([^\"']+)[\"']?$"#).captures(trimmed) {
                 version_id = Some(c[1].to_string());
             }
-            if let Some(c) = Regex::new(r#"^PRETTY_NAME=[\"']?([^\"']+)[\"']?$"#).unwrap().captures(trimmed) {
+            if let Some(c) = crate::cached_regex!(r#"^PRETTY_NAME=[\"']?([^\"']+)[\"']?$"#).captures(trimmed) {
                 pretty_name = Some(c[1].to_string());
             }
             if pretty_name.is_none() {
-                if let Some(c) = Regex::new(r"^Distribution:\s*(.+)$").unwrap().captures(trimmed) {
+                if let Some(c) = crate::cached_regex!(r"^Distribution:\s*(.+)$").captures(trimmed) {
                     pretty_name = Some(c[1].trim().to_string());
                 }
             }
@@ -512,8 +509,7 @@ pub fn parse_os_release(content: &str, source_path: &str) -> OsReleaseResult {
         let mut parts = v.split('.');
         (parts.next().map(|s| s.to_string()), parts.next().map(|s| s.to_string()))
     } else if let Some(pn) = &pretty_name {
-        let mv = Regex::new(r"\b(1[0-9]|[789])\b")
-            .unwrap()
+        let mv = crate::cached_regex!(r"\b(1[0-9]|[789])\b")
             .captures(pn)
             .and_then(|c| c.get(1).map(|m| m.as_str().to_string()));
         (mv, None)
@@ -537,20 +533,34 @@ pub fn parse_os_release(content: &str, source_path: &str) -> OsReleaseResult {
 }
 
 pub fn parse_fstab(content: &str, source_path: &str) -> RawFileResult {
-    let extracted = if content.contains("# /etc/fstab") {
-        let mut lines = Vec::new();
+    // SCC's `fs-diskio.txt` is a multipart file with sections delimited by
+    // lines starting with `#==[` (e.g. `#==[ Configuration File ]===#`).
+    // The fstab section is introduced by a `# /etc/fstab` header line.
+    // Blank lines and commented-out fstab entries (e.g. `#/dev/system/swap`)
+    // are legitimate fstab content and must NOT terminate the section.
+    let header_re = crate::cached_regex!(r"^#\s*/etc/fstab\s*$");
+    let has_header = content.lines().any(|l| header_re.is_match(l));
+    let extracted = if has_header {
+        let mut lines: Vec<&str> = Vec::new();
         let mut in_section = false;
         for line in content.lines() {
-            if line.contains("# /etc/fstab") {
-                in_section = true;
+            if !in_section {
+                if header_re.is_match(line) {
+                    in_section = true;
+                }
                 continue;
             }
-            if in_section && (line.trim().is_empty() || line.starts_with("#==")) {
+            if line.starts_with("#==") {
                 break;
             }
-            if in_section {
-                lines.push(line);
-            }
+            lines.push(line);
+        }
+        // Strip leading/trailing blank lines, keep interior blanks.
+        while lines.first().map_or(false, |l| l.trim().is_empty()) {
+            lines.remove(0);
+        }
+        while lines.last().map_or(false, |l| l.trim().is_empty()) {
+            lines.pop();
         }
         if lines.is_empty() { None } else { Some(lines.join("\n")) }
     } else if content.trim().is_empty() {
@@ -608,8 +618,7 @@ pub fn parse_inspect_disk_results(content: &str, source_path: &str) -> InspectDi
             continue;
         }
 
-        if let Some(c) = Regex::new(r"^Mounting\s+(\/dev\/\S+)\s+on\s+(\S+)\s+(SUCCEEDED|FAILED)\.")
-            .unwrap()
+        if let Some(c) = crate::cached_regex!(r"^Mounting\s+(\/dev\/\S+)\s+on\s+(\S+)\s+(SUCCEEDED|FAILED)\.")
             .captures(trimmed)
         {
             result.mount_results.push(InspectMountResult {
@@ -636,13 +645,12 @@ pub fn parse_inspect_disk_results(content: &str, source_path: &str) -> InspectDi
 
         match section {
             Some("request") => {
-                if let Some(c) = Regex::new(r"^(.+?):\s+(.+)$").unwrap().captures(trimmed) {
+                if let Some(c) = crate::cached_regex!(r"^(.+?):\s+(.+)$").captures(trimmed) {
                     result.request_info.insert(c[1].trim().to_string(), c[2].trim().to_string());
                 }
             }
             Some("fs") => {
-                if let Some(c) = Regex::new(r"^(\/dev\/\S+):\s+(\S+)\s+\[uuid=([^\]]*)\]")
-                    .unwrap()
+                if let Some(c) = crate::cached_regex!(r"^(\/dev\/\S+):\s+(\S+)\s+\[uuid=([^\]]*)\]")
                     .captures(trimmed)
                 {
                     result.filesystem_status.push(InspectFilesystemStatus {
@@ -656,15 +664,14 @@ pub fn parse_inspect_disk_results(content: &str, source_path: &str) -> InspectDi
                 }
             }
             Some("meta") => {
-                if let Some(c) = Regex::new(r"^(Type|Distribution|Product Name):\s+(.+)$")
-                    .unwrap()
+                if let Some(c) = crate::cached_regex!(r"^(Type|Distribution|Product Name):\s+(.+)$")
                     .captures(trimmed)
                 {
                     result.inspection_metadata.insert(c[1].to_string(), c[2].trim().to_string());
                 }
             }
             Some("mount_points") => {
-                if let Some(c) = Regex::new(r"^(\/\S*)\s*:\s+(\/dev\/\S+)$").unwrap().captures(trimmed) {
+                if let Some(c) = crate::cached_regex!(r"^(\/\S*)\s*:\s+(\/dev\/\S+)$").captures(trimmed) {
                     result.mount_points.insert(c[1].to_string(), c[2].to_string());
                 }
             }
@@ -681,7 +688,7 @@ pub fn parse_inspect_disk_results(content: &str, source_path: &str) -> InspectDi
 pub fn parse_kernel_tuning(content: &str, source_path: &str) -> KernelTuningResult {
     let mut parameters = BTreeMap::new();
     for line in content.lines() {
-        if let Some(c) = Regex::new(r"^([^\s=]+)\s*=\s*(.+)$").unwrap().captures(line.trim()) {
+        if let Some(c) = crate::cached_regex!(r"^([^\s=]+)\s*=\s*(.+)$").captures(line.trim()) {
             parameters.insert(c[1].to_string(), c[2].trim().to_string());
         }
     }
@@ -802,32 +809,27 @@ pub fn parse_huge_pages(content: &str, source_path: &str) -> HugePagesResult {
 
     for line in content.lines() {
         let trimmed = line.trim();
-        if let Some(c) = Regex::new(r"^HugePages_(\w+):\s+(\d+)")
-            .unwrap()
+        if let Some(c) = crate::cached_regex!(r"^HugePages_(\w+):\s+(\d+)")
             .captures(trimmed)
         {
             static_hp.insert(c[1].to_ascii_lowercase(), c[2].parse::<i64>().unwrap_or(0));
         }
-        if let Some(c) = Regex::new(r"^Hugepagesize:\s+(\d+)\s+kB")
-            .unwrap()
+        if let Some(c) = crate::cached_regex!(r"^Hugepagesize:\s+(\d+)\s+kB")
             .captures(trimmed)
         {
             static_hp.insert("pagesize_kb".to_string(), c[1].parse::<i64>().unwrap_or(0));
         }
-        if let Some(c) = Regex::new(r"^Hugetlb:\s+(\d+)\s+kB")
-            .unwrap()
+        if let Some(c) = crate::cached_regex!(r"^Hugetlb:\s+(\d+)\s+kB")
             .captures(trimmed)
         {
             static_hp.insert("hugetlb_kb".to_string(), c[1].parse::<i64>().unwrap_or(0));
         }
-        if let Some(c) = Regex::new(r"^AnonHugePages:\s+(\d+)\s+kB")
-            .unwrap()
+        if let Some(c) = crate::cached_regex!(r"^AnonHugePages:\s+(\d+)\s+kB")
             .captures(trimmed)
         {
             thp.insert("anon_kb".to_string(), c[1].parse::<i64>().unwrap_or(0));
         }
-        if let Some(c) = Regex::new(r"^ShmemHugePages:\s+(\d+)\s+kB")
-            .unwrap()
+        if let Some(c) = crate::cached_regex!(r"^ShmemHugePages:\s+(\d+)\s+kB")
             .captures(trimmed)
         {
             thp.insert("shmem_kb".to_string(), c[1].parse::<i64>().unwrap_or(0));
@@ -877,9 +879,8 @@ pub fn parse_huge_pages(content: &str, source_path: &str) -> HugePagesResult {
 }
 
 pub fn parse_time_sync(content: &str, source_path: &str) -> TimeSyncResult {
-    let has_hv_utils = Regex::new(r"(?i)hv_utils|hyperv").unwrap().is_match(content);
-    let ptp_index = Regex::new(r"(?i)ptp(\d+)")
-        .unwrap()
+    let has_hv_utils = crate::cached_regex!(r"(?i)hv_utils|hyperv").is_match(content);
+    let ptp_index = crate::cached_regex!(r"(?i)ptp(\d+)")
         .captures(content)
         .and_then(|c| c.get(1).map(|m| format!("ptp{}", m.as_str())));
     let has_ptp_clock = ptp_index.is_some() || content.contains("ptp_hyperv");
@@ -921,8 +922,7 @@ pub fn parse_time_sync(content: &str, source_path: &str) -> TimeSyncResult {
 }
 
 pub fn parse_ptp_clock_source(content: &str, source_path: &str) -> PtpClockSourceResult {
-    let refclock = Regex::new(r"(?im)^refclock\s+PHC\s+(\/dev\/[^\s]+)")
-        .unwrap()
+    let refclock = crate::cached_regex!(r"(?im)^refclock\s+PHC\s+(\/dev\/[^\s]+)")
         .captures(content)
         .and_then(|c| c.get(1).map(|m| m.as_str().to_string()));
     let uses_hyperv_symlink = refclock.as_deref().map(|d| d.contains("ptp_hyperv")).unwrap_or(false);
@@ -1061,14 +1061,13 @@ pub fn parse_ptp_device(content: &str, source_path: &str) -> PtpDeviceResult {
     let mut target = None;
     for line in content.lines() {
         let trimmed = line.trim();
-        if let Some(c) = Regex::new(r"\b(ptp\d+)\b").unwrap().captures(trimmed) {
+        if let Some(c) = crate::cached_regex!(r"\b(ptp\d+)\b").captures(trimmed) {
             let dev = c[1].to_string();
             if !devices.contains(&dev) {
                 devices.push(dev);
             }
         }
-        if let Some(c) = Regex::new(r"ptp_hyperv\s+->\s+(\S+)")
-            .unwrap()
+        if let Some(c) = crate::cached_regex!(r"ptp_hyperv\s+->\s+(\S+)")
             .captures(trimmed)
         {
             has_symlink = true;
@@ -1148,7 +1147,7 @@ pub fn parse_chrony_tracking(content: &str, source_path: &str) -> ChronyTracking
             "reference id" => {
                 result.reference_id = Some(value.clone());
                 result.found = true;
-                if let Some(c) = Regex::new(r"\(PHC(\d+)\)").unwrap().captures(&value) {
+                if let Some(c) = crate::cached_regex!(r"\(PHC(\d+)\)").captures(&value) {
                     result.reference_name = Some(format!("PHC{}", &c[1]));
                     result.is_phc_source = true;
                     result.is_ptp_source = true;
@@ -1157,8 +1156,7 @@ pub fn parse_chrony_tracking(content: &str, source_path: &str) -> ChronyTracking
             "stratum" => result.stratum = value.parse::<i32>().ok(),
             "system time" => {
                 result.system_time = Some(value.clone());
-                if let Some(c) = Regex::new(r"([\d.]+)\s+seconds?\s+(slow|fast)")
-                    .unwrap()
+                if let Some(c) = crate::cached_regex!(r"([\d.]+)\s+seconds?\s+(slow|fast)")
                     .captures(&value)
                 {
                     let mut v = c[1].parse::<f64>().unwrap_or(0.0);
@@ -1170,8 +1168,7 @@ pub fn parse_chrony_tracking(content: &str, source_path: &str) -> ChronyTracking
             }
             "last offset" => {
                 result.last_offset = Some(value.clone());
-                if let Some(c) = Regex::new(r"([+-]?[\d.]+)\s+seconds?")
-                    .unwrap()
+                if let Some(c) = crate::cached_regex!(r"([+-]?[\d.]+)\s+seconds?")
                     .captures(&value)
                 {
                     result.last_offset_seconds = c[1].parse::<f64>().ok();
@@ -1230,11 +1227,9 @@ pub fn parse_chrony_tracking(content: &str, source_path: &str) -> ChronyTracking
 }
 
 pub fn parse_chrony_makestep(content: &str, source_path: &str) -> ChronyMakestepResult {
-    let makestep = Regex::new(r"(?im)^makestep\s+([\d.]+)\s+(\d+)")
-        .unwrap()
+    let makestep = crate::cached_regex!(r"(?im)^makestep\s+([\d.]+)\s+(\d+)")
         .captures(content);
-    let refclock = Regex::new(r"(?im)^refclock\s+PHC\s+(\/dev\/[^\s]+)(?:\s+poll\s+(\d+))?")
-        .unwrap()
+    let refclock = crate::cached_regex!(r"(?im)^refclock\s+PHC\s+(\/dev\/[^\s]+)(?:\s+poll\s+(\d+))?")
         .captures(content);
     let mut result = ChronyMakestepResult {
         found: makestep.is_some() || refclock.is_some(),
@@ -1298,15 +1293,15 @@ pub fn parse_rhui_config(content: &str, source_path: &str) -> RhuiConfigResult {
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
-        if let Some(c) = Regex::new(r"^\[([^\]]+)\]$").unwrap().captures(trimmed) {
+        if let Some(c) = crate::cached_regex!(r"^\[([^\]]+)\]$").captures(trimmed) {
             if let Some(repo) = current.take() {
                 repos.push(repo);
             }
             let name = c[1].to_string();
             current = Some(RepoEntry {
                 enabled: true,
-                is_microsoft: Regex::new(r"(?i)^(rhui-)?microsoft").unwrap().is_match(&name),
-                is_eus: Regex::new(r"(?i)-(eus|e4s)-").unwrap().is_match(&name),
+                is_microsoft: crate::cached_regex!(r"(?i)^(rhui-)?microsoft").is_match(&name),
+                is_eus: crate::cached_regex!(r"(?i)-(eus|e4s)-").is_match(&name),
                 name,
                 baseurl: None,
                             source_path: String::new(),
@@ -1316,10 +1311,10 @@ pub fn parse_rhui_config(content: &str, source_path: &str) -> RhuiConfigResult {
             continue;
         }
         if let Some(repo) = &mut current {
-            if let Some(c) = Regex::new(r"^enabled\s*=\s*(\d+)").unwrap().captures(trimmed) {
+            if let Some(c) = crate::cached_regex!(r"^enabled\s*=\s*(\d+)").captures(trimmed) {
                 repo.enabled = &c[1] == "1";
             }
-            if let Some(c) = Regex::new(r"^baseurl\s*=\s*(.+)$").unwrap().captures(trimmed) {
+            if let Some(c) = crate::cached_regex!(r"^baseurl\s*=\s*(.+)$").captures(trimmed) {
                 repo.baseurl = Some(c[1].trim().to_string());
             }
         }
@@ -1355,8 +1350,7 @@ pub fn parse_rhui_config(content: &str, source_path: &str) -> RhuiConfigResult {
 
 pub fn parse_eus_version_lock(content: &str, source_path: &str) -> EusVersionLockResult {
     let trimmed = content.trim();
-    let releasever = Regex::new(r"^(\d+(?:\.\d+)?)")
-        .unwrap()
+    let releasever = crate::cached_regex!(r"^(\d+(?:\.\d+)?)")
         .captures(trimmed)
         .and_then(|c| c.get(1).map(|m| m.as_str().to_string()));
     EusVersionLockResult {
@@ -1373,15 +1367,14 @@ pub fn parse_rhel_rhui_check(content: &str, source_path: &str) -> RhelRhuiCheckR
     let mut is_sap = false;
     for line in content.lines() {
         let trimmed = line.trim();
-        if let Some(c) = Regex::new(r"^(rhui-[a-zA-Z0-9\-.]+)")
-            .unwrap()
+        if let Some(c) = crate::cached_regex!(r"^(rhui-[a-zA-Z0-9\-.]+)")
             .captures(trimmed)
         {
             let pkg = c[1].to_string();
-            if Regex::new(r"(?i)-eus-|-e4s-").unwrap().is_match(&pkg) {
+            if crate::cached_regex!(r"(?i)-eus-|-e4s-").is_match(&pkg) {
                 is_eus = true;
             }
-            if Regex::new(r"(?i)-sap-").unwrap().is_match(&pkg) {
+            if crate::cached_regex!(r"(?i)-sap-").is_match(&pkg) {
                 is_sap = true;
             }
             pkgs.push(pkg);
@@ -1455,8 +1448,8 @@ pub fn parse_crypto_policies(content: &str, source_path: &str) -> CryptoPolicies
 pub fn parse_fips_mode_setup(content: &str, source_path: &str) -> FipsModeSetupResult {
     let trimmed = content.trim();
     let found = !trimmed.is_empty();
-    let fips_enabled = Regex::new(r"(?i)FIPS mode is enabled").unwrap().is_match(trimmed);
-    let inconsistent_state = Regex::new(r"(?i)inconsistent.*state").unwrap().is_match(trimmed);
+    let fips_enabled = crate::cached_regex!(r"(?i)FIPS mode is enabled").is_match(trimmed);
+    let inconsistent_state = crate::cached_regex!(r"(?i)inconsistent.*state").is_match(trimmed);
     let mut warnings = Vec::new();
     if inconsistent_state {
         warnings.push(UnixWarning {
@@ -1521,8 +1514,7 @@ pub fn parse_rhui_errors(content: &str, source_path: &str) -> RhuiErrorsResult {
 
     for (idx, line) in content.lines().enumerate() {
         let trimmed = line.trim();
-        if Regex::new(r"(?i)SSL certificate problem.*expired|certificate has expired|CERTIFICATE_VERIFY_FAILED|certificate verify failed|unable to get local issuer certificate")
-            .unwrap()
+        if crate::cached_regex!(r"(?i)SSL certificate problem.*expired|certificate has expired|CERTIFICATE_VERIFY_FAILED|certificate verify failed|unable to get local issuer certificate")
             .is_match(trimmed)
         {
             result.found = true;
@@ -1539,8 +1531,7 @@ pub fn parse_rhui_errors(content: &str, source_path: &str) -> RhuiErrorsResult {
                 source_line_end: None,
 });
         }
-        if Regex::new(r"Status code: 403 .*microsoft\.com")
-            .unwrap()
+        if crate::cached_regex!(r"Status code: 403 .*microsoft\.com")
             .is_match(trimmed)
         {
             result.found = true;
@@ -1557,8 +1548,7 @@ pub fn parse_rhui_errors(content: &str, source_path: &str) -> RhuiErrorsResult {
                 source_line_end: None,
 });
         }
-        if let Some(c) = Regex::new(r"Status code: 400 .*?/eus/rhel\d+/rhui/(\d+\.\d+)/")
-            .unwrap()
+        if let Some(c) = crate::cached_regex!(r"Status code: 400 .*?/eus/rhel\d+/rhui/(\d+\.\d+)/")
             .captures(trimmed)
         {
             result.found = true;
@@ -1575,10 +1565,9 @@ pub fn parse_rhui_errors(content: &str, source_path: &str) -> RhuiErrorsResult {
                 source_line_end: None,
 });
         }
-        if Regex::new(r"(?i)Curl error \(28\)|Curl error \(7\)|Could not resolve host|Connection timed out|Connection refused|Curl error \(6\)")
-            .unwrap()
+        if crate::cached_regex!(r"(?i)Curl error \(28\)|Curl error \(7\)|Could not resolve host|Connection timed out|Connection refused|Curl error \(6\)")
             .is_match(trimmed)
-            && Regex::new(r"(?i)rhui|microsoft").unwrap().is_match(trimmed)
+            && crate::cached_regex!(r"(?i)rhui|microsoft").is_match(trimmed)
         {
             result.found = true;
             result.has_connection_error = true;
@@ -1594,8 +1583,7 @@ pub fn parse_rhui_errors(content: &str, source_path: &str) -> RhuiErrorsResult {
                 source_line_end: None,
 });
         }
-        if let Some(c) = Regex::new(r#"Failed to download metadata for repo[:\s]+['\"]?([^'\":\s]+)"#)
-            .unwrap()
+        if let Some(c) = crate::cached_regex!(r#"Failed to download metadata for repo[:\s]+['\"]?([^'\":\s]+)"#)
             .captures(trimmed)
         {
             let repo = c[1].to_string();
@@ -1664,8 +1652,7 @@ pub fn parse_leapp_report(content: &str, source_path: &str) -> LeappReportResult
             source_path: source_path.to_string(),
 };
 
-    let entries = Regex::new(r"(?m)^-{30,}$")
-        .unwrap()
+    let entries = crate::cached_regex!(r"(?m)^-{30,}$")
         .split(content)
         .filter(|e| !e.trim().is_empty())
         .collect::<Vec<_>>();
@@ -1679,8 +1666,7 @@ pub fn parse_leapp_report(content: &str, source_path: &str) -> LeappReportResult
         let mut key = None;
         let mut current = None::<&str>;
         for line in entry.lines() {
-            if let Some(c) = Regex::new(r"^Risk Factor:\s*(\w+)(?:\s*\(error\))?")
-                .unwrap()
+            if let Some(c) = crate::cached_regex!(r"^Risk Factor:\s*(\w+)(?:\s*\(error\))?")
                 .captures(line)
             {
                 risk_factor = Some(c[1].to_ascii_lowercase());
@@ -1688,22 +1674,22 @@ pub fn parse_leapp_report(content: &str, source_path: &str) -> LeappReportResult
                 current = None;
                 continue;
             }
-            if let Some(c) = Regex::new(r"^Title:\s*(.+)$").unwrap().captures(line) {
+            if let Some(c) = crate::cached_regex!(r"^Title:\s*(.+)$").captures(line) {
                 title = Some(c[1].trim().to_string());
                 current = None;
                 continue;
             }
-            if let Some(c) = Regex::new(r"^Summary:\s*(.*)$").unwrap().captures(line) {
+            if let Some(c) = crate::cached_regex!(r"^Summary:\s*(.*)$").captures(line) {
                 summary = c[1].to_string();
                 current = Some("summary");
                 continue;
             }
-            if let Some(c) = Regex::new(r"^Remediation:\s*(.*)$").unwrap().captures(line) {
+            if let Some(c) = crate::cached_regex!(r"^Remediation:\s*(.*)$").captures(line) {
                 remediation = Some(c[1].to_string());
                 current = Some("remediation");
                 continue;
             }
-            if let Some(c) = Regex::new(r"^Key:\s*(\w+)").unwrap().captures(line) {
+            if let Some(c) = crate::cached_regex!(r"^Key:\s*(\w+)").captures(line) {
                 key = Some(c[1].to_string());
                 current = None;
                 continue;
@@ -1753,8 +1739,7 @@ pub fn parse_leapp_report(content: &str, source_path: &str) -> LeappReportResult
             result.info_count += 1;
         }
         if title.contains("not signed by the distribution vendor") {
-            for pkg in Regex::new(r"-\s*(\S+)")
-                .unwrap()
+            for pkg in crate::cached_regex!(r"-\s*(\S+)")
                 .captures_iter(&summary)
                 .filter_map(|c| c.get(1).map(|m| m.as_str().to_string()))
             {
@@ -1844,16 +1829,14 @@ pub fn parse_leapp_log(content: &str, source_path: &str) -> LeappLogResult {
                 source_line_end: None,
 });
         }
-        if Regex::new(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}[.\d]*\s+ERROR\s+")
-            .unwrap()
+        if crate::cached_regex!(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}[.\d]*\s+ERROR\s+")
             .is_match(trimmed)
         {
             result.found = true;
             result.has_errors = true;
             result.error_count += 1;
         }
-        if Regex::new(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}[.\d]*\s+CRITICAL\s+")
-            .unwrap()
+        if crate::cached_regex!(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}[.\d]*\s+CRITICAL\s+")
             .is_match(trimmed)
         {
             result.found = true;

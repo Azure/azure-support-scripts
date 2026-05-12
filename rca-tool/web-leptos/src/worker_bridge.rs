@@ -143,10 +143,17 @@ fn asset_version() -> &'static str {
 /// Spawn a web-worker, send it the file data, and reactively drive the
 /// supplied signals as messages arrive.
 ///
+/// `buffer` is a JS-heap `ArrayBuffer` containing the entire file. It is
+/// intentionally **not** copied into wasm linear memory: it is held as a
+/// `JsValue` until the worker reports `ready`, then transferred (zero-copy)
+/// to the worker. This keeps wasm memory usage flat regardless of file
+/// size, allowing multi-GB archives without exhausting the wasm32 address
+/// space.
+///
 /// The caller passes in the signals it owns so the bridge never needs to
 /// know about the component tree.
 pub fn launch_worker(
-    data: Vec<u8>,
+    buffer: js_sys::ArrayBuffer,
     filename: String,
     format: FileFormat,
     debug_mode: String,
@@ -173,12 +180,13 @@ pub fn launch_worker(
 
     console_dbg!(
         "[Leptos] Worker created for {filename} ({} bytes, format={format}, url={})",
-        data.len(),
+        buffer.byte_length(),
         worker_url
     );
 
-    // Keep data in a RefCell so the ready-handler can consume it (once)
-    let data_cell = std::cell::RefCell::new(Some(data));
+    // Hold the ArrayBuffer (a JS-heap reference, NOT a wasm copy) until
+    // the worker signals `ready`, then hand it off via transfer.
+    let data_cell = std::cell::RefCell::new(Some(buffer));
     let format_cell = std::cell::Cell::new(format);
     let debug_mode_clone = debug_mode.clone();
 
@@ -208,9 +216,9 @@ pub fn launch_worker(
                 .ok();
                 worker_ref.post_message(&dbg_obj).ok();
 
-                if let Some(bytes) = data_cell.borrow_mut().take() {
+                if let Some(buf) = data_cell.borrow_mut().take() {
                     let fmt = format_cell.get();
-                    send_data_to_worker(&worker_ref, &bytes, fmt);
+                    send_data_to_worker(&worker_ref, buf, fmt);
                 }
                 return;
             }
@@ -308,10 +316,12 @@ pub fn launch_worker(
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-fn send_data_to_worker(worker: &Worker, data: &[u8], format: FileFormat) {
-    let array = js_sys::Uint8Array::from(data);
-    let buffer = array.buffer();
-
+/// Forward the file's `ArrayBuffer` to the worker via structured-clone
+/// transfer. The buffer is moved (zero-copy): after this call the JS-heap
+/// allocation is owned by the worker thread and the main thread no longer
+/// holds a reference, so peak memory stays at one copy regardless of
+/// file size.
+fn send_data_to_worker(worker: &Worker, buffer: js_sys::ArrayBuffer, format: FileFormat) {
     let obj = js_sys::Object::new();
     match format {
         FileFormat::Xz => {

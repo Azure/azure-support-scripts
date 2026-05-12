@@ -848,22 +848,35 @@ fn process_entry(
         );
     }
 
-    for cp in matching {
-        let spec = &specs[cp.spec_index];
-        let raw = (spec.func)(content, member_path);
-        let parsed: Value = match serde_json::from_str(&raw) {
-            Ok(v) => v,
-            Err(e) => {
-                if debug {
-                    eprintln!(
-                        "[debug] parser '{}' produced invalid JSON on {member_path}: {e}",
-                        spec.name
-                    );
+    // Each matching parser is independent and CPU-bound (regex-heavy). When
+    // a single file matches several parsers (common for SCC log/config
+    // bundles) we run them on the rayon thread pool so they overlap.
+    // The outer call site already lives inside a `par_bridge` worker, but
+    // rayon nested-parallelism is cooperative and adds no overhead when the
+    // pool is saturated -- the inner `into_par_iter` simply yields back.
+    use rayon::prelude::*;
+    let parsed_outputs: Vec<(usize, Value)> = matching
+        .par_iter()
+        .filter_map(|cp| {
+            let spec = &specs[cp.spec_index];
+            let raw = (spec.func)(content, member_path);
+            match serde_json::from_str::<Value>(&raw) {
+                Ok(v) => Some((cp.spec_index, v)),
+                Err(e) => {
+                    if debug {
+                        eprintln!(
+                            "[debug] parser '{}' produced invalid JSON on {member_path}: {e}",
+                            spec.name
+                        );
+                    }
+                    None
                 }
-                continue;
             }
-        };
+        })
+        .collect();
 
+    for (spec_index, parsed) in parsed_outputs {
+        let spec = &specs[spec_index];
         let key = spec.name.to_string();
         if spec.multi_file {
             let prev = results.parser_results.remove(&key).unwrap_or(Value::Null);

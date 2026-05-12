@@ -177,6 +177,25 @@ test.describe('Cluster Parsers', () => {
     expect(resultHTML).toContain('pacemaker.log-20250103.gz');
   });
 
+  test('detects pacemaker high CPU events', async ({ page }) => {
+    const fileInput = await page.locator('input[type="file"]');
+    await fileInput.setInputFiles(fixturePath('scc_test-cluster-high-cpu.tar.xz'));
+
+    await page.waitForFunction(
+      () => {
+        const output = document.getElementById('output');
+        return output && /Cluster Events Detected|pacemaker-controld|High CPU load detected/.test(output.textContent || '');
+      },
+      { timeout: 60000 }
+    );
+
+    const resultText = await page.locator('#output').textContent();
+    expect(resultText).toContain('Cluster Events Detected');
+    expect(resultText).toContain('pacemaker-controld');
+    expect(resultText).toMatch(/High CPU load detected|23\.270000/);
+    expect(resultText).toContain('node01');
+  });
+
   test('confirms Getty/tty messages are not shown as cluster resource events', async ({ page }) => {
     const resultHTML = await uploadAndWaitForAnalysis(page, 'scc_test-systemd-messages.tar.xz');
     

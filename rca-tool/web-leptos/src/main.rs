@@ -57,10 +57,10 @@ fn App() -> impl IntoView {
 
     let on_file = {
         let debug_mode = debug_mode.to_string();
-        Callback::new(move |(name, bytes, fmt): (String, Vec<u8>, FileFormat)| {
+        Callback::new(move |(name, buffer, fmt): (String, js_sys::ArrayBuffer, FileFormat)| {
             console_dbg!(
                 "[Leptos] File received: {name} ({} bytes, {fmt})",
-                bytes.len()
+                buffer.byte_length()
             );
 
             if fmt == FileFormat::Unknown {
@@ -76,7 +76,7 @@ fn App() -> impl IntoView {
             set_result.set(WorkerResult::InProgress);
 
             worker_bridge::launch_worker(
-                bytes,
+                buffer,
                 name,
                 fmt,
                 debug_mode.clone(),

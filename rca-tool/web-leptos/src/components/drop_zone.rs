@@ -5,7 +5,22 @@ use web_sys::{Event, File, FileList, FileReader, HtmlInputElement};
 
 use crate::worker_bridge::{console_dbg, detect_format, FileFormat};
 
-fn read_file(file: File, on_file: Callback<(String, Vec<u8>, FileFormat)>) {
+/// Sniff the first bytes of an ArrayBuffer for format detection without
+/// copying the entire file into wasm linear memory. We allocate at most
+/// `SNIFF_BYTES` bytes inside wasm; the full ArrayBuffer stays in the JS
+/// heap and is later transferred (zero-copy) to the worker.
+const SNIFF_BYTES: u32 = 512;
+
+fn detect_format_from_buffer(array_buf: &js_sys::ArrayBuffer) -> FileFormat {
+    let total = array_buf.byte_length();
+    let len = total.min(SNIFF_BYTES);
+    let head = js_sys::Uint8Array::new_with_byte_offset_and_length(array_buf, 0, len);
+    let mut buf = vec![0u8; len as usize];
+    head.copy_to(&mut buf);
+    detect_format(&buf)
+}
+
+fn read_file(file: File, on_file: Callback<(String, js_sys::ArrayBuffer, FileFormat)>) {
     let name = file.name();
     let reader = FileReader::new().unwrap();
     let reader_clone = reader.clone();
@@ -13,15 +28,13 @@ fn read_file(file: File, on_file: Callback<(String, Vec<u8>, FileFormat)>) {
     let onload = Closure::<dyn FnMut(Event)>::new(move |_ev: Event| {
         let result = reader_clone.result().unwrap();
         let array_buf = result.dyn_into::<js_sys::ArrayBuffer>().unwrap();
-        let uint8 = js_sys::Uint8Array::new(&array_buf);
-        let bytes = uint8.to_vec();
-        let fmt = detect_format(&bytes);
+        let fmt = detect_format_from_buffer(&array_buf);
         console_dbg!(
             "[Leptos] Loaded {} ({} bytes, format={fmt})",
             name,
-            bytes.len()
+            array_buf.byte_length()
         );
-        on_file.run((name.clone(), bytes, fmt));
+        on_file.run((name.clone(), array_buf, fmt));
     });
 
     reader.set_onload(Some(onload.as_ref().unchecked_ref()));
@@ -31,7 +44,7 @@ fn read_file(file: File, on_file: Callback<(String, Vec<u8>, FileFormat)>) {
 
 pub fn handle_file_list(
     files: FileList,
-    on_file: Callback<(String, Vec<u8>, FileFormat)>,
+    on_file: Callback<(String, js_sys::ArrayBuffer, FileFormat)>,
 ) -> bool {
     let count = files.length();
 
@@ -52,10 +65,12 @@ pub fn handle_file_list(
 
 /// File drop zone and file-input button.
 ///
-/// When a file is loaded it calls `on_file` with `(filename, bytes, format)`.
+/// When a file is loaded it calls `on_file` with `(filename, buffer, format)`.
+/// `buffer` is a JS-heap `ArrayBuffer` that callers should transfer (not copy)
+/// to a worker so that multi-GB files do not exhaust wasm linear memory.
 #[component]
 pub fn DropZone(
-    #[prop(into)] on_file: Callback<(String, Vec<u8>, FileFormat)>,
+    #[prop(into)] on_file: Callback<(String, js_sys::ArrayBuffer, FileFormat)>,
     dragging: ReadSignal<bool>,
 ) -> impl IntoView {
     // -- file input change ------------------------------------------------
