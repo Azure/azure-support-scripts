@@ -43,20 +43,14 @@ jobs:
       with:
         version: 'latest'
         
-    - name: Build WASM module
+    - name: Build liblzma streaming WASM
+      # Still consumed by the Leptos build (see rca-tool/web-leptos/build.sh,
+      # which copies ../web/liblzma-wasm/dist-streaming/* into its assets).
       run: |
         cd rca-tool/web/liblzma-wasm
         chmod +x build-liblzma-streaming.sh
         ./build-liblzma-streaming.sh
-    
-    - name: Install root dependencies (JSDoc)
-      run: npm ci
-      working-directory: rca-tool
 
-    - name: Install web dependencies
-      run: npm ci
-      working-directory: rca-tool/web
-    
     - name: Install CLI dependencies
       run: npm ci
       working-directory: rca-tool/cli

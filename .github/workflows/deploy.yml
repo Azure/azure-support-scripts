@@ -64,39 +64,24 @@ jobs:
       run: |
         emcc --version
         
-    - name: Build WASM module
+    - name: Build liblzma streaming WASM
+      # Still consumed by the Leptos build (see rca-tool/web-leptos/build.sh,
+      # which copies ../web/liblzma-wasm/dist-streaming/* into its assets).
       run: |
         cd rca-tool/web/liblzma-wasm
         chmod +x build-liblzma-streaming.sh
         ./build-liblzma-streaming.sh
-    
-    - name: Install root dependencies (JSDoc)
-      run: npm ci
-      working-directory: rca-tool
-
-    - name: Install Node.js dependencies
-      run: npm ci
-      working-directory: rca-tool/web
-        
-    - name: Build legacy web interface and docs
-      run: bash build.sh
-      working-directory: rca-tool
 
     - name: Build Leptos web interface
       run: ./build.sh
       working-directory: rca-tool/web-leptos
-        
+
     - name: Prepare deployment directory
       run: |
         cd rca-tool/
         rm -rf _site
-        mkdir -p _site/web
-        # Publish Leptos as the default GitHub Pages experience
+        mkdir -p _site
         cp -r web-leptos/dist/* _site/
-        # Preserve the legacy web UI under /web/
-        cp -r web/dist/* _site/web/
-        # Keep API documentation available at /docs/
-        cp -r docs _site/docs || true
         cp README.md _site/ || true
         touch _site/.nojekyll
         
