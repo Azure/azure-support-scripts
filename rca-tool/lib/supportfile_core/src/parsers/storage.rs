@@ -163,6 +163,9 @@ pub struct BlockDevicesResult {
     pub disks: Vec<BlockDeviceInfo>,
     pub partitions: Vec<BlockDeviceInfo>,
     pub uuid_map: BTreeMap<String, String>,
+    /// device path → device info, used by the storage-correlation pass
+    /// to look up fstype/uuid when fstab references a device path.
+    pub device_map: BTreeMap<String, BlockDeviceInfo>,
     pub mount_points: BTreeMap<String, String>,
     pub warnings: Vec<StorageWarning>,
     pub source_path: String,
@@ -177,6 +180,14 @@ pub struct FstabEntry {
     pub dump: String,
     pub pass: String,
     pub source_type: String,
+    /// When `source_type == "uuid"`, the bare UUID (without the
+    /// `UUID=` prefix) so the storage-correlation step can look it up
+    /// against `blockDevices.uuidMap` directly.
+    pub uuid: Option<String>,
+    /// When `source_type == "device"`, the device path (same as
+    /// `source`) so the correlation step can look it up directly
+    /// against `blockDevices.deviceMap`.
+    pub device: Option<String>,
     pub has_nofail: bool,
     pub is_os_partition: bool,
     pub is_virtual_fs: bool,
@@ -305,7 +316,10 @@ pub fn parse_lvm_config(content: &str, source_path: &str) -> LvmConfigResult {
         warnings: Vec::new(),
         source_path: source_path.to_string(),
     };
-    let lv_re = crate::cached_regex!(r"^(\S+)\s+(\S+)\s+(\S+)\s+(<?\d+[\.\d]*[KMGTPmkgtp]?)$");
+    // Accept both the compact `lvs` form (4 columns and end-of-line) and
+    // the verbose `lvs -v` / `lvs -a -o lv_tags,devices ...` form which
+    // appends extra columns after the size — so don't anchor at $.
+    let lv_re = crate::cached_regex!(r"^(\S+)\s+(\S+)\s+([-a-zA-Z]{6,})\s+(<?\d+[\.\d]*[KMGTPmkgtp]?)\b");
 
     for (idx, raw_line) in content.lines().enumerate() {
         if is_lvm_noise(raw_line) {
@@ -721,6 +735,7 @@ pub fn parse_block_devices(content: &str, source_path: &str) -> BlockDevicesResu
         disks,
         partitions,
         uuid_map,
+        device_map,
         mount_points,
         warnings: Vec::new(),
         source_path: source_path.to_string(),
@@ -830,6 +845,16 @@ pub fn parse_fstab_analysis(content: &str, source_path: &str) -> FstabAnalysisRe
             });
         }
         entries.push(FstabEntry {
+            uuid: if source_type == "uuid" {
+                Some(source.trim_start_matches("UUID=").to_string())
+            } else {
+                None
+            },
+            device: if source_type == "device" {
+                Some(source.clone())
+            } else {
+                None
+            },
             source,
             mountpoint,
             fstype,

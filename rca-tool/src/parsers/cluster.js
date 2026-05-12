@@ -165,7 +165,11 @@ const clusterEventsParser = {
     processAllRotations: true,
     filePattern: /\/(pacemaker\.log|corosync\.log|cluster\.log|ha-log|messages|journalctl[^\/]*)(?:[.-]\d+)?(?:\.txt)?(?:\.gz)?$|\/ha\.txt$/,
     parse: function(content, filename, _lines) {
-        return _wasmCall('parseClusterEvents', content, filename, { found: false });
+        const result = _wasmCall('parseClusterEvents', content, filename, { found: false });
+        if (result && typeof WASM_BRIDGE !== 'undefined' && WASM_BRIDGE.aliasKeys) {
+            WASM_BRIDGE.aliasKeys(result, { sourcePath: 'sourceFile' });
+        }
+        return result;
     }
 };
 

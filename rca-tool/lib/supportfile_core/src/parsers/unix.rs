@@ -114,6 +114,12 @@ pub struct HugePagesResult {
     pub found: bool,
     pub static_huge_pages: BTreeMap<String, i64>,
     pub transparent_huge_pages: BTreeMap<String, i64>,
+    /// Sysctl-derived huge-page parameters, populated by the worker by
+    /// enriching `parse_huge_pages` output with values from kernel-tuning
+    /// parameters (`vm.nr_hugepages`, `vm.nr_overcommit_hugepages`,
+    /// `vm.hugetlb_shm_group`).  Always emitted (possibly empty) so the
+    /// JS bridge / Leptos UI can safely access `sysctlParams`.
+    pub sysctl_params: BTreeMap<String, i64>,
     pub warnings: Vec<UnixWarning>,
     pub recommendations: Vec<UnixWarning>,
     pub source_path: String,
@@ -145,6 +151,17 @@ pub struct TimeSyncServiceResult {
     pub found: bool,
     pub service_name: Option<String>,
     pub active: bool,
+    /// Per-service flags + status strings consumed by the Leptos
+    /// `Time Synchronization` panel.  Set when we can identify which
+    /// systemd unit was being inspected (e.g. `# /bin/systemctl status
+    /// 'chronyd.service'` header in supportconfig systemd-status.txt).
+    pub chrony_enabled: bool,
+    pub chrony_status: Option<String>,
+    pub ntpd_enabled: bool,
+    pub ntpd_status: Option<String>,
+    pub timesyncd_enabled: bool,
+    pub timesyncd_status: Option<String>,
+    pub detection_file: Option<String>,
     pub warnings: Vec<UnixWarning>,
     pub source_path: String,
 }
@@ -505,6 +522,19 @@ pub fn parse_os_release(content: &str, source_path: &str) -> OsReleaseResult {
         }
     }
 
+    // Fallback: scan all lines for a `Distribution:` header (multi-section
+    // files like crm_report's `sysinfo.txt` have no `=` signs and bury the
+    // distro on a non-first line).
+    if pretty_name.is_none() {
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if let Some(c) = crate::cached_regex!(r"^Distribution:\s*(.+)$").captures(trimmed) {
+                pretty_name = Some(c[1].trim().to_string());
+                break;
+            }
+        }
+    }
+
     let (major_version, minor_version) = if let Some(v) = &version_id {
         let mut parts = v.split('.');
         (parts.next().map(|s| s.to_string()), parts.next().map(|s| s.to_string()))
@@ -646,7 +676,23 @@ pub fn parse_inspect_disk_results(content: &str, source_path: &str) -> InspectDi
         match section {
             Some("request") => {
                 if let Some(c) = crate::cached_regex!(r"^(.+?):\s+(.+)$").captures(trimmed) {
-                    result.request_info.insert(c[1].trim().to_string(), c[2].trim().to_string());
+                    // Normalise the heterogeneous label set from
+                    // InspectIaaSDisk into the camelCase keys the Leptos
+                    // `InspectDiskSection` reads.  Unknown labels fall
+                    // through verbatim so we don't lose information.
+                    let raw_label = c[1].trim();
+                    let value = c[2].trim().to_string();
+                    let key = match raw_label {
+                        "Storage Acct" | "Storage Account" => "storageAccount".to_string(),
+                        "Container/Vhd" | "Container/VHD" => "containerVhd".to_string(),
+                        "Manifest requested" | "Manifest" => "manifest".to_string(),
+                        "Inspect service Operational ID" | "Operational ID" => {
+                            "operationalId".to_string()
+                        }
+                        "Guestfish version" | "Guestfish" => "guestfishVersion".to_string(),
+                        other => other.to_string(),
+                    };
+                    result.request_info.insert(key, value);
                 }
             }
             Some("fs") => {
@@ -667,7 +713,15 @@ pub fn parse_inspect_disk_results(content: &str, source_path: &str) -> InspectDi
                 if let Some(c) = crate::cached_regex!(r"^(Type|Distribution|Product Name):\s+(.+)$")
                     .captures(trimmed)
                 {
-                    result.inspection_metadata.insert(c[1].to_string(), c[2].trim().to_string());
+                    // Normalise to the camelCase keys the Leptos
+                    // `Disk Inspection` panel reads.
+                    let key = match &c[1] {
+                        "Type" => "type".to_string(),
+                        "Distribution" => "distribution".to_string(),
+                        "Product Name" => "productName".to_string(),
+                        other => other.to_string(),
+                    };
+                    result.inspection_metadata.insert(key, c[2].trim().to_string());
                 }
             }
             Some("mount_points") => {
@@ -872,6 +926,7 @@ pub fn parse_huge_pages(content: &str, source_path: &str) -> HugePagesResult {
         found: !static_hp.is_empty() || !thp.is_empty(),
         static_huge_pages: static_hp,
         transparent_huge_pages: thp,
+        sysctl_params: BTreeMap::new(),
         warnings,
         recommendations,
             source_path: source_path.to_string(),
@@ -951,18 +1006,69 @@ pub fn parse_ptp_clock_source(content: &str, source_path: &str) -> PtpClockSourc
 
 pub fn parse_time_sync_service(content: &str, source_path: &str) -> TimeSyncServiceResult {
     let lowered = content.to_ascii_lowercase();
-    let (service_name, active) = if lowered.contains("chronyd") || lowered.contains("chrony") {
-        (Some("chrony".to_string()), lowered.contains("active") || lowered.contains("running"))
-    } else if lowered.contains("ntpd") || lowered.contains("ntp") {
-        (Some("ntpd".to_string()), lowered.contains("active") || lowered.contains("running"))
-    } else if lowered.contains("systemd-timesyncd") {
-        (Some("systemd-timesyncd".to_string()), lowered.contains("active") || lowered.contains("running"))
+    // Try to identify the service by the supportconfig systemd-status.txt
+    // section header (`# /bin/systemctl status 'chronyd.service'`) first,
+    // falling back to substring detection for plain `systemctl status`
+    // output.
+    let header_service = crate::cached_regex!(
+        r#"(?im)^\s*#?\s*/?(?:bin/|sbin/|usr/bin/|usr/sbin/)?systemctl\s+status\s+['"]?([a-z0-9._-]+?)(?:\.service)?['"]?\s*$"#
+    )
+    .captures(content)
+    .and_then(|c| c.get(1).map(|m| m.as_str().to_ascii_lowercase()));
+    let active = lowered.contains("active (running)")
+        || lowered.contains("active: active")
+        || (lowered.contains("active") && lowered.contains("running"));
+    let enabled_loaded = lowered.contains("loaded:") && lowered.contains("enabled");
+    let enabled = enabled_loaded || active;
+    let detected = header_service
+        .clone()
+        .or_else(|| {
+            if lowered.contains("chronyd") || lowered.contains("chrony") {
+                Some("chronyd".to_string())
+            } else if lowered.contains("systemd-timesyncd") {
+                Some("systemd-timesyncd".to_string())
+            } else if lowered.contains("ntpd") || lowered.contains(" ntp") {
+                Some("ntpd".to_string())
+            } else {
+                None
+            }
+        });
+
+    let mut chrony_enabled = false;
+    let mut chrony_status = None;
+    let mut ntpd_enabled = false;
+    let mut ntpd_status = None;
+    let mut timesyncd_enabled = false;
+    let mut timesyncd_status = None;
+    let status_word = if active {
+        "enabled, active (running)".to_string()
+    } else if enabled {
+        "enabled".to_string()
     } else {
-        (None, false)
+        "inactive".to_string()
+    };
+    let service_name = match detected.as_deref() {
+        Some("chronyd") | Some("chrony") => {
+            chrony_enabled = enabled;
+            chrony_status = Some(status_word.clone());
+            Some("chrony".to_string())
+        }
+        Some("ntpd") | Some("ntp") => {
+            ntpd_enabled = enabled;
+            ntpd_status = Some(status_word.clone());
+            Some("ntpd".to_string())
+        }
+        Some("systemd-timesyncd") => {
+            timesyncd_enabled = enabled;
+            timesyncd_status = Some(status_word.clone());
+            Some("systemd-timesyncd".to_string())
+        }
+        Some(other) => Some(other.to_string()),
+        None => None,
     };
     let mut warnings = Vec::new();
     if let Some(name) = &service_name {
-        if !active {
+        if !active && (chrony_enabled || ntpd_enabled || timesyncd_enabled) {
             warnings.push(UnixWarning {
                 r#type: "time_service_inactive".to_string(),
                 severity: "warning".to_string(),
@@ -975,10 +1081,31 @@ pub fn parse_time_sync_service(content: &str, source_path: &str) -> TimeSyncServ
 });
         }
     }
+    // Surface the source file (e.g. `systemd-status.txt`) so the UI can
+    // attribute the detection.  Use just the basename to keep the table
+    // legible.
+    let detection_file = if !source_path.is_empty() {
+        Some(
+            source_path
+                .rsplit('/')
+                .next()
+                .unwrap_or(source_path)
+                .to_string(),
+        )
+    } else {
+        None
+    };
     TimeSyncServiceResult {
         found: service_name.is_some(),
         service_name,
         active,
+        chrony_enabled,
+        chrony_status,
+        ntpd_enabled,
+        ntpd_status,
+        timesyncd_enabled,
+        timesyncd_status,
+        detection_file,
         warnings,
             source_path: source_path.to_string(),
 }

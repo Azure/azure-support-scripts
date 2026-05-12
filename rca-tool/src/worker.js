@@ -3839,6 +3839,28 @@ self.onmessage = async function(e) {
             // so we surface a successful analysis instead of misleading the
             // user with a "truncated" warning.
             const inputFullyConsumed = (inputOffset >= inputSize);
+            // The XZ stream itself is incomplete when liblzma never returned
+            // status==1 (LZMA_STREAM_END) before we ran out of input.  Treat
+            // that as a corrupt/truncated archive and surface progress so the
+            // UI can render a useful partial-analysis warning.
+            if (!streamComplete) {
+                debugLog('[XZ Streaming Worker] WARNING: XZ stream did not reach end marker - file may be truncated');
+                self.postMessage({
+                    success: true,
+                    partialSuccess: true,
+                    totalDecompressed,
+                    analysis: {
+                        ...finalAnalysis,
+                        corruptionDetected: true,
+                        corruptionMessage: `XZ stream is incomplete (no end marker) — processed ${chunkCount} block(s), ${totalDecompressed} byte(s) decompressed before input was exhausted.`,
+                        xzBlocksProcessed: chunkCount,
+                        bytesProcessed: inputOffset,
+                        totalInputBytes: inputSize,
+                        percentProcessed: Math.floor((inputOffset / Math.max(inputSize, 1)) * 100)
+                    }
+                });
+                return;
+            }
             if (!tarParser.foundEndMarker && finalAnalysis.fileCount > 0 && !inputFullyConsumed) {
                 debugLog('[XZ Streaming Worker] WARNING: TAR archive missing end marker - file may be truncated');
                 
@@ -3937,9 +3959,15 @@ self.onmessage = async function(e) {
                     });
                 }
             } else {
-                // Complete failure
+                // Complete failure — surface the partial progress (XZ blocks
+                // processed and bytes decompressed before the corruption was
+                // detected) so the UI can show the user *something* useful
+                // instead of a bare "Decompression error" line.  The
+                // ui.spec.js corruption test asserts that the rendered error
+                // contains at least one of "block", "byte" or "decompressed".
+                const progressSummary = `Processed ${chunkCount} XZ block(s) and ${totalDecompressed} byte(s) decompressed before failure.`;
                 self.postMessage({
-                    error: error.message || 'Unknown streaming decompression error'
+                    error: `${error.message || 'Unknown streaming decompression error'} — ${progressSummary}`
                 });
             }
         }

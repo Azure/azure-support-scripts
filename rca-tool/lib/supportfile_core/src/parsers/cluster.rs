@@ -210,9 +210,21 @@ fn is_non_cluster_node(node: &str) -> bool {
     use std::sync::OnceLock;
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r"^(?i)(tty\d*|pts/?\d*|console|localhost|127\.0\.0\.1|::1|\d+)$").unwrap()
+        Regex::new(r"^(?i)(tty\d*[\.\-]?\d*|tty\d*\.{3}|pts/?\d*|console|localhost|127\.0\.0\.1|::1|\d+|port|ports?|socket|sockets?)\.{0,3}$").unwrap()
     })
     .is_match(node)
+}
+
+/// Returns true if the line clearly originates from a Pacemaker / Corosync /
+/// SBD / pcsd-related process (used to filter out unrelated systemd / app
+/// messages that happen to mention "Starting" or "Stopping").
+fn is_cluster_log_source(line: &str) -> bool {
+    use std::sync::OnceLock;
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"(?i)\b(pacemaker(?:-[a-z]+)?|corosync|pcsd|sbd|crmd|lrmd|pengine|attrd|cib|stonith(?:-ng|d)?|fenced|booth|crm_resource|crm_mon|crm_node|crm_attribute)\b").unwrap()
+    })
+    .is_match(line)
 }
 
 // ---------------------------------------------------------------------------
@@ -598,6 +610,7 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
         let (timestamp, source_node, message_text) = parse_syslog_prefix(trimmed);
         let sp = source_path.to_string();
         let sl = Some(line_no);
+        let is_cluster_src = is_cluster_log_source(trimmed);
 
         if let Some(caps) = high_cpu_re.captures(&message_text) {
             let cpu_load = caps.get(1).and_then(|m| m.as_str().parse::<f64>().ok());
@@ -643,7 +656,8 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
         if let Some(caps) = start_re.captures(&message_text) {
             let resource = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
             let node = caps.get(2).map(|m| m.as_str()).unwrap_or_default();
-            if !message_text.contains("systemd")
+            if is_cluster_src
+                && !message_text.contains("systemd")
                 && !is_systemd_resource(resource)
                 && !is_system_resource(resource)
                 && !is_non_cluster_node(node)
@@ -669,7 +683,8 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
         if let Some(caps) = stop_re.captures(&message_text) {
             let resource = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
             let node = caps.get(2).map(|m| m.as_str()).unwrap_or_default();
-            if !message_text.contains("systemd")
+            if is_cluster_src
+                && !message_text.contains("systemd")
                 && !is_systemd_resource(resource)
                 && !is_system_resource(resource)
                 && !is_non_cluster_node(node)
@@ -696,7 +711,8 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
             let action = caps.get(1).map(|m| m.as_str().to_ascii_lowercase()).unwrap_or_else(|| "unknown".to_string());
             let resource = caps.get(2).map(|m| m.as_str()).unwrap_or_default();
             let node = caps.get(3).map(|m| m.as_str()).unwrap_or_default();
-            if !message_text.contains("systemd")
+            if is_cluster_src
+                && !message_text.contains("systemd")
                 && !is_systemd_resource(resource)
                 && !is_system_resource(resource)
                 && !is_non_cluster_node(node)
@@ -730,6 +746,11 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
                 "operation"
             };
 
+            if is_cluster_src
+                && !is_systemd_resource(resource)
+                && !is_system_resource(resource)
+                && !is_non_cluster_node(node)
+            {
             resource_migrations.push(ResourceMigrationEvent {
                 timestamp,
                 resource: resource.to_string(),
@@ -744,6 +765,7 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
                 source_line: sl,
                 source_line_end: sl,
             });
+            }
             continue;
         }
 

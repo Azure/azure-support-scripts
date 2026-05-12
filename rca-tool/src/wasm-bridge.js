@@ -21,6 +21,10 @@
 
     function snakeToCamelKey(key) {
         if (typeof key !== 'string' || key.indexOf('_') === -1) return key;
+        // Keys containing '.' are data keys (e.g. sysctl parameter names
+        // like `net.ipv4.tcp_congestion_control`), not Rust struct fields.
+        // Leave them verbatim so we don't mangle the underlying data.
+        if (key.indexOf('.') !== -1) return key;
         return key.replace(/_([a-z0-9])/g, function (_, ch) {
             return ch.toUpperCase();
         });

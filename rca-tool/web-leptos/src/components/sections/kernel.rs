@@ -681,7 +681,7 @@ fn render_time_sync_section(
         .unwrap_or(false)
     {
         format!(
-            "chrony ({})",
+            "chronyd ({})",
             empty_dash(json_text(time_sync_service, "chronyStatus"))
         )
     } else if time_sync_service
