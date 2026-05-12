@@ -9,6 +9,17 @@ readme = "README.md"
 [lib]
 crate-type = ["rlib"]
 
+# The `rca_cli` binary pulls in the archive + parallelism stack
+# (`tar`, `liblzma`, `flate2`, `zip`, `rayon`, `crossbeam-channel`),
+# all of which are optional dependencies activated by the `cli`
+# feature.  Declare the binary explicitly with `required-features`
+# so plain `cargo build` / `cargo test` / `cargo package` (no
+# features) skip it instead of failing on unresolved imports.
+[[bin]]
+name = "rca_cli"
+path = "src/bin/rca_cli.rs"
+required-features = ["cli"]
+
 [features]
 default = []
 # Enables the bundled `rca_cli` command-line analyzer. Pulled in automatically
