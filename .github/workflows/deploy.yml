@@ -49,7 +49,12 @@ jobs:
       uses: taiki-e/install-action@v2
       with:
         tool: trunk
-      
+
+    - name: Install wasm-pack
+      uses: taiki-e/install-action@v2
+      with:
+        tool: wasm-pack
+
     - name: Setup Emscripten
       uses: mymindstorm/setup-emsdk@v14
       with:
