@@ -29,7 +29,10 @@ cp ../src/parsers/*.js        assets/parsers/
 cp ../src/utils.js            assets/
 cp ../src/performance.js      assets/
 cp ../src/wasm-bridge.js      assets/
-cp -r ../archive/web-legacy/liblzma-wasm/dist-streaming/* assets/liblzma-wasm/dist-streaming/
+# liblzma streaming WASM: produced by `../web/liblzma-wasm/build-liblzma-streaming.sh`
+# (the only piece of the legacy web/ tree that web-leptos still consumes; move
+# it out of web/ when the legacy interface is fully retired).
+cp -r ../web/liblzma-wasm/dist-streaming/* assets/liblzma-wasm/dist-streaming/
 cp "${SUPPORTFILE_WASM_PKG}/supportfile_wasm.js"     assets/supportfile-wasm/
 cp "${SUPPORTFILE_WASM_PKG}/supportfile_wasm_bg.wasm" assets/supportfile-wasm/
 
