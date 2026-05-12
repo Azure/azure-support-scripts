@@ -167,7 +167,6 @@ jobs:
         CACHE_BUSTER="${GITHUB_RUN_ID}-${GITHUB_SHA}"
         ROOT_URL="${DEPLOYED_URL%/}/"
         ROOT_URL_BUSTED="${ROOT_URL}?cb=${CACHE_BUSTER}"
-        DOCS_URL="${ROOT_URL}docs/index.html?cb=${CACHE_BUSTER}"
         SERVICES_URL="${ROOT_URL}assets/parsers/services.js?v=${CACHE_BUSTER}"
         WORKER_URL="${ROOT_URL}assets/liblzma-streaming-worker.js?v=${CACHE_BUSTER}"
         LEPTOS_JS_URL="${ROOT_URL}${EXPECTED_LEPTOS_JS}?cb=${CACHE_BUSTER}"
@@ -182,12 +181,10 @@ jobs:
 
         for attempt in {1..30}; do
           root_html="$(curl -fsSL "${ROOT_URL_BUSTED}" || true)"
-          docs_html="$(curl -fsSL "${DOCS_URL}" || true)"
           services_source="$(curl -fsSL "${SERVICES_URL}" || true)"
           worker_source="$(curl -fsSL "${WORKER_URL}" || true)"
 
           root_ok=0
-          docs_ok=0
           services_ok=0
           worker_ok=0
           js_ok=0
@@ -200,10 +197,11 @@ jobs:
              && "${root_html}" == *"${EXPECTED_LEPTOS_CSS}"* ]]; then
             root_ok=1
           fi
-          if [[ "${docs_html}" == *'JSDoc'* ]]; then
-            docs_ok=1
-          fi
-          if [[ "${services_source}" == *'falcon-sensor'* ]]; then
+          # Sentinel strings that should always be present in the Rust-port
+          # WASM-shim assets.  Updated when the legacy JSDoc/JS antivirus
+          # signature list moved into the Rust core (see
+          # supportfile_core::parsers::services).
+          if [[ "${services_source}" == *'parsers/services'* ]]; then
             services_ok=1
           fi
           if [[ "${worker_source}" == *'versionedAsset'* ]]; then
@@ -219,9 +217,9 @@ jobs:
             css_ok=1
           fi
 
-          echo "Attempt ${attempt}/30: root=${root_ok} docs=${docs_ok} services=${services_ok} worker=${worker_ok} js=${js_ok} wasm=${wasm_ok} css=${css_ok}"
+          echo "Attempt ${attempt}/30: root=${root_ok} services=${services_ok} worker=${worker_ok} js=${js_ok} wasm=${wasm_ok} css=${css_ok}"
 
-          if [[ ${root_ok} -eq 1 && ${docs_ok} -eq 1 && ${services_ok} -eq 1 && ${worker_ok} -eq 1 && ${js_ok} -eq 1 && ${wasm_ok} -eq 1 && ${css_ok} -eq 1 ]]; then
+          if [[ ${root_ok} -eq 1 && ${services_ok} -eq 1 && ${worker_ok} -eq 1 && ${js_ok} -eq 1 && ${wasm_ok} -eq 1 && ${css_ok} -eq 1 ]]; then
             echo "Deployment is ready."
             break
           fi
@@ -230,8 +228,6 @@ jobs:
             echo "Deployment did not become ready in time."
             echo "--- Root preview ---"
             printf '%s\n' "${root_html}" | head -n 40 || true
-            echo "--- Docs preview ---"
-            printf '%s\n' "${docs_html}" | head -n 40 || true
             echo "--- Worker preview ---"
             printf '%s\n' "${worker_source}" | sed -n '1,40p' || true
             echo "--- Services asset preview ---"
