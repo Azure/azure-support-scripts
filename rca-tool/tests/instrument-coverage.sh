@@ -35,10 +35,11 @@ npx --prefix tests nyc instrument src/utils.js "$TMPDIR" --compact false
 cp "$TMPDIR/src/utils.js" "$DIST_DIR/utils.js"
 echo "  [OK] utils.js"
 
-# Instrument worker.js (renamed to liblzma-streaming-worker.js in the build)
-npx --prefix tests nyc instrument src/worker.js "$TMPDIR" --compact false
-cp "$TMPDIR/src/worker.js" "$DIST_DIR/liblzma-streaming-worker.js"
-echo "  [OK] worker.js → liblzma-streaming-worker.js"
+# Instrument the source worker directly.
+cp src/worker.js "$TMPDIR/liblzma-streaming-worker.js"
+npx --prefix tests nyc instrument "$TMPDIR/liblzma-streaming-worker.js" "$TMPDIR/instrumented" --compact false
+cp "$TMPDIR/instrumented/liblzma-streaming-worker.js" "$DIST_DIR/liblzma-streaming-worker.js"
+echo "  [OK] worker.js (instrumented) → liblzma-streaming-worker.js"
 
 # Inject a postMessage hook into the instrumented worker so that __coverage__
 # data piggybacks on every message sent back to the main thread.  This lets the

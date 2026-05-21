@@ -16,7 +16,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.0",
-    "@playwright/test": "^1.48.0",
+    "@playwright/test": "^1.60.0",
     "http-server": "^14.1.1",
     "monocart-reporter": "^2.10.0",
     "nyc": "^17.1.0"

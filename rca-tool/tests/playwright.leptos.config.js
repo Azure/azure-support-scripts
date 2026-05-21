@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const localTestPort = process.env.LEPTOS_TEST_PORT || '4180';
+const localBaseUrl = process.env.BASE_URL || `http://localhost:${localTestPort}`;
+
 export default defineConfig({
   testDir: './',
   fullyParallel: true,
@@ -19,8 +22,9 @@ export default defineConfig({
           ['console-details'],
         ],
         entryFilter: (entry) => {
-          if (entry.url.includes('/web-leptos/dist/')
-              && !entry.url.includes('node_modules')) {
+          if (((entry.url.includes('/web-leptos/dist/')
+              || entry.url.startsWith(`${localBaseUrl}/`))
+              && !entry.url.includes('node_modules'))) {
             return true;
           }
           if (entry.url.startsWith('file://') && entry.url.includes('/src/')) {
@@ -36,7 +40,7 @@ export default defineConfig({
     }]
   ],
   use: {
-    baseURL: process.env.BASE_URL || 'http://localhost:8080',
+    baseURL: localBaseUrl,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -45,21 +49,23 @@ export default defineConfig({
     {
       name: 'local-leptos',
       use: {
-        ...devices['Desktop Chrome'],
+        ...devices['Desktop Edge'],
+        channel: 'msedge',
       },
     },
     {
       name: 'deployed-leptos',
       use: {
-        ...devices['Desktop Chrome'],
+        ...devices['Desktop Edge'],
+        channel: 'msedge',
         baseURL: (process.env.DEPLOYED_URL || 'https://fede2cr.github.io/azure-support-scripts').replace(/\/?$/, '/'),
       },
     },
   ],
 
   webServer: (process.env.BASE_URL || process.env.DEPLOYED_URL) ? undefined : {
-    command: 'npx http-server ../ -p 8080',
-    port: 8080,
+    command: `cd .. && npx http-server web-leptos/dist -p ${localTestPort} -c-1`,
+    port: Number(localTestPort),
     reuseExistingServer: !process.env.CI,
   },
 });
