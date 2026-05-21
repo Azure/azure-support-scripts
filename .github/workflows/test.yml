@@ -28,7 +28,7 @@ jobs:
       with:
         workspaces: |
           rca-tool/web-leptos -> target
-          rca-tool/exploratory/lzma_stream_wasm -> target
+          rca-tool/lib/lzma_stream_wasm -> target
           rca-tool/lib/supportfile_core -> target
 
     - name: Install Trunk
@@ -73,8 +73,8 @@ jobs:
       
     - name: Run accessibility checks against Leptos
       run: |
-        npx http-server ../ -p 8080 > /tmp/rca-tool-http-server.log 2>&1 &
-        ACCESSIBILITY_URL=http://localhost:8080/web-leptos/dist/ node accessibility-check.js
+        npx http-server ../web-leptos/dist -p 8080 -c-1 > /tmp/rca-tool-http-server.log 2>&1 &
+        ACCESSIBILITY_URL=http://localhost:8080/ node accessibility-check.js
       working-directory: rca-tool/tests
     
     - name: Test Rust CLI with all fixtures

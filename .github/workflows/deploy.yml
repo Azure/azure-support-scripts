@@ -45,7 +45,7 @@ jobs:
       with:
         workspaces: |
           rca-tool/web-leptos -> target
-          rca-tool/exploratory/lzma_stream_wasm -> target
+          rca-tool/lib/lzma_stream_wasm -> target
 
     - name: Install Trunk
       uses: taiki-e/install-action@v2

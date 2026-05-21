@@ -14,9 +14,8 @@ cd "$(dirname "$0")"
 
 SUPPORTFILE_WASM_DIR="../lib/supportfile_wasm"
 SUPPORTFILE_WASM_PKG="${SUPPORTFILE_WASM_DIR}/pkg"
-LZMA_STREAM_WASM_DIR="../exploratory/lzma_stream_wasm"
+LZMA_STREAM_WASM_DIR="../lib/lzma_stream_wasm"
 LZMA_STREAM_WASM_PKG="${LZMA_STREAM_WASM_DIR}/pkg"
-PATCH_WORKER_SCRIPT="../exploratory/patch-worker.cjs"
 
 if [[ "${SKIP_WASM_BUILD:-0}" != "1" ]]; then
     echo "==> Building supportfile WASM (wasm-pack, target=no-modules, release)…"
@@ -40,7 +39,7 @@ fi
 
 echo "==> Copying JS assets…"
 mkdir -p assets/parsers assets/lzma-stream-wasm assets/supportfile-wasm
-node "${PATCH_WORKER_SCRIPT}" ../src/worker.js assets/liblzma-streaming-worker.js
+cp ../src/worker.js assets/liblzma-streaming-worker.js
 cp ../src/parsers/*.js        assets/parsers/
 cp ../src/utils.js            assets/
 cp ../src/performance.js      assets/
