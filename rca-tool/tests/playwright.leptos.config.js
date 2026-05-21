@@ -42,7 +42,8 @@ export default defineConfig({
   ],
   use: {
     baseURL: localBaseUrl,
-    trace: 'on-first-retry',
+    // Retries are disabled; keep traces for failing tests to diagnose CI-only issues.
+    trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
 

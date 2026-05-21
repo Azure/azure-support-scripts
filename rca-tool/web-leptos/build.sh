@@ -16,6 +16,7 @@ SUPPORTFILE_WASM_DIR="../lib/supportfile_wasm"
 SUPPORTFILE_WASM_PKG="${SUPPORTFILE_WASM_DIR}/pkg"
 LZMA_STREAM_WASM_DIR="../lib/lzma_stream_wasm"
 LZMA_STREAM_WASM_PKG="${LZMA_STREAM_WASM_DIR}/pkg"
+LEGACY_LZMA_WASM_DIR="../web/liblzma-wasm/dist-streaming"
 
 if [[ "${SKIP_WASM_BUILD:-0}" != "1" ]]; then
     echo "==> Building supportfile WASM (wasm-pack, target=no-modules, release)…"
@@ -38,12 +39,22 @@ if grep -q '^let wasm_bindgen =' "${LZMA_STREAM_WASM_PKG}/lzma_stream_wasm.js"; 
 fi
 
 echo "==> Copying JS assets…"
-mkdir -p assets/parsers assets/lzma-stream-wasm assets/supportfile-wasm
+mkdir -p assets/parsers assets/lzma-stream-wasm assets/supportfile-wasm assets/liblzma-wasm/dist-streaming
 cp ../src/worker.js assets/liblzma-streaming-worker.js
 cp ../src/parsers/*.js        assets/parsers/
 cp ../src/utils.js            assets/
 cp ../src/performance.js      assets/
 cp ../src/wasm-bridge.js      assets/
+
+# The worker still imports the Emscripten streaming runtime from
+# assets/liblzma-wasm/dist-streaming/ via importScripts.
+if [[ ! -f "${LEGACY_LZMA_WASM_DIR}/liblzma-xz-streaming.js" ]]; then
+    echo "Missing required liblzma runtime: ${LEGACY_LZMA_WASM_DIR}/liblzma-xz-streaming.js"
+    exit 1
+fi
+cp "${LEGACY_LZMA_WASM_DIR}/liblzma-xz-streaming.js" assets/liblzma-wasm/dist-streaming/
+cp "${LEGACY_LZMA_WASM_DIR}/liblzma-xz-streaming.wasm" assets/liblzma-wasm/dist-streaming/
+
 cp "${LZMA_STREAM_WASM_PKG}/lzma_stream_wasm.js"      assets/lzma-stream-wasm/
 cp "${LZMA_STREAM_WASM_PKG}/lzma_stream_wasm_bg.wasm" assets/lzma-stream-wasm/
 cp "${SUPPORTFILE_WASM_PKG}/supportfile_wasm.js"     assets/supportfile-wasm/
