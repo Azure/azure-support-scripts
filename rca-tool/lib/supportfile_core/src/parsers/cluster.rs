@@ -151,13 +151,14 @@ fn parse_syslog_prefix(line: &str) -> (Option<String>, Option<String>, String) {
     static SYSLOG_PARTS_RE: OnceLock<Regex> = OnceLock::new();
 
     let iso_re = ISO_RE.get_or_init(|| {
-        Regex::new(r"^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)").unwrap()
+        Regex::new(r"^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)")
+            .unwrap()
     });
-    let syslog_re = SYSLOG_RE.get_or_init(|| {
-        Regex::new(r"^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?)").unwrap()
-    });
+    let syslog_re = SYSLOG_RE
+        .get_or_init(|| Regex::new(r"^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?)").unwrap());
     let syslog_parts_re = SYSLOG_PARTS_RE.get_or_init(|| {
-        Regex::new(r"^\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?\s+(\S+)\s+.+?:\s*(.+)$").unwrap()
+        Regex::new(r"^\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?\s+(\S+)\s+.+?:\s*(.+)$")
+            .unwrap()
     });
 
     let timestamp = iso_re
@@ -281,7 +282,10 @@ pub fn parse_corosync_config(content: &str, source_path: &str) -> CorosyncConfig
                 result.totem_token = v.get(1).and_then(|m| m.as_str().parse::<i64>().ok());
                 lines_for.insert("totem.token", line_no);
             }
-            if let Some(v) = crate::cached_regex!(r"^token_retransmits_before_loss_const\s*:\s*(\d+)").captures(line) {
+            if let Some(v) =
+                crate::cached_regex!(r"^token_retransmits_before_loss_const\s*:\s*(\d+)")
+                    .captures(line)
+            {
                 result.totem_retransmits = v.get(1).and_then(|m| m.as_str().parse::<i64>().ok());
                 lines_for.insert("totem.token_retransmits_before_loss_const", line_no);
             }
@@ -316,7 +320,8 @@ pub fn parse_corosync_config(content: &str, source_path: &str) -> CorosyncConfig
                 lines_for.insert("quorum.provider", line_no);
             }
             if let Some(v) = crate::cached_regex!(r"^expected_votes\s*:\s*(\d+)").captures(line) {
-                result.quorum_expected_votes = v.get(1).and_then(|m| m.as_str().parse::<i64>().ok());
+                result.quorum_expected_votes =
+                    v.get(1).and_then(|m| m.as_str().parse::<i64>().ok());
                 lines_for.insert("quorum.expected_votes", line_no);
             }
             if let Some(v) = crate::cached_regex!(r"^two_node\s*:\s*(\d+)").captures(line) {
@@ -331,15 +336,51 @@ pub fn parse_corosync_config(content: &str, source_path: &str) -> CorosyncConfig
     }
 
     let checks: [(&'static str, Option<String>, Option<String>); 9] = [
-        ("totem.token", result.totem_token.map(|v| v.to_string()), Some("30000".to_string())),
-        ("totem.token_retransmits_before_loss_const", result.totem_retransmits.map(|v| v.to_string()), Some("10".to_string())),
-        ("totem.join", result.totem_join.map(|v| v.to_string()), Some("60".to_string())),
-        ("totem.consensus", result.totem_consensus.map(|v| v.to_string()), Some("36000".to_string())),
-        ("totem.max_messages", result.totem_max_messages.map(|v| v.to_string()), Some("20".to_string())),
-        ("totem.transport", result.totem_transport.clone(), Some("udpu".to_string())),
-        ("quorum.provider", result.quorum_provider.clone(), Some("corosync_votequorum".to_string())),
-        ("quorum.expected_votes", result.quorum_expected_votes.map(|v| v.to_string()), Some("2".to_string())),
-        ("quorum.two_node", result.quorum_two_node.map(|v| v.to_string()), Some("1".to_string())),
+        (
+            "totem.token",
+            result.totem_token.map(|v| v.to_string()),
+            Some("30000".to_string()),
+        ),
+        (
+            "totem.token_retransmits_before_loss_const",
+            result.totem_retransmits.map(|v| v.to_string()),
+            Some("10".to_string()),
+        ),
+        (
+            "totem.join",
+            result.totem_join.map(|v| v.to_string()),
+            Some("60".to_string()),
+        ),
+        (
+            "totem.consensus",
+            result.totem_consensus.map(|v| v.to_string()),
+            Some("36000".to_string()),
+        ),
+        (
+            "totem.max_messages",
+            result.totem_max_messages.map(|v| v.to_string()),
+            Some("20".to_string()),
+        ),
+        (
+            "totem.transport",
+            result.totem_transport.clone(),
+            Some("udpu".to_string()),
+        ),
+        (
+            "quorum.provider",
+            result.quorum_provider.clone(),
+            Some("corosync_votequorum".to_string()),
+        ),
+        (
+            "quorum.expected_votes",
+            result.quorum_expected_votes.map(|v| v.to_string()),
+            Some("2".to_string()),
+        ),
+        (
+            "quorum.two_node",
+            result.quorum_two_node.map(|v| v.to_string()),
+            Some("1".to_string()),
+        ),
     ];
 
     for (parameter, actual, expected) in checks {
@@ -349,7 +390,10 @@ pub fn parse_corosync_config(content: &str, source_path: &str) -> CorosyncConfig
                 result.warnings.push(make_warning(
                     "config_mismatch",
                     "warning",
-                    format!("{} is {}, but should be {} for Azure environments", parameter, actual_value, expected_value),
+                    format!(
+                        "{} is {}, but should be {} for Azure environments",
+                        parameter, actual_value, expected_value
+                    ),
                     Some(parameter),
                     Some(expected_value),
                     Some(actual_value),
@@ -383,7 +427,10 @@ pub fn parse_cluster_status(content: &str, source_path: &str) -> ClusterStatusRe
 
     let mut seen = HashSet::new();
 
-    if let Some(caps) = crate::cached_regex!(r#"name=["']cluster-name["']\s+value=["']([^"']+)["']"#).captures(content) {
+    if let Some(caps) =
+        crate::cached_regex!(r#"name=["']cluster-name["']\s+value=["']([^"']+)["']"#)
+            .captures(content)
+    {
         result.cluster_name = caps.get(1).map(|m| m.as_str().to_string());
         result.found = true;
     }
@@ -395,7 +442,11 @@ pub fn parse_cluster_status(content: &str, source_path: &str) -> ClusterStatusRe
         });
         result.found = true;
     }
-    if let Some(caps) = crate::cached_regex!(r#"<current_dc[^>]+(?:name|uname)=["']([^"']+)["'][^>]*with_quorum=["'](true|false)["']"#).captures(content) {
+    if let Some(caps) = crate::cached_regex!(
+        r#"<current_dc[^>]+(?:name|uname)=["']([^"']+)["'][^>]*with_quorum=["'](true|false)["']"#
+    )
+    .captures(content)
+    {
         result.dc_node = caps.get(1).map(|m| m.as_str().to_string());
         result.quorum_status = Some(if caps.get(2).map(|m| m.as_str()) == Some("true") {
             "with quorum".to_string()
@@ -498,7 +549,10 @@ pub fn parse_cluster_status(content: &str, source_path: &str) -> ClusterStatusRe
 
         if let Some(caps) = node_re.captures(trimmed) {
             let node = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
-            let status = caps.get(2).map(|m| m.as_str().to_ascii_lowercase()).unwrap_or_else(|| "unknown".to_string());
+            let status = caps
+                .get(2)
+                .map(|m| m.as_str().to_ascii_lowercase())
+                .unwrap_or_else(|| "unknown".to_string());
             if seen.insert(node.to_string()) {
                 let is_dc = result.dc_node.as_deref() == Some(node);
                 result.node_statuses.push(ClusterNodeStatus {
@@ -534,9 +588,18 @@ pub fn parse_pacemaker_high_cpu(content: &str, source_path: &str) -> Vec<HighCpu
         .filter_map(|(idx, line)| {
             let line_no = idx + 1;
             let captures = regex.captures(line)?;
-            let cpu_load = captures.get(3).and_then(|m| m.as_str().parse::<f64>().ok()).unwrap_or(0.0);
-            let timestamp = captures.name("timestamp").map(|m| m.as_str().to_string()).unwrap_or_default();
-            let source_node = captures.name("node").map(|m| m.as_str().to_string()).unwrap_or_default();
+            let cpu_load = captures
+                .get(3)
+                .and_then(|m| m.as_str().parse::<f64>().ok())
+                .unwrap_or(0.0);
+            let timestamp = captures
+                .name("timestamp")
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
+            let source_node = captures
+                .name("node")
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
 
             Some(HighCpuEvent {
                 timestamp,
@@ -544,7 +607,10 @@ pub fn parse_pacemaker_high_cpu(content: &str, source_path: &str) -> Vec<HighCpu
                 resource: "pacemaker-controld".to_string(),
                 cpu_load,
                 severity: "warning".to_string(),
-                action: format!("high CPU load detected on {} ({:.6})", source_node, cpu_load),
+                action: format!(
+                    "high CPU load detected on {} ({:.6})",
+                    source_node, cpu_load
+                ),
                 raw_line: line.to_string(),
                 source_path: source_path.to_string(),
                 source_line: Some(line_no),
@@ -559,22 +625,43 @@ pub fn parse_pacemaker_high_cpu(content: &str, source_path: &str) -> Vec<HighCpu
 // ---------------------------------------------------------------------------
 
 pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsResult {
-    let move_re = crate::cached_regex!(r"(?i)(?:Moving|Migrating)\s+(?:resource\s+)?(\S+)\s+from\s+(\S+)\s+to\s+(\S+)");
-    let start_re = crate::cached_regex!(r"(?i)(?:Starting|Transition.*Starting)\s+(\S+)\s+on\s+(\S+)");
+    let move_re = crate::cached_regex!(
+        r"(?i)(?:Moving|Migrating)\s+(?:resource\s+)?(\S+)\s+from\s+(\S+)\s+to\s+(\S+)"
+    );
+    let start_re =
+        crate::cached_regex!(r"(?i)(?:Starting|Transition.*Starting)\s+(\S+)\s+on\s+(\S+)");
     let stop_re = crate::cached_regex!(r"(?i)(?:Stopping|Stopped)\s+(\S+)\s+on\s+(\S+)");
-    let result_op_re = crate::cached_regex!(r"(?i)Result of (start|stop) operation for (\S+) on (\S+):\s*(\w+)");
-    let op_re = crate::cached_regex!(r"(?i)Operation\s+(\S+?)_(?:start|stop|monitor|migrate)_\d+:\s*\w+\s*\(node=(\S+)\)");
+    let result_op_re =
+        crate::cached_regex!(r"(?i)Result of (start|stop) operation for (\S+) on (\S+):\s*(\w+)");
+    let op_re = crate::cached_regex!(
+        r"(?i)Operation\s+(\S+?)_(?:start|stop|monitor|migrate)_\d+:\s*\w+\s*\(node=(\S+)\)"
+    );
     let high_cpu_re = crate::cached_regex!(r"(?i)High CPU load detected:\s*([0-9]+(?:\.[0-9]+)?)");
-    let fence_request_re = crate::cached_regex!(r"(?i)Requesting\s+fencing\s+\((\w+)\)\s+(?:of\s+|targeting\s+)?(?:node\s+)?(\S+)");
-    let fence_success_re = crate::cached_regex!(r"(?i)(?:Fencing|stonith.*?fence)\s+(\S+).*?(?:success|succeeded)");
-    let peer_term_re = crate::cached_regex!(r"(?i)(?:Peer|peer)\s+(\S+)\s+was\s+(?:terminated|fenced)\s+\((\w+)\)");
-    let peer_not_term_re = crate::cached_regex!(r"(?i)(?:Peer|peer)\s+(\S+)\s+was\s+not\s+terminated\s+\((\w+)\)");
-    let fence_fail_re = crate::cached_regex!(r"(?i)(?:Fencing|stonith.*?fence)\s+(\S+).*?(?:fail|error)");
-    let fence_will_re = crate::cached_regex!(r"(?i)(?:Cluster\s+node|Node|peer)\s+(\S+)\s+will\s+be\s+fenced");
-    let fence_agent_re = crate::cached_regex!(r"(?i)(fence_\w+).*?(?:Called|for)\s+.*?(?:node\s+)?(\S+)");
-    let monitor_failure_re = crate::cached_regex!(r"(?i)Unexpected\s+result\s+\((error|failed|timeout|not running):\s*([^)]+)\).*?(?:for\s+(?:monitor|start|stop|promote|demote)\s+of\s+)?(\S+?)(?::(\d+))?\s+on\s+(\S+)");
-    let timeout_re = crate::cached_regex!(r"(?i)(?:Resource agent did not complete within|operation.* timed out after)\s+(\d+)s");
-    let transition_fail_re = crate::cached_regex!(r"(?i)Transition\s+\d+\s+action\s+\d+\s+\(([^)]+)_(?:monitor|start|stop|promote|demote)_\d+\s+on\s+(\S+)\).*?expected\s+'([^']+)'\s+but\s+got\s+'([^']+)'");
+    let fence_request_re = crate::cached_regex!(
+        r"(?i)Requesting\s+fencing\s+\((\w+)\)\s+(?:of\s+|targeting\s+)?(?:node\s+)?(\S+)"
+    );
+    let fence_success_re =
+        crate::cached_regex!(r"(?i)(?:Fencing|stonith.*?fence)\s+(\S+).*?(?:success|succeeded)");
+    let peer_term_re = crate::cached_regex!(
+        r"(?i)(?:Peer|peer)\s+(\S+)\s+was\s+(?:terminated|fenced)\s+\((\w+)\)"
+    );
+    let peer_not_term_re =
+        crate::cached_regex!(r"(?i)(?:Peer|peer)\s+(\S+)\s+was\s+not\s+terminated\s+\((\w+)\)");
+    let fence_fail_re =
+        crate::cached_regex!(r"(?i)(?:Fencing|stonith.*?fence)\s+(\S+).*?(?:fail|error)");
+    let fence_will_re =
+        crate::cached_regex!(r"(?i)(?:Cluster\s+node|Node|peer)\s+(\S+)\s+will\s+be\s+fenced");
+    let fence_agent_re =
+        crate::cached_regex!(r"(?i)(fence_\w+).*?(?:Called|for)\s+.*?(?:node\s+)?(\S+)");
+    let monitor_failure_re = crate::cached_regex!(
+        r"(?i)Unexpected\s+result\s+\((error|failed|timeout|not running):\s*([^)]+)\).*?(?:for\s+(?:monitor|start|stop|promote|demote)\s+of\s+)?(\S+?)(?::(\d+))?\s+on\s+(\S+)"
+    );
+    let timeout_re = crate::cached_regex!(
+        r"(?i)(?:Resource agent did not complete within|operation.* timed out after)\s+(\d+)s"
+    );
+    let transition_fail_re = crate::cached_regex!(
+        r"(?i)Transition\s+\d+\s+action\s+\d+\s+\(([^)]+)_(?:monitor|start|stop|promote|demote)_\d+\s+on\s+(\S+)\).*?expected\s+'([^']+)'\s+but\s+got\s+'([^']+)'"
+    );
 
     let mut resource_migrations = Vec::new();
     let mut fencing_events = Vec::new();
@@ -638,7 +725,10 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
         if let Some(caps) = move_re.captures(&message_text) {
             resource_migrations.push(ResourceMigrationEvent {
                 timestamp,
-                resource: caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default(),
+                resource: caps
+                    .get(1)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default(),
                 from_node: caps.get(2).map(|m| m.as_str().to_string()),
                 to_node: caps.get(3).map(|m| m.as_str().to_string()),
                 action: "migration".to_string(),
@@ -708,7 +798,10 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
         }
 
         if let Some(caps) = result_op_re.captures(&message_text) {
-            let action = caps.get(1).map(|m| m.as_str().to_ascii_lowercase()).unwrap_or_else(|| "unknown".to_string());
+            let action = caps
+                .get(1)
+                .map(|m| m.as_str().to_ascii_lowercase())
+                .unwrap_or_else(|| "unknown".to_string());
             let resource = caps.get(2).map(|m| m.as_str()).unwrap_or_default();
             let node = caps.get(3).map(|m| m.as_str()).unwrap_or_default();
             if is_cluster_src
@@ -720,8 +813,16 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
                 resource_migrations.push(ResourceMigrationEvent {
                     timestamp,
                     resource: resource.to_string(),
-                    from_node: if action == "stop" { Some(node.to_string()) } else { None },
-                    to_node: if action == "start" { Some(node.to_string()) } else { None },
+                    from_node: if action == "stop" {
+                        Some(node.to_string())
+                    } else {
+                        None
+                    },
+                    to_node: if action == "start" {
+                        Some(node.to_string())
+                    } else {
+                        None
+                    },
                     action,
                     severity: None,
                     cpu_load: None,
@@ -751,20 +852,28 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
                 && !is_system_resource(resource)
                 && !is_non_cluster_node(node)
             {
-            resource_migrations.push(ResourceMigrationEvent {
-                timestamp,
-                resource: resource.to_string(),
-                from_node: if action == "stop" { Some(node.to_string()) } else { None },
-                to_node: if action == "start" { Some(node.to_string()) } else { None },
-                action: action.to_string(),
-                severity: None,
-                cpu_load: None,
-                error: None,
-                raw_line: trimmed.to_string(),
-                source_path: sp.clone(),
-                source_line: sl,
-                source_line_end: sl,
-            });
+                resource_migrations.push(ResourceMigrationEvent {
+                    timestamp,
+                    resource: resource.to_string(),
+                    from_node: if action == "stop" {
+                        Some(node.to_string())
+                    } else {
+                        None
+                    },
+                    to_node: if action == "start" {
+                        Some(node.to_string())
+                    } else {
+                        None
+                    },
+                    action: action.to_string(),
+                    severity: None,
+                    cpu_load: None,
+                    error: None,
+                    raw_line: trimmed.to_string(),
+                    source_path: sp.clone(),
+                    source_line: sl,
+                    source_line_end: sl,
+                });
             }
             continue;
         }
@@ -772,8 +881,14 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
         if let Some(caps) = fence_request_re.captures(trimmed) {
             fencing_events.push(FencingEvent {
                 timestamp,
-                target_node: caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_default(),
-                action: caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_else(|| "fence".to_string()),
+                target_node: caps
+                    .get(2)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default(),
+                action: caps
+                    .get(1)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_else(|| "fence".to_string()),
                 status: "requested".to_string(),
                 agent: None,
                 raw_line: trimmed.to_string(),
@@ -787,7 +902,10 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
         if let Some(caps) = fence_success_re.captures(&message_text) {
             fencing_events.push(FencingEvent {
                 timestamp,
-                target_node: caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default(),
+                target_node: caps
+                    .get(1)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default(),
                 action: "fence".to_string(),
                 status: "success".to_string(),
                 agent: None,
@@ -802,8 +920,14 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
         if let Some(caps) = peer_term_re.captures(&message_text) {
             fencing_events.push(FencingEvent {
                 timestamp,
-                target_node: caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default(),
-                action: caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_else(|| "fence".to_string()),
+                target_node: caps
+                    .get(1)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default(),
+                action: caps
+                    .get(2)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_else(|| "fence".to_string()),
                 status: "success".to_string(),
                 agent: None,
                 raw_line: trimmed.to_string(),
@@ -817,8 +941,14 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
         if let Some(caps) = peer_not_term_re.captures(&message_text) {
             fencing_events.push(FencingEvent {
                 timestamp,
-                target_node: caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default(),
-                action: caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_else(|| "fence".to_string()),
+                target_node: caps
+                    .get(1)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default(),
+                action: caps
+                    .get(2)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_else(|| "fence".to_string()),
                 status: "failed".to_string(),
                 agent: None,
                 raw_line: trimmed.to_string(),
@@ -832,7 +962,10 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
         if let Some(caps) = fence_fail_re.captures(&message_text) {
             fencing_events.push(FencingEvent {
                 timestamp,
-                target_node: caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default(),
+                target_node: caps
+                    .get(1)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default(),
                 action: "fence".to_string(),
                 status: "failed".to_string(),
                 agent: None,
@@ -847,7 +980,10 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
         if let Some(caps) = fence_will_re.captures(&message_text) {
             fencing_events.push(FencingEvent {
                 timestamp,
-                target_node: caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default(),
+                target_node: caps
+                    .get(1)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default(),
                 action: "fence".to_string(),
                 status: "pending".to_string(),
                 agent: None,
@@ -862,7 +998,10 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
         if let Some(caps) = fence_agent_re.captures(&message_text) {
             fencing_events.push(FencingEvent {
                 timestamp,
-                target_node: caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_default(),
+                target_node: caps
+                    .get(2)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default(),
                 action: "fence".to_string(),
                 status: "in_progress".to_string(),
                 agent: caps.get(1).map(|m| m.as_str().to_string()),
@@ -912,7 +1051,10 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
                 action: "timeout".to_string(),
                 severity: Some("warning".to_string()),
                 cpu_load: None,
-                error: Some(format!("Operation timeout after {}s", caps.get(1).map(|m| m.as_str()).unwrap_or("0"))),
+                error: Some(format!(
+                    "Operation timeout after {}s",
+                    caps.get(1).map(|m| m.as_str()).unwrap_or("0")
+                )),
                 raw_line: trimmed.to_string(),
                 source_path: sp.clone(),
                 source_line: sl,
@@ -924,7 +1066,10 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
         if let Some(caps) = transition_fail_re.captures(&message_text) {
             resource_migrations.push(ResourceMigrationEvent {
                 timestamp,
-                resource: caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default(),
+                resource: caps
+                    .get(1)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default(),
                 from_node: caps.get(2).map(|m| m.as_str().to_string()),
                 to_node: None,
                 action: "transition_failure".to_string(),
@@ -958,7 +1103,10 @@ pub fn parse_cluster_events(content: &str, source_path: &str) -> ClusterEventsRe
 // Cluster maintenance mode
 // ---------------------------------------------------------------------------
 
-pub fn parse_cluster_maintenance_mode(content: &str, source_path: &str) -> ClusterMaintenanceResult {
+pub fn parse_cluster_maintenance_mode(
+    content: &str,
+    source_path: &str,
+) -> ClusterMaintenanceResult {
     let mut result = ClusterMaintenanceResult {
         found: false,
         maintenance_mode: None,
@@ -968,10 +1116,13 @@ pub fn parse_cluster_maintenance_mode(content: &str, source_path: &str) -> Clust
     };
 
     // Locate the line of the cluster-wide maintenance-mode property, if any.
-    let mm_re = crate::cached_regex!(r#"name=["']maintenance-mode["']\s+value=["'](true|false)["']"#);
+    let mm_re =
+        crate::cached_regex!(r#"name=["']maintenance-mode["']\s+value=["'](true|false)["']"#);
     let mut maintenance_line: Option<usize> = None;
     let mut disabled_line: Option<usize> = None;
-    let resource_re = crate::cached_regex!(r"(?i)(?:Resource|Clone Set|Primary/Secondary Set|Resource Group):\s+([^\s(]+).*?\(.*?maintenance.*?\)");
+    let resource_re = crate::cached_regex!(
+        r"(?i)(?:Resource|Clone Set|Primary/Secondary Set|Resource Group):\s+([^\s(]+).*?\(.*?maintenance.*?\)"
+    );
     let mut resource_lines: Vec<(String, usize)> = Vec::new();
 
     for (idx, line) in content.lines().enumerate() {
@@ -990,7 +1141,10 @@ pub fn parse_cluster_maintenance_mode(content: &str, source_path: &str) -> Clust
     }
 
     if let Some(caps) = mm_re.captures(content) {
-        let enabled = caps.get(1).map(|m| m.as_str().eq_ignore_ascii_case("true")).unwrap_or(false);
+        let enabled = caps
+            .get(1)
+            .map(|m| m.as_str().eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
         result.found = true;
         result.maintenance_mode = Some(enabled);
         if enabled {
@@ -1011,7 +1165,11 @@ pub fn parse_cluster_maintenance_mode(content: &str, source_path: &str) -> Clust
     if content.contains("Resource management is DISABLED") {
         result.found = true;
         result.maintenance_mode = Some(true);
-        if !result.warnings.iter().any(|w| w.kind == "cluster_in_maintenance") {
+        if !result
+            .warnings
+            .iter()
+            .any(|w| w.kind == "cluster_in_maintenance")
+        {
             result.warnings.push(make_warning(
                 "cluster_in_maintenance",
                 "warning",
@@ -1041,7 +1199,10 @@ pub fn parse_cluster_maintenance_mode(content: &str, source_path: &str) -> Clust
         result.warnings.push(make_warning(
             "resources_in_maintenance",
             "info",
-            format!("{} resource(s) in maintenance mode", result.resources_in_maintenance.len()),
+            format!(
+                "{} resource(s) in maintenance mode",
+                result.resources_in_maintenance.len()
+            ),
             None,
             None,
             None,
@@ -1140,7 +1301,10 @@ pub fn parse_hosts_file(content: &str, source_path: &str) -> HostsFileResult {
         for n in &names {
             hostname_set.insert(n.clone());
         }
-        entries.push(HostsEntry { ip, hostnames: names });
+        entries.push(HostsEntry {
+            ip,
+            hostnames: names,
+        });
     }
 
     let mut all_hostnames: Vec<String> = hostname_set.into_iter().collect();
@@ -1184,12 +1348,10 @@ pub fn parse_corosync_status(content: &str, source_path: &str) -> CorosyncStatus
     static INIT_ERR: OnceLock<Regex> = OnceLock::new();
     static LOCAL_RE: OnceLock<Regex> = OnceLock::new();
     static NODE_RE: OnceLock<Regex> = OnceLock::new();
-    let init_err = INIT_ERR.get_or_init(|| {
-        Regex::new(r"(?i)Could not initialize corosync configuration").unwrap()
-    });
-    let local_re = LOCAL_RE.get_or_init(|| {
-        Regex::new(r"(?i)Local node ID\s+(\d+).*transport\s+(\w+)").unwrap()
-    });
+    let init_err = INIT_ERR
+        .get_or_init(|| Regex::new(r"(?i)Could not initialize corosync configuration").unwrap());
+    let local_re = LOCAL_RE
+        .get_or_init(|| Regex::new(r"(?i)Local node ID\s+(\d+).*transport\s+(\w+)").unwrap());
     let node_re = NODE_RE.get_or_init(|| Regex::new(r"(?i)nodeid:\s*(\d+):\s*(\w+)").unwrap());
 
     let mut local_node_id: Option<String> = None;
@@ -1215,8 +1377,14 @@ pub fn parse_corosync_status(content: &str, source_path: &str) -> CorosyncStatus
         }
         if let Some(caps) = node_re.captures(trimmed) {
             nodes.push(CorosyncStatusNode {
-                node_id: caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default(),
-                status: caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_default(),
+                node_id: caps
+                    .get(1)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default(),
+                status: caps
+                    .get(2)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default(),
             });
         }
     }
@@ -1275,9 +1443,8 @@ pub fn parse_cluster_daemon_status(content: &str, source_path: &str) -> ClusterD
     static DAEMON_RE: OnceLock<Regex> = OnceLock::new();
     static SECTION_HEADER_RE: OnceLock<Regex> = OnceLock::new();
     let section_re = SECTION_RE.get_or_init(|| Regex::new(r"(?i)^Daemon Status:?$").unwrap());
-    let daemon_re = DAEMON_RE.get_or_init(|| {
-        Regex::new(r"(?i)^\s*(corosync|pacemaker|pcsd):\s*(\w+)/(\w+)").unwrap()
-    });
+    let daemon_re = DAEMON_RE
+        .get_or_init(|| Regex::new(r"(?i)^\s*(corosync|pacemaker|pcsd):\s*(\w+)/(\w+)").unwrap());
     let section_header_re =
         SECTION_HEADER_RE.get_or_init(|| Regex::new(r"^[A-Z][a-z]+ [A-Z]").unwrap());
 
@@ -1300,9 +1467,18 @@ pub fn parse_cluster_daemon_status(content: &str, source_path: &str) -> ClusterD
         }
         if in_section {
             if let Some(caps) = daemon_re.captures(line) {
-                let daemon = caps.get(1).map(|m| m.as_str().to_ascii_lowercase()).unwrap_or_default();
-                let active_status = caps.get(2).map(|m| m.as_str().to_ascii_lowercase()).unwrap_or_default();
-                let enabled_status = caps.get(3).map(|m| m.as_str().to_ascii_lowercase()).unwrap_or_default();
+                let daemon = caps
+                    .get(1)
+                    .map(|m| m.as_str().to_ascii_lowercase())
+                    .unwrap_or_default();
+                let active_status = caps
+                    .get(2)
+                    .map(|m| m.as_str().to_ascii_lowercase())
+                    .unwrap_or_default();
+                let enabled_status = caps
+                    .get(3)
+                    .map(|m| m.as_str().to_ascii_lowercase())
+                    .unwrap_or_default();
                 let state = DaemonState {
                     active: Some(active_status == "active"),
                     enabled: Some(enabled_status == "enabled"),
@@ -1455,13 +1631,20 @@ pub fn parse_sbd_config(content: &str, source_path: &str) -> SbdConfigResult {
     static WD_DEV_RE: OnceLock<Regex> = OnceLock::new();
     static WD_TO_RE: OnceLock<Regex> = OnceLock::new();
     static TO_ACTION_RE: OnceLock<Regex> = OnceLock::new();
-    let device_re = DEVICE_RE.get_or_init(|| Regex::new(r#"^SBD_DEVICE=["']?([^"'\n]+?)["']?$"#).unwrap());
-    let pacemaker_re = PACEMAKER_RE.get_or_init(|| Regex::new(r#"^SBD_PACEMAKER=["']?(\w+)["']?"#).unwrap());
-    let startmode_re = STARTMODE_RE.get_or_init(|| Regex::new(r#"^SBD_STARTMODE=["']?(\w+)["']?"#).unwrap());
-    let delay_re = DELAY_RE.get_or_init(|| Regex::new(r#"^SBD_DELAY_START=["']?([^"'\n]+?)["']?$"#).unwrap());
-    let wd_dev_re = WD_DEV_RE.get_or_init(|| Regex::new(r#"^SBD_WATCHDOG_DEV=["']?([^"'\n]+?)["']?$"#).unwrap());
-    let wd_to_re = WD_TO_RE.get_or_init(|| Regex::new(r#"^SBD_WATCHDOG_TIMEOUT=["']?(\d+)["']?"#).unwrap());
-    let to_action_re = TO_ACTION_RE.get_or_init(|| Regex::new(r#"^SBD_TIMEOUT_ACTION=["']?([^"'\n]+?)["']?$"#).unwrap());
+    let device_re =
+        DEVICE_RE.get_or_init(|| Regex::new(r#"^SBD_DEVICE=["']?([^"'\n]+?)["']?$"#).unwrap());
+    let pacemaker_re =
+        PACEMAKER_RE.get_or_init(|| Regex::new(r#"^SBD_PACEMAKER=["']?(\w+)["']?"#).unwrap());
+    let startmode_re =
+        STARTMODE_RE.get_or_init(|| Regex::new(r#"^SBD_STARTMODE=["']?(\w+)["']?"#).unwrap());
+    let delay_re =
+        DELAY_RE.get_or_init(|| Regex::new(r#"^SBD_DELAY_START=["']?([^"'\n]+?)["']?$"#).unwrap());
+    let wd_dev_re = WD_DEV_RE
+        .get_or_init(|| Regex::new(r#"^SBD_WATCHDOG_DEV=["']?([^"'\n]+?)["']?$"#).unwrap());
+    let wd_to_re =
+        WD_TO_RE.get_or_init(|| Regex::new(r#"^SBD_WATCHDOG_TIMEOUT=["']?(\d+)["']?"#).unwrap());
+    let to_action_re = TO_ACTION_RE
+        .get_or_init(|| Regex::new(r#"^SBD_TIMEOUT_ACTION=["']?([^"'\n]+?)["']?$"#).unwrap());
 
     for raw in body.lines() {
         let trimmed = raw.trim();
@@ -1470,20 +1653,31 @@ pub fn parse_sbd_config(content: &str, source_path: &str) -> SbdConfigResult {
         }
         if let Some(caps) = device_re.captures(trimmed) {
             result.found = true;
-            let v = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
+            let v = caps
+                .get(1)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
             result.sbd_device = Some(v.clone());
-            result.sbd_devices = v.split(';').filter(|s| !s.trim().is_empty()).map(|s| s.to_string()).collect();
+            result.sbd_devices = v
+                .split(';')
+                .filter(|s| !s.trim().is_empty())
+                .map(|s| s.to_string())
+                .collect();
             result.source_file = Some(source_path.to_string());
         }
         if let Some(caps) = pacemaker_re.captures(trimmed) {
             result.found = true;
-            let v = caps.get(1).map(|m| m.as_str().to_ascii_lowercase()).unwrap_or_default();
+            let v = caps
+                .get(1)
+                .map(|m| m.as_str().to_ascii_lowercase())
+                .unwrap_or_default();
             if v != "yes" {
                 result.warnings.push(SbdWarning {
                     kind: "sbd_pacemaker_disabled".to_string(),
                     severity: "warning".to_string(),
                     message: format!("SBD_PACEMAKER is not set to \"yes\" (current: {})", v),
-                    recommendation: "Set SBD_PACEMAKER=yes for proper Pacemaker integration".to_string(),
+                    recommendation: "Set SBD_PACEMAKER=yes for proper Pacemaker integration"
+                        .to_string(),
                     documentation_url: None,
                 });
             }
@@ -1491,13 +1685,17 @@ pub fn parse_sbd_config(content: &str, source_path: &str) -> SbdConfigResult {
         }
         if let Some(caps) = startmode_re.captures(trimmed) {
             result.found = true;
-            let v = caps.get(1).map(|m| m.as_str().to_ascii_lowercase()).unwrap_or_default();
+            let v = caps
+                .get(1)
+                .map(|m| m.as_str().to_ascii_lowercase())
+                .unwrap_or_default();
             if v != "always" {
                 result.warnings.push(SbdWarning {
                     kind: "sbd_startmode_not_always".to_string(),
                     severity: "info".to_string(),
                     message: format!("SBD_STARTMODE is \"{}\" (recommended: \"always\")", v),
-                    recommendation: "Consider setting SBD_STARTMODE=always for Azure deployments".to_string(),
+                    recommendation: "Consider setting SBD_STARTMODE=always for Azure deployments"
+                        .to_string(),
                     documentation_url: None,
                 });
             }
@@ -1505,7 +1703,10 @@ pub fn parse_sbd_config(content: &str, source_path: &str) -> SbdConfigResult {
         }
         if let Some(caps) = delay_re.captures(trimmed) {
             result.found = true;
-            let v = caps.get(1).map(|m| m.as_str().to_ascii_lowercase()).unwrap_or_default();
+            let v = caps
+                .get(1)
+                .map(|m| m.as_str().to_ascii_lowercase())
+                .unwrap_or_default();
             if v == "no" || v == "yes" {
                 result.warnings.push(SbdWarning {
                     kind: "sbd_delay_start_not_numeric".to_string(),
@@ -1644,12 +1845,18 @@ pub fn parse_azure_fence_auth(content: &str, source_path: &str) -> AzureFenceAut
     // MSI
     let msi_re = crate::cached_regex!(r#"(?i)name=["']msi["']\s+value=["'](true|false)["']"#);
     if let Some(caps) = msi_re.captures(content) {
-        if caps.get(1).map(|m| m.as_str().eq_ignore_ascii_case("true")).unwrap_or(false) {
+        if caps
+            .get(1)
+            .map(|m| m.as_str().eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+        {
             result.auth_method = Some("msi".to_string());
             result.recommendations.push(AzureFenceRecommendation {
                 kind: "using_msi".to_string(),
                 severity: "info".to_string(),
-                message: "Azure fence agent is using Managed Identity (MSI) - recommended configuration".to_string(),
+                message:
+                    "Azure fence agent is using Managed Identity (MSI) - recommended configuration"
+                        .to_string(),
             });
         }
     }
@@ -1680,15 +1887,42 @@ pub fn parse_azure_fence_auth(content: &str, source_path: &str) -> AzureFenceAut
         });
     }
 
-    result.subscription_id = cap_str(content, r#"(?i)name=["']subscriptionId["']\s+value=["']([^"']+)["']"#);
-    result.resource_group = cap_str(content, r#"(?i)name=["']resourceGroup["']\s+value=["']([^"']+)["']"#);
-    result.tenant_id = cap_str(content, r#"(?i)name=["']tenantId["']\s+value=["']([^"']+)["']"#);
-    result.pcmk_monitor_retries = cap_int(content, r#"(?i)name=["']pcmk_monitor_retries["']\s+value=["'](\d+)["']"#);
-    result.pcmk_action_limit = cap_int(content, r#"(?i)name=["']pcmk_action_limit["']\s+value=["'](\d+)["']"#);
-    result.power_timeout = cap_int(content, r#"(?i)name=["']power_timeout["']\s+value=["'](\d+)["']"#);
-    result.pcmk_reboot_timeout = cap_int(content, r#"(?i)name=["']pcmk_reboot_timeout["']\s+value=["'](\d+)["']"#);
-    result.pcmk_delay_max = cap_int(content, r#"(?i)name=["']pcmk_delay_max["']\s+value=["'](\d+)["']"#);
-    result.pcmk_host_map = cap_str(content, r#"(?i)name=["']pcmk_host_map["']\s+value=["']([^"']+)["']"#);
+    result.subscription_id = cap_str(
+        content,
+        r#"(?i)name=["']subscriptionId["']\s+value=["']([^"']+)["']"#,
+    );
+    result.resource_group = cap_str(
+        content,
+        r#"(?i)name=["']resourceGroup["']\s+value=["']([^"']+)["']"#,
+    );
+    result.tenant_id = cap_str(
+        content,
+        r#"(?i)name=["']tenantId["']\s+value=["']([^"']+)["']"#,
+    );
+    result.pcmk_monitor_retries = cap_int(
+        content,
+        r#"(?i)name=["']pcmk_monitor_retries["']\s+value=["'](\d+)["']"#,
+    );
+    result.pcmk_action_limit = cap_int(
+        content,
+        r#"(?i)name=["']pcmk_action_limit["']\s+value=["'](\d+)["']"#,
+    );
+    result.power_timeout = cap_int(
+        content,
+        r#"(?i)name=["']power_timeout["']\s+value=["'](\d+)["']"#,
+    );
+    result.pcmk_reboot_timeout = cap_int(
+        content,
+        r#"(?i)name=["']pcmk_reboot_timeout["']\s+value=["'](\d+)["']"#,
+    );
+    result.pcmk_delay_max = cap_int(
+        content,
+        r#"(?i)name=["']pcmk_delay_max["']\s+value=["'](\d+)["']"#,
+    );
+    result.pcmk_host_map = cap_str(
+        content,
+        r#"(?i)name=["']pcmk_host_map["']\s+value=["']([^"']+)["']"#,
+    );
 
     result
 }
@@ -1834,7 +2068,11 @@ pub fn parse_iscsi_config(content: &str, source_path: &str) -> IscsiConfigResult
         }
     }
 
-    if let Some(s) = result.iscsid_config.iter().find(|s| s.name == "node.startup") {
+    if let Some(s) = result
+        .iscsid_config
+        .iter()
+        .find(|s| s.name == "node.startup")
+    {
         result.node_startup = Some(s.value.to_ascii_lowercase());
     }
 
@@ -1842,27 +2080,46 @@ pub fn parse_iscsi_config(content: &str, source_path: &str) -> IscsiConfigResult
     let mut seen_disc: HashSet<String> = HashSet::new();
     let disc_re = crate::cached_regex!(r"(\d+\.\d+\.\d+\.\d+):(\d+)\s+via\s+(\w+)");
     for caps in disc_re.captures_iter(content) {
-        let ip = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
-        let port: i64 = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+        let ip = caps
+            .get(1)
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
+        let port: i64 = caps
+            .get(2)
+            .and_then(|m| m.as_str().parse().ok())
+            .unwrap_or(0);
         let key = format!("{}:{}", ip, port);
         if seen_disc.insert(key) {
             result.found = true;
             result.discovery_servers.push(IscsiDiscovery {
                 ip,
                 port,
-                method: caps.get(3).map(|m| m.as_str().to_string()).unwrap_or_default(),
+                method: caps
+                    .get(3)
+                    .map(|m| m.as_str().to_string())
+                    .unwrap_or_default(),
             });
         }
     }
 
     // Targets
-    let mut targets_by_iqn: std::collections::HashMap<String, IscsiTarget> = std::collections::HashMap::new();
+    let mut targets_by_iqn: std::collections::HashMap<String, IscsiTarget> =
+        std::collections::HashMap::new();
     let mut iqn_order: Vec<String> = Vec::new();
     let target_re = crate::cached_regex!(r"(\d+\.\d+\.\d+\.\d+):(\d+),\d+\s+(iqn\.[^\s\n(]+)");
     for caps in target_re.captures_iter(content) {
-        let ip = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
-        let port: i64 = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-        let iqn = caps.get(3).map(|m| m.as_str().trim().to_string()).unwrap_or_default();
+        let ip = caps
+            .get(1)
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
+        let port: i64 = caps
+            .get(2)
+            .and_then(|m| m.as_str().parse().ok())
+            .unwrap_or(0);
+        let iqn = caps
+            .get(3)
+            .map(|m| m.as_str().trim().to_string())
+            .unwrap_or_default();
         let entry = targets_by_iqn.entry(iqn.clone()).or_insert_with(|| {
             iqn_order.push(iqn.clone());
             IscsiTarget {
@@ -1893,16 +2150,28 @@ pub fn parse_iscsi_config(content: &str, source_path: &str) -> IscsiConfigResult
     )
     .unwrap();
     for caps in sess_re.captures_iter(content) {
-        let session_id_str = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
+        let session_id_str = caps
+            .get(1)
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
         if !seen_sess.insert(session_id_str.clone()) {
             continue;
         }
         result.found = true;
         result.sessions.push(IscsiSession {
             session_id: session_id_str.parse().unwrap_or(0),
-            ip: caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_default(),
-            port: caps.get(3).and_then(|m| m.as_str().parse().ok()).unwrap_or(0),
-            iqn: caps.get(4).map(|m| m.as_str().trim().to_string()).unwrap_or_default(),
+            ip: caps
+                .get(2)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default(),
+            port: caps
+                .get(3)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0),
+            iqn: caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .unwrap_or_default(),
             kind: caps
                 .get(5)
                 .map(|m| m.as_str().to_string())
@@ -1918,10 +2187,22 @@ pub fn parse_iscsi_config(content: &str, source_path: &str) -> IscsiConfigResult
     )
     .unwrap();
     for caps in state_re.captures_iter(content) {
-        let ip = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
-        let port: i64 = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-        let conn = caps.get(3).map(|m| m.as_str().trim().to_string()).unwrap_or_default();
-        let sess = caps.get(4).map(|m| m.as_str().trim().to_string()).unwrap_or_default();
+        let ip = caps
+            .get(1)
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
+        let port: i64 = caps
+            .get(2)
+            .and_then(|m| m.as_str().parse().ok())
+            .unwrap_or(0);
+        let conn = caps
+            .get(3)
+            .map(|m| m.as_str().trim().to_string())
+            .unwrap_or_default();
+        let sess = caps
+            .get(4)
+            .map(|m| m.as_str().trim().to_string())
+            .unwrap_or_default();
         if let Some(s) = result
             .sessions
             .iter_mut()
@@ -1940,21 +2221,33 @@ pub fn parse_iscsi_config(content: &str, source_path: &str) -> IscsiConfigResult
     for caps in host_re.captures_iter(content) {
         result.found = true;
         result.hosts.push(IscsiHost {
-            host_number: caps.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(0),
-            state: caps.get(2).map(|m| m.as_str().trim().to_string()).unwrap_or_default(),
-            transport: caps.get(3).map(|m| m.as_str().trim().to_string()).unwrap_or_default(),
-            ip: caps.get(4).map(|m| m.as_str().trim().to_string()).unwrap_or_default(),
+            host_number: caps
+                .get(1)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0),
+            state: caps
+                .get(2)
+                .map(|m| m.as_str().trim().to_string())
+                .unwrap_or_default(),
+            transport: caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .unwrap_or_default(),
+            ip: caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .unwrap_or_default(),
         });
     }
 
     // Service status
-    if let Some(caps) = crate::cached_regex!(r"iscsi\.service[\s\S]*?Active:\s*([^\n]+)")
-        .captures(content)
+    if let Some(caps) =
+        crate::cached_regex!(r"iscsi\.service[\s\S]*?Active:\s*([^\n]+)").captures(content)
     {
         result.service_status.iscsi_service = caps.get(1).map(|m| m.as_str().trim().to_string());
     }
-    if let Some(caps) = crate::cached_regex!(r"iscsid\.service[\s\S]*?Active:\s*([^\n]+)")
-        .captures(content)
+    if let Some(caps) =
+        crate::cached_regex!(r"iscsid\.service[\s\S]*?Active:\s*([^\n]+)").captures(content)
     {
         result.service_status.iscsid_service = caps.get(1).map(|m| m.as_str().trim().to_string());
     }
@@ -1975,7 +2268,8 @@ pub fn parse_iscsi_config(content: &str, source_path: &str) -> IscsiConfigResult
                     kind: "iscsi_session_not_logged_in".to_string(),
                     severity: "error".to_string(),
                     message: format!("iSCSI session to {} is not logged in ({})", s.ip, state),
-                    recommendation: "Check iSCSI target availability and network connectivity".to_string(),
+                    recommendation: "Check iSCSI target availability and network connectivity"
+                        .to_string(),
                 });
             }
         }
@@ -1996,7 +2290,9 @@ pub fn parse_iscsi_config(content: &str, source_path: &str) -> IscsiConfigResult
                     kind: "iscsi_insufficient_paths".to_string(),
                     severity: "info".to_string(),
                     message: format!("iSCSI target {} has only {} path(s)", iqn, count),
-                    recommendation: "Azure iSCSI SBD typically requires 3 paths for high availability".to_string(),
+                    recommendation:
+                        "Azure iSCSI SBD typically requires 3 paths for high availability"
+                            .to_string(),
                 });
             }
         }
@@ -2031,7 +2327,8 @@ pub fn parse_live_migration(content: &str, source_path: &str) -> LiveMigrationRe
     let mut i = 0usize;
     while i < lines.len() {
         let line = lines[i];
-        if !(line.contains("hv_utils") || line.contains("hv_balloon") || line.contains("hv_netvsc")) {
+        if !(line.contains("hv_utils") || line.contains("hv_balloon") || line.contains("hv_netvsc"))
+        {
             i += 1;
             continue;
         }
@@ -2132,7 +2429,8 @@ pub fn parse_sap_instance_errors(content: &str, source_path: &str) -> SapInstanc
         Regex::new(r"(?i)SAPInstance\(([^)]+)\)\[\d+\]:\s*ERROR:\s*SAP instance service\s+(\S+)\s+is not running with status GRAY").unwrap()
     });
     let fs_re = FS_RE.get_or_init(|| {
-        Regex::new(r"(?i)Filesystem\(([^)]+)\)\[\d+\]:\s*ERROR:\s*Couldn't unmount\s+(\S+)").unwrap()
+        Regex::new(r"(?i)Filesystem\(([^)]+)\)\[\d+\]:\s*ERROR:\s*Couldn't unmount\s+(\S+)")
+            .unwrap()
     });
     let ts_re = TS_RE.get_or_init(|| Regex::new(r"^(\w+\s+\d+\s+\d+:\d+:\d+)").unwrap());
 
@@ -2150,8 +2448,14 @@ pub fn parse_sap_instance_errors(content: &str, source_path: &str) -> SapInstanc
             .and_then(|c| c.get(1).map(|m| m.as_str().to_string()));
 
         if let Some(caps) = start_re.captures(raw_line) {
-            let resource_name = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
-            let profile_path = caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_default();
+            let resource_name = caps
+                .get(1)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
+            let profile_path = caps
+                .get(2)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
             let exists = start_profile_errors.iter().any(|e| {
                 e.resource_name == resource_name
                     && e.profile_path.as_deref() == Some(profile_path.as_str())
@@ -2179,8 +2483,14 @@ pub fn parse_sap_instance_errors(content: &str, source_path: &str) -> SapInstanc
             }
         }
         if let Some(caps) = gray_re.captures(raw_line) {
-            let resource_name = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
-            let service_name = caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_default();
+            let resource_name = caps
+                .get(1)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
+            let service_name = caps
+                .get(2)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
             let exists = gray_status_errors.iter().any(|e| {
                 e.resource_name == resource_name
                     && e.service_name.as_deref() == Some(service_name.as_str())
@@ -2207,8 +2517,14 @@ pub fn parse_sap_instance_errors(content: &str, source_path: &str) -> SapInstanc
             }
         }
         if let Some(caps) = fs_re.captures(raw_line) {
-            let resource_name = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
-            let mount_point = caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_default();
+            let resource_name = caps
+                .get(1)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
+            let mount_point = caps
+                .get(2)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
             let exists = filesystem_errors.iter().any(|e| {
                 e.resource_name == resource_name
                     && e.mount_point.as_deref() == Some(mount_point.as_str())
@@ -2657,7 +2973,8 @@ pub fn parse_fencing_config(content: &str, source_path: &str) -> FencingConfigRe
     // Line-based scan for crm/pcs formats
     let stonith_true_re = crate::cached_regex!(r"(?i)stonith-enabled[=:\s]*true");
     let stonith_false_re = crate::cached_regex!(r"(?i)stonith-enabled[=:\s]*false");
-    let azure_fence_crm_re = crate::cached_regex!(r"^primitive\s+([^\s]+).*?(?:stonith:)?fence_azure_arm");
+    let azure_fence_crm_re =
+        crate::cached_regex!(r"^primitive\s+([^\s]+).*?(?:stonith:)?fence_azure_arm");
     let pcs_azure_re =
         crate::cached_regex!(r"^Resource:\s+([^\s]+)\s+\(class=stonith\s+type=fence_azure_arm");
     let crm_fence_re = crate::cached_regex!(r"^primitive\s+([^\s]+).*?stonith:(\S+)");
@@ -2849,8 +3166,7 @@ pub fn parse_azure_scheduled_events(
         crate::cached_regex!(r"(?i)^(Migration Summary|Operations|Fencing History):?$");
     let node_online_re = crate::cached_regex!(r"(?i)^\*?\s*Node\s+(\S+).*:\s*(online|offline)");
     let node_context_re = crate::cached_regex!(r"(?i)^\*?\s*Node:?\s+(\S+)");
-    let health_azure_re =
-        crate::cached_regex!(r"(?i)^\*?\s*#health-azure\s*:\s*(-?\d+|undefined)");
+    let health_azure_re = crate::cached_regex!(r"(?i)^\*?\s*#health-azure\s*:\s*(-?\d+|undefined)");
     let stopped_re = crate::cached_regex!(r"(?i)^\*?\s*(\S+)\s+\([^)]+\):\s+Stopped");
     let health_strat_re = crate::cached_regex!(r"(?i)node-health-strategy\s*[:=]\s*(\S+)");
     let cib_health_attr_re =
@@ -2894,7 +3210,9 @@ pub fn parse_azure_scheduled_events(
         if in_node_list {
             if let Some(c) = node_online_re.captures(trimmed) {
                 if c.get(2).unwrap().as_str().to_lowercase() == "online" {
-                    result.online_nodes.push(c.get(1).unwrap().as_str().to_string());
+                    result
+                        .online_nodes
+                        .push(c.get(1).unwrap().as_str().to_string());
                 }
             }
         }
@@ -3019,7 +3337,9 @@ pub fn parse_azure_scheduled_events(
                     "#health-azure attribute is configured on some nodes but missing on: {}",
                     missing.join(", ")
                 ),
-                recommendation: "Set the #health-azure attribute on all cluster nodes for consistent behavior.".to_string(),
+                recommendation:
+                    "Set the #health-azure attribute on all cluster nodes for consistent behavior."
+                        .to_string(),
                 stopped_resources: None,
                 online_nodes: None,
                 nodes_missing: Some(missing),
@@ -3074,8 +3394,7 @@ pub fn parse_sap_instance_config(content: &str, _source_path: &str) -> SapInstan
     let mut warnings: Vec<SapInstanceWarning> = Vec::new();
     let mut found = false;
 
-    let resource_re =
-        crate::cached_regex!(r"(?i)Resource:\s+(\S+)\s+\(.*type=SAPInstance\)");
+    let resource_re = crate::cached_regex!(r"(?i)Resource:\s+(\S+)\s+\(.*type=SAPInstance\)");
     let xml_resource_re =
         crate::cached_regex!(r#"(?i)<primitive\s+id="([^"]+)"[^>]*type="SAPInstance""#);
     let next_section_re = crate::cached_regex!(r"^Resource:|^Group:");
@@ -3440,10 +3759,9 @@ pub fn parse_pacemaker_resources(content: &str, source_path: &str) -> PacemakerR
             relevant_owned = Some(sections.join("\n\n"));
         } else {
             // crm configure show fallback
-            let fallback_re = Regex::new(
-                r"(?ms)^#==\[ Command \]====.*?crm configure show.*?(?=^#==\[|\z)",
-            )
-            .unwrap();
+            let fallback_re =
+                Regex::new(r"(?ms)^#==\[ Command \]====.*?crm configure show.*?(?=^#==\[|\z)")
+                    .unwrap();
             if let Some(m) = fallback_re.find(content) {
                 relevant_owned = Some(m.as_str().to_string());
             } else {
@@ -3486,8 +3804,14 @@ pub fn parse_pacemaker_resources(content: &str, source_path: &str) -> PacemakerR
             resources.push(PacemakerResource {
                 name: id,
                 kind,
-                provider: attrs.get("provider").cloned().unwrap_or_else(|| "unknown".to_string()),
-                class_field: attrs.get("class").cloned().unwrap_or_else(|| "ocf".to_string()),
+                provider: attrs
+                    .get("provider")
+                    .cloned()
+                    .unwrap_or_else(|| "unknown".to_string()),
+                class_field: attrs
+                    .get("class")
+                    .cloned()
+                    .unwrap_or_else(|| "ocf".to_string()),
                 format: "xml".to_string(),
                 node: None,
                 status: None,
@@ -3508,7 +3832,10 @@ pub fn parse_pacemaker_resources(content: &str, source_path: &str) -> PacemakerR
                 continue;
             }
             let node = attrs.get("node").cloned();
-            let role = attrs.get("role").cloned().unwrap_or_else(|| "Started".to_string());
+            let role = attrs
+                .get("role")
+                .cloned()
+                .unwrap_or_else(|| "Started".to_string());
             let score = attrs.get("score").cloned();
             constraints.push(PacemakerConstraint {
                 id: id.clone(),
@@ -3561,14 +3888,23 @@ pub fn parse_pacemaker_resources(content: &str, source_path: &str) -> PacemakerR
                 kind: "order".to_string(),
                 first_resource: Some(first),
                 first_action: Some(
-                    attrs.get("first-action").cloned().unwrap_or_else(|| "start".to_string()),
+                    attrs
+                        .get("first-action")
+                        .cloned()
+                        .unwrap_or_else(|| "start".to_string()),
                 ),
                 then_resource: Some(then),
                 then_action: Some(
-                    attrs.get("then-action").cloned().unwrap_or_else(|| "start".to_string()),
+                    attrs
+                        .get("then-action")
+                        .cloned()
+                        .unwrap_or_else(|| "start".to_string()),
                 ),
                 kind_field: Some(
-                    attrs.get("kind").cloned().unwrap_or_else(|| "Mandatory".to_string()),
+                    attrs
+                        .get("kind")
+                        .cloned()
+                        .unwrap_or_else(|| "Mandatory".to_string()),
                 ),
                 symmetrical: attrs.get("symmetrical").cloned(),
                 ..Default::default()
@@ -3586,20 +3922,17 @@ pub fn parse_pacemaker_resources(content: &str, source_path: &str) -> PacemakerR
         r"^(Stonith Devices|Location Constraints|Ordering Constraints|Colocation Constraints|Ticket Constraints|Fencing Levels|Node Attributes|Migration Summary|Tickets|PCSD Status|Daemon Status):",
     )
     .unwrap();
-    let pcs_resource_re = Regex::new(
-        r"^Resource:\s+(\S+)\s+\(class=(\S+)(?:\s+provider=(\S+))?\s+type=([^)]+)\)",
-    )
-    .unwrap();
+    let pcs_resource_re =
+        Regex::new(r"^Resource:\s+(\S+)\s+\(class=(\S+)(?:\s+provider=(\S+))?\s+type=([^)]+)\)")
+            .unwrap();
     let pcs_group_re = crate::cached_regex!(r"^Group:\s+(\S+)");
     let pcs_clone_re = crate::cached_regex!(r"^Clone:\s+(\S+)");
     let pcs_status_marker_re =
         crate::cached_regex!(r"^\*\s+\S+\s+\([\w:]+\):\s+(Started|Stopped|Master|Slave)");
-    let pcs_status_re =
-        crate::cached_regex!(r"^\*\s+(\S+)\s+\(([\w:]+)\):\s+(\w+)(?:\s+(\S+))?");
-    let pcs_order_re = Regex::new(
-        r"^(\w+)\s+(\S+)\s+then\s+(\w+)\s+(\S+)\s+\(kind:(\w+)\)(?:\s+\(id:([^)]+)\))?",
-    )
-    .unwrap();
+    let pcs_status_re = crate::cached_regex!(r"^\*\s+(\S+)\s+\(([\w:]+)\):\s+(\w+)(?:\s+(\S+))?");
+    let pcs_order_re =
+        Regex::new(r"^(\w+)\s+(\S+)\s+then\s+(\w+)\s+(\S+)\s+\(kind:(\w+)\)(?:\s+\(id:([^)]+)\))?")
+            .unwrap();
     let pcs_coloc_re = crate::cached_regex!(r"^(\S+)\s+with\s+(\S+)\s+\(score:(\S+)\)");
     let clone_set_re = Regex::new(
         r"(?i)^\*?\s*(?:Clone Set|Master/Slave Set|Primary/Secondary Set):\s+(\S+)\s+\[(\S+)\](?:\s+\(([^)]+)\))?",
@@ -3730,7 +4063,11 @@ pub fn parse_pacemaker_resources(content: &str, source_path: &str) -> PacemakerR
                     let kind = sp.next().unwrap_or("").to_string();
                     (cls, "heartbeat".to_string(), kind)
                 } else {
-                    ("ocf".to_string(), "heartbeat".to_string(), type_string.clone())
+                    (
+                        "ocf".to_string(),
+                        "heartbeat".to_string(),
+                        type_string.clone(),
+                    )
                 };
 
                 if let Some(existing) = resources.iter_mut().find(|r| r.name == name) {
@@ -4069,8 +4406,7 @@ pub fn parse_pacemaker_resources(content: &str, source_path: &str) -> PacemakerR
     let mut failed_actions: Vec<FailedAction> = Vec::new();
     let mut in_failed = false;
     let next_section_re = crate::cached_regex!(r"^(Node Attributes|Migration Summary|Tickets):");
-    let fail_re =
-        crate::cached_regex!(r"^\*\s+(\S+)\s+on\s+(\S+)\s+'([^']+)'\s+\((\d+)\):\s+(.+)");
+    let fail_re = crate::cached_regex!(r"^\*\s+(\S+)\s+on\s+(\S+)\s+'([^']+)'\s+\((\d+)\):\s+(.+)");
 
     for line in &content_lines {
         let trimmed = line.trim();
@@ -4080,7 +4416,11 @@ pub fn parse_pacemaker_resources(content: &str, source_path: &str) -> PacemakerR
         }
         if in_failed {
             if trimmed.is_empty()
-                || (trimmed.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false)
+                || (trimmed
+                    .chars()
+                    .next()
+                    .map(|c| c.is_ascii_uppercase())
+                    .unwrap_or(false)
                     && next_section_re.is_match(trimmed))
             {
                 if next_section_re.is_match(trimmed) {
@@ -4196,7 +4536,8 @@ mod tests {
 
     #[test]
     fn cluster_status_records_carry_source_provenance() {
-        let input = "Cluster name: hacluster\nCurrent DC: node1\nOnline: [ node1 ]\nOffline: [ node2 ]\n";
+        let input =
+            "Cluster name: hacluster\nCurrent DC: node1\nOnline: [ node1 ]\nOffline: [ node2 ]\n";
         let result = parse_cluster_status(input, STATUS_PATH);
         assert_eq!(result.source_path, STATUS_PATH);
         for n in &result.node_statuses {
@@ -4204,8 +4545,16 @@ mod tests {
             assert!(n.source_line.is_some());
         }
         // node1 came from line 3 (Online), node2 from line 4 (Offline)
-        let n1 = result.node_statuses.iter().find(|n| n.name == "node1").unwrap();
-        let n2 = result.node_statuses.iter().find(|n| n.name == "node2").unwrap();
+        let n1 = result
+            .node_statuses
+            .iter()
+            .find(|n| n.name == "node1")
+            .unwrap();
+        let n2 = result
+            .node_statuses
+            .iter()
+            .find(|n| n.name == "node2")
+            .unwrap();
         assert_eq!(n1.source_line, Some(3));
         assert_eq!(n2.source_line, Some(4));
     }
@@ -4228,7 +4577,11 @@ mod tests {
         assert_eq!(result.source_path, COROSYNC_PATH);
         for w in &result.warnings {
             assert_eq!(w.source_path, COROSYNC_PATH);
-            assert!(w.source_line.is_some(), "warning missing source_line: {:?}", w);
+            assert!(
+                w.source_line.is_some(),
+                "warning missing source_line: {:?}",
+                w
+            );
         }
         // The token warning must point at line 2 where `token: 10000` lives.
         let token_warn = result
@@ -4290,7 +4643,10 @@ mod tests {
 
         assert!(result.found);
         assert_eq!(result.maintenance_mode, Some(true));
-        assert_eq!(result.resources_in_maintenance, vec!["vip_dummy".to_string()]);
+        assert_eq!(
+            result.resources_in_maintenance,
+            vec!["vip_dummy".to_string()]
+        );
         assert!(!result.warnings.is_empty());
     }
 
@@ -4304,11 +4660,23 @@ mod tests {
         assert_eq!(result.source_path, CIB_PATH);
         for w in &result.warnings {
             assert_eq!(w.source_path, CIB_PATH);
-            assert!(w.source_line.is_some(), "warning missing source_line: {:?}", w);
+            assert!(
+                w.source_line.is_some(),
+                "warning missing source_line: {:?}",
+                w
+            );
         }
-        let cluster_warn = result.warnings.iter().find(|w| w.kind == "cluster_in_maintenance").expect("cluster warn");
+        let cluster_warn = result
+            .warnings
+            .iter()
+            .find(|w| w.kind == "cluster_in_maintenance")
+            .expect("cluster warn");
         assert_eq!(cluster_warn.source_line, Some(1));
-        let res_warn = result.warnings.iter().find(|w| w.kind == "resources_in_maintenance").expect("res warn");
+        let res_warn = result
+            .warnings
+            .iter()
+            .find(|w| w.kind == "resources_in_maintenance")
+            .expect("res warn");
         assert_eq!(res_warn.source_line, Some(2));
     }
 

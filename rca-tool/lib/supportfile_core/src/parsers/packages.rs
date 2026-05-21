@@ -40,6 +40,29 @@ pub struct DistroPackagesResult {
     pub source_path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PackageDistroMismatch {
+    pub package: String,
+    pub package_version: String,
+    pub detected_distro: String,
+    pub detected_major_version: Option<u32>,
+    pub issue: String,
+    pub message: String,
+    pub source_path: String,
+    pub source_line: Option<usize>,
+    pub source_line_end: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PackageDistroMismatchResult {
+    pub found: bool,
+    pub running_distro_id: String,
+    pub running_version_id: String,
+    pub count: usize,
+    pub mismatches: Vec<PackageDistroMismatch>,
+    pub source_path: String,
+}
+
 #[derive(Clone, Copy)]
 enum PackageRule {
     Gte(&'static str),
@@ -52,7 +75,10 @@ const REQUIRED_PACKAGES: &[(&str, PackageRule)] = &[
     ("python3-azure-identity", PackageRule::Gte("1.0")),
     ("cloud-netconfig-azure", PackageRule::Gte("1.3")),
     ("resource-agents", PackageRule::Gte("4.3")),
-    ("python3-azure-core", PackageRule::ProblemRange("1.9", "1.22")),
+    (
+        "python3-azure-core",
+        PackageRule::ProblemRange("1.9", "1.22"),
+    ),
 ];
 
 /// Per-package metadata captured during parsing: version + source line in the
@@ -95,7 +121,10 @@ fn split_rpm_name_version(token: &str) -> Option<(String, String)> {
 
     let without_arch = if let Some(idx) = trimmed.rfind('.') {
         let suffix = &trimmed[idx + 1..];
-        if suffix.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        if suffix
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
             &trimmed[..idx]
         } else {
             trimmed
@@ -157,7 +186,8 @@ fn validate_packages(
             continue;
         };
 
-        let version = extract_numeric_version(matched_version_raw).unwrap_or_else(|| matched_version_raw.clone());
+        let version = extract_numeric_version(matched_version_raw)
+            .unwrap_or_else(|| matched_version_raw.clone());
         found.insert(matched_name.clone(), version.clone());
         let line = Some(*matched_line);
 
@@ -205,7 +235,12 @@ fn validate_packages(
 }
 
 fn collect_fips_packages(entries: &[PackageEntry], source_path: &str) -> Vec<FipsPackage> {
-    let fips_prefixes = ["dracut-fips", "fipscheck", "fips-mode-setup", "crypto-policies"];
+    let fips_prefixes = [
+        "dracut-fips",
+        "fipscheck",
+        "fips-mode-setup",
+        "crypto-policies",
+    ];
     entries
         .iter()
         .filter(|(name, _, _)| {
@@ -246,6 +281,210 @@ fn parse_package_entries_from_raw_listing(content: &str) -> Vec<PackageEntry> {
     entries
 }
 
+fn normalize_distro_id(input: &str) -> String {
+    let s = input.trim().to_ascii_lowercase();
+    match s.as_str() {
+        "rhel"
+        | "redhat"
+        | "red_hat"
+        | "redhatenterpriselinux"
+        | "centos"
+        | "rocky"
+        | "almalinux"
+        | "oracle"
+        | "ol" => "rhel".to_string(),
+        "sles" | "suse" | "opensuse" | "opensuse-leap" => "suse".to_string(),
+        "ubuntu" => "ubuntu".to_string(),
+        "debian" => "debian".to_string(),
+        "amazon" | "amzn" | "amznlinux" => "amazon".to_string(),
+        "fedora" => "fedora".to_string(),
+        _ => s,
+    }
+}
+
+fn parse_major_version(version: &str) -> Option<u32> {
+    crate::cached_regex!(r"^(\d+)")
+        .captures(version.trim())
+        .and_then(|c| c.get(1).and_then(|m| m.as_str().parse::<u32>().ok()))
+}
+
+fn detect_package_origin(version: &str) -> Option<(String, Option<u32>)> {
+    let lower = version.to_ascii_lowercase();
+
+    if let Some(c) = crate::cached_regex!(r"\.el(\d+)(?:\D|$)").captures(&lower) {
+        let major = c.get(1).and_then(|m| m.as_str().parse::<u32>().ok());
+        return Some(("rhel".to_string(), major));
+    }
+    if let Some(c) = crate::cached_regex!(r"\.sles(\d+)(?:\D|$)").captures(&lower) {
+        let major = c.get(1).and_then(|m| m.as_str().parse::<u32>().ok());
+        return Some(("suse".to_string(), major));
+    }
+    if let Some(c) = crate::cached_regex!(r"\.amzn(\d+)(?:\D|$)").captures(&lower) {
+        let major = c.get(1).and_then(|m| m.as_str().parse::<u32>().ok());
+        return Some(("amazon".to_string(), major));
+    }
+    if let Some(c) = crate::cached_regex!(r"\.fc(\d+)(?:\D|$)").captures(&lower) {
+        let major = c.get(1).and_then(|m| m.as_str().parse::<u32>().ok());
+        return Some(("fedora".to_string(), major));
+    }
+
+    None
+}
+
+fn collect_entries_for_distro_analysis(content: &str, source_path: &str) -> Vec<PackageEntry> {
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+
+    if trimmed.contains("Desired=Unknown/Install/Remove/Purge/Hold") {
+        return Vec::new();
+    }
+
+    let lower_path = source_path.to_lowercase();
+    let is_yum_dnf_listing = lower_path.contains("dnf_list_installed")
+        || lower_path.contains("dnf-list-installed")
+        || lower_path.contains("dnf_list-installed")
+        || lower_path.contains("yum_list_installed")
+        || lower_path.contains("yum-list-installed")
+        || lower_path.contains("yum_list-installed");
+    let is_supportconfig_rpm_txt = lower_path.ends_with("/rpm.txt") || lower_path == "rpm.txt";
+
+    if is_yum_dnf_listing {
+        let kept: Vec<&str> = trimmed
+            .lines()
+            .filter(|l| {
+                let t = l.trim();
+                if t.is_empty() {
+                    return true;
+                }
+                if l.starts_with("Installed Packages")
+                    || l.starts_with("Last metadata")
+                    || l.starts_with("Loaded plugins")
+                {
+                    return false;
+                }
+                if t.starts_with(": manager") || t.starts_with(": plugins") {
+                    return false;
+                }
+                if l.starts_with("Repository") && l.contains("is listed more than once") {
+                    return false;
+                }
+                true
+            })
+            .collect();
+        return parse_package_entries_from_raw_listing(&kept.join("\n"));
+    }
+
+    if is_supportconfig_rpm_txt {
+        let queryformat_start =
+            Regex::new(r"(?i)^# rpm -qa --queryformat.*NAME.*DISTRIBUTION.*VERSION").unwrap();
+        let queryformat_sigpgp = crate::cached_regex!(r"(?i)^# rpm -qa --queryformat.*SIGPGP");
+        let mut kept: Vec<&str> = Vec::new();
+        let mut in_pkg_list = false;
+        for line in trimmed.lines() {
+            if queryformat_start.is_match(line) {
+                in_pkg_list = true;
+                continue;
+            }
+            if line.starts_with("#==[ Command ]======") || queryformat_sigpgp.is_match(line) {
+                in_pkg_list = false;
+            }
+            if in_pkg_list {
+                kept.push(line);
+            }
+        }
+
+        let mut entries: Vec<PackageEntry> = Vec::new();
+        for (i, line) in kept.iter().enumerate() {
+            let t = line.trim();
+            if t.is_empty() || t.starts_with("NAME") || t.starts_with("DISTRIBUTION") {
+                continue;
+            }
+            let toks: Vec<&str> = t.split_whitespace().collect();
+            if toks.len() < 2 {
+                continue;
+            }
+            entries.push((toks[0].to_string(), toks[toks.len() - 1].to_string(), i + 1));
+        }
+        return entries;
+    }
+
+    if trimmed.lines().any(|l| l.contains("|install|")) {
+        return parse_zypper_history(trimmed).0;
+    }
+    if trimmed.lines().any(|l| l.contains("Installed:")) {
+        return parse_dnf_yum_log(trimmed).0;
+    }
+
+    parse_package_entries_from_raw_listing(trimmed)
+}
+
+pub fn parse_package_distro_mismatch(
+    content: &str,
+    source_path: &str,
+    running_distro_id: &str,
+    running_version_id: &str,
+) -> PackageDistroMismatchResult {
+    let running_distro_norm = normalize_distro_id(running_distro_id);
+    let running_major = parse_major_version(running_version_id);
+    let entries = collect_entries_for_distro_analysis(content, source_path);
+
+    let mut mismatches = Vec::new();
+
+    for (name, version, line_no) in entries {
+        let Some((pkg_distro, pkg_major)) = detect_package_origin(&version) else {
+            continue;
+        };
+
+        if pkg_distro != running_distro_norm {
+            mismatches.push(PackageDistroMismatch {
+                package: name,
+                package_version: version,
+                detected_distro: pkg_distro.clone(),
+                detected_major_version: pkg_major,
+                issue: "cross_distro".to_string(),
+                message: format!(
+                    "Package appears to target distro '{}' but host distro is '{}'.",
+                    pkg_distro, running_distro_norm
+                ),
+                source_path: source_path.to_string(),
+                source_line: Some(line_no),
+                source_line_end: Some(line_no),
+            });
+            continue;
+        }
+
+        if let (Some(pkg_m), Some(host_m)) = (pkg_major, running_major) {
+            if pkg_m != host_m {
+                mismatches.push(PackageDistroMismatch {
+                    package: name,
+                    package_version: version,
+                    detected_distro: pkg_distro,
+                    detected_major_version: Some(pkg_m),
+                    issue: "major_version_mismatch".to_string(),
+                    message: format!(
+                        "Package targets major version {} but host major version is {}.",
+                        pkg_m, host_m
+                    ),
+                    source_path: source_path.to_string(),
+                    source_line: Some(line_no),
+                    source_line_end: Some(line_no),
+                });
+            }
+        }
+    }
+
+    PackageDistroMismatchResult {
+        found: !mismatches.is_empty(),
+        running_distro_id: running_distro_norm,
+        running_version_id: running_version_id.to_string(),
+        count: mismatches.len(),
+        mismatches,
+        source_path: source_path.to_string(),
+    }
+}
+
 fn parse_zypper_history(content: &str) -> (Vec<PackageEntry>, Vec<String>) {
     let mut entries = Vec::new();
     let mut raw_lines = Vec::new();
@@ -266,7 +505,8 @@ fn parse_zypper_history(content: &str) -> (Vec<PackageEntry>, Vec<String>) {
 }
 
 fn parse_dnf_yum_log(content: &str) -> (Vec<PackageEntry>, Vec<String>) {
-    let installed_re = crate::cached_regex!(r"(?:^\d{4}-\d{2}-\d{2}|^[A-Z][a-z]{2}\s+\d+).*?Installed:\s*(.+)");
+    let installed_re =
+        crate::cached_regex!(r"(?:^\d{4}-\d{2}-\d{2}|^[A-Z][a-z]{2}\s+\d+).*?Installed:\s*(.+)");
     let mut entries = Vec::new();
     let mut raw_lines = Vec::new();
 
@@ -372,10 +612,8 @@ pub fn parse_distro_packages(content: &str, source_path: &str) -> DistroPackages
     }
 
     if is_supportconfig_rpm_txt {
-        let queryformat_start = Regex::new(
-            r"(?i)^# rpm -qa --queryformat.*NAME.*DISTRIBUTION.*VERSION",
-        )
-        .unwrap();
+        let queryformat_start =
+            Regex::new(r"(?i)^# rpm -qa --queryformat.*NAME.*DISTRIBUTION.*VERSION").unwrap();
         let queryformat_sigpgp = crate::cached_regex!(r"(?i)^# rpm -qa --queryformat.*SIGPGP");
         let mut kept: Vec<&str> = Vec::new();
         let mut in_pkg_list = false;
@@ -396,10 +634,7 @@ pub fn parse_distro_packages(content: &str, source_path: &str) -> DistroPackages
         let mut entries: Vec<PackageEntry> = Vec::new();
         for (i, line) in filtered.lines().enumerate() {
             let t = line.trim();
-            if t.is_empty()
-                || t.starts_with("NAME")
-                || t.starts_with("DISTRIBUTION")
-            {
+            if t.is_empty() || t.starts_with("NAME") || t.starts_with("DISTRIBUTION") {
                 continue;
             }
             let toks: Vec<&str> = t.split_whitespace().collect();
@@ -443,7 +678,10 @@ pub fn parse_distro_packages(content: &str, source_path: &str) -> DistroPackages
             .lines()
             .filter(|l| {
                 let t = l.trim();
-                !t.is_empty() && !t.starts_with("Desired") && !t.starts_with('|') && !t.starts_with("+++")
+                !t.is_empty()
+                    && !t.starts_with("Desired")
+                    && !t.starts_with('|')
+                    && !t.starts_with("+++")
             })
             .count();
         return DistroPackagesResult {
@@ -462,27 +700,32 @@ pub fn parse_distro_packages(content: &str, source_path: &str) -> DistroPackages
         };
     }
 
-    let (entries, raw_content, is_zypper_history, is_dnf_yum_log, is_rpm_raw) = if trimmed.lines().any(|l| l.contains("|install|")) {
-        let (entries, raw_lines) = parse_zypper_history(trimmed);
-        (entries, Some(raw_lines.join("\n")), true, false, true)
-    } else if trimmed.lines().any(|l| l.contains("Installed:")) {
-        let (entries, raw_lines) = parse_dnf_yum_log(trimmed);
-        (entries, Some(raw_lines.join("\n")), false, true, true)
-    } else {
-        let entries = parse_package_entries_from_raw_listing(trimmed);
-        let count = trimmed
-            .lines()
-            .filter(|l| {
-                let t = l.trim();
-                !t.is_empty()
-                    && !t.starts_with("Installed Packages")
-                    && !t.starts_with("Last metadata")
-                    && !t.starts_with("Loaded plugins")
-            })
-            .count();
-        let raw = if count > 0 { Some(trimmed.to_string()) } else { None };
-        (entries, raw, false, false, true)
-    };
+    let (entries, raw_content, is_zypper_history, is_dnf_yum_log, is_rpm_raw) =
+        if trimmed.lines().any(|l| l.contains("|install|")) {
+            let (entries, raw_lines) = parse_zypper_history(trimmed);
+            (entries, Some(raw_lines.join("\n")), true, false, true)
+        } else if trimmed.lines().any(|l| l.contains("Installed:")) {
+            let (entries, raw_lines) = parse_dnf_yum_log(trimmed);
+            (entries, Some(raw_lines.join("\n")), false, true, true)
+        } else {
+            let entries = parse_package_entries_from_raw_listing(trimmed);
+            let count = trimmed
+                .lines()
+                .filter(|l| {
+                    let t = l.trim();
+                    !t.is_empty()
+                        && !t.starts_with("Installed Packages")
+                        && !t.starts_with("Last metadata")
+                        && !t.starts_with("Loaded plugins")
+                })
+                .count();
+            let raw = if count > 0 {
+                Some(trimmed.to_string())
+            } else {
+                None
+            };
+            (entries, raw, false, false, true)
+        };
 
     if entries.is_empty() && raw_content.is_none() {
         return empty;
@@ -512,7 +755,25 @@ pub fn parse_distro_packages(content: &str, source_path: &str) -> DistroPackages
 }
 
 pub fn parse_distro_packages_json(content: &str, source_path: &str) -> String {
-    serde_json::to_string(&parse_distro_packages(content, source_path)).unwrap_or_else(|_| "{}".to_string())
+    serde_json::to_string(&parse_distro_packages(content, source_path))
+        .unwrap_or_else(|_| "{}".to_string())
+}
+
+pub fn parse_package_distro_mismatch_json(
+    content: &str,
+    source_path: &str,
+    running_distro_id: &str,
+    running_version_id: &str,
+) -> String {
+    let mut value = serde_json::to_value(parse_package_distro_mismatch(
+        content,
+        source_path,
+        running_distro_id,
+        running_version_id,
+    ))
+    .unwrap_or(serde_json::Value::Null);
+    crate::parsers::fill_source_path(&mut value, source_path);
+    serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 #[cfg(test)]
@@ -536,7 +797,10 @@ mod tests {
         let result = parse_distro_packages(input, PATH);
         assert!(result.found);
         assert!(result.has_dracut_fips);
-        assert!(result.warnings.iter().any(|w| w.package == "python3-azure-core"));
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.package == "python3-azure-core"));
     }
 
     #[test]
@@ -595,7 +859,11 @@ mod tests {
         assert_eq!(missing.actual, "not found");
         assert_eq!(missing.source_line, None);
 
-        let fips = result.fips_packages.iter().find(|p| p.name.starts_with("dracut-fips")).expect("fips entry");
+        let fips = result
+            .fips_packages
+            .iter()
+            .find(|p| p.name.starts_with("dracut-fips"))
+            .expect("fips entry");
         assert_eq!(fips.source_line, Some(6));
         assert_eq!(fips.source_path, PATH);
     }
@@ -604,6 +872,34 @@ mod tests {
     fn packages_json_wrapper_includes_source_path() {
         let input = "fence-agents-4.12.1-1.noarch\n";
         let json = parse_distro_packages_json(input, PATH);
+        assert!(json.contains("\"source_path\":\"sos_commands/rpm/package-data\""));
+    }
+
+    #[test]
+    fn detects_package_distro_and_major_version_drift() {
+        let input = concat!(
+            "bash-5.1.8-6.el7.x86_64\n",
+            "coreutils-9.1-6.sles15.x86_64\n",
+            "util-linux-2.37-10.el9.x86_64\n"
+        );
+
+        let result = parse_package_distro_mismatch(input, PATH, "rhel", "9.4");
+        assert!(result.found);
+        assert_eq!(result.count, 2);
+        assert!(result
+            .mismatches
+            .iter()
+            .any(|m| m.issue == "major_version_mismatch" && m.package == "bash"));
+        assert!(result
+            .mismatches
+            .iter()
+            .any(|m| m.issue == "cross_distro" && m.package == "coreutils"));
+    }
+
+    #[test]
+    fn package_distro_mismatch_json_wrapper_includes_source_path() {
+        let input = "bash-5.1.8-6.el7.x86_64\n";
+        let json = parse_package_distro_mismatch_json(input, PATH, "rhel", "9.4");
         assert!(json.contains("\"source_path\":\"sos_commands/rpm/package-data\""));
     }
 }

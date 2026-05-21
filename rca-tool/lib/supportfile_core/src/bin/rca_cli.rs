@@ -69,8 +69,7 @@ macro_rules! compat_shims {
     };
 }
 
-compat_shims!(
-);
+compat_shims!();
 
 fn parsers() -> Vec<ParserSpec> {
     vec![
@@ -192,6 +191,24 @@ fn parsers() -> Vec<ParserSpec> {
             name: "networkInterfaces",
             pattern: r"network\.txt$|sos_commands/networking/ip_-o_addr$|sos_commands/networking/ip_-s_-d_link$|sos_commands/networking/ethtool_-i_\w+|sos_commands/networkmanager/nmcli_con_show_id_|etc/sysconfig/network-scripts/ifcfg-|etc/sysconfig/network/(?:network/)?ifcfg-|etc/netplan/|var/log/cloud-init-output\.log$|(?:^|/)messages$",
             func: sf::parse_network_interfaces_json,
+            multi_file: true,
+        },
+        ParserSpec {
+            name: "packetLoss",
+            pattern: r"network\.txt$|sos_commands/networking/ip_-s_-d_link$|sos_commands/networking/ip_-s_link$",
+            func: sf::parse_packet_loss_json,
+            multi_file: true,
+        },
+        ParserSpec {
+            name: "ringBuffer",
+            pattern: r"network\.txt$|sos_commands/networking/ethtool_-g_\w+",
+            func: sf::parse_ring_buffer_json,
+            multi_file: true,
+        },
+        ParserSpec {
+            name: "networkSysctl",
+            pattern: r"/env\.txt$|/sysctl\.conf$|sos_commands/kernel/sysctl_-a$|etc/sysctl\.d/",
+            func: sf::parse_network_sysctl_json,
             multi_file: true,
         },
         // ----- Packages ---------------------------------------------------
@@ -500,7 +517,9 @@ fn merge(existing: Value, new: Value) -> Value {
             for (k, v) in b {
                 let merged = match a.remove(&k) {
                     Some(prev) => match k.as_str() {
-                        "found" => Value::Bool(prev.as_bool().unwrap_or(false) || v.as_bool().unwrap_or(false)),
+                        "found" => Value::Bool(
+                            prev.as_bool().unwrap_or(false) || v.as_bool().unwrap_or(false),
+                        ),
                         "count" if prev.is_i64() && v.is_i64() => {
                             Value::from(prev.as_i64().unwrap_or(0) + v.as_i64().unwrap_or(0))
                         }
@@ -669,7 +688,11 @@ fn detect_format(path: &Path) -> &'static str {
                     "tar.gz"
                 } else if n >= 4 && buf[..4] == [0x50, 0x4b, 0x03, 0x04] {
                     "zip"
-                } else if n > 0 && buf[..n].iter().all(|&b| b == 0x09 || b == 0x0a || b == 0x0d || (0x20..=0x7e).contains(&b)) {
+                } else if n > 0
+                    && buf[..n]
+                        .iter()
+                        .all(|&b| b == 0x09 || b == 0x0a || b == 0x0d || (0x20..=0x7e).contains(&b))
+                {
                     "plaintext"
                 } else {
                     "tar"
@@ -696,11 +719,7 @@ fn open_tar_reader(path: &Path) -> std::io::Result<Box<dyn Read>> {
 ///
 /// Designed for nested compression inside tar/zip archives — e.g. rotated
 /// `messages-YYYYMMDD.gz` log files inside a `.tar.xz` supportconfig.
-fn maybe_decompress_inner(
-    name: String,
-    buf: Vec<u8>,
-    debug: bool,
-) -> (String, Vec<u8>) {
+fn maybe_decompress_inner(name: String, buf: Vec<u8>, debug: bool) -> (String, Vec<u8>) {
     // gzip: 1f 8b
     if buf.len() >= 2 && buf[0] == 0x1f && buf[1] == 0x8b {
         let mut out = Vec::new();
@@ -840,7 +859,10 @@ fn process_entry(
 
     results.matched_files += 1;
     if debug {
-        let names: Vec<&str> = matching.iter().map(|cp| specs[cp.spec_index].name).collect();
+        let names: Vec<&str> = matching
+            .iter()
+            .map(|cp| specs[cp.spec_index].name)
+            .collect();
         eprintln!(
             "[debug] {member_path} ({} chars) -> {}",
             content.len(),
@@ -949,9 +971,7 @@ fn process_archive(
                 .strip_suffix(".gz")
                 .or_else(|| name.strip_suffix(".xz"))
                 .unwrap_or(&name);
-            if !any_parser_matches(&name, &active)
-                && !any_parser_matches(candidate, &active)
-            {
+            if !any_parser_matches(&name, &active) && !any_parser_matches(candidate, &active) {
                 record_skipped(&name, &mut results);
                 continue;
             }
@@ -964,7 +984,14 @@ fn process_archive(
             }
             let (logical_name, raw) = maybe_decompress_inner(name, buf, debug);
             let content = bytes_to_string(raw);
-            process_entry(&logical_name, &content, &specs, &active, &mut results, debug);
+            process_entry(
+                &logical_name,
+                &content,
+                &specs,
+                &active,
+                &mut results,
+                debug,
+            );
         }
         return Ok(results);
     }
@@ -974,8 +1001,7 @@ fn process_archive(
         // as a single console log and route it through the parser registry
         // using a synthetic `messages` basename so the event parsers' file
         // patterns match.
-        let mut file =
-            File::open(path).map_err(|e| format!("opening {}: {e}", path.display()))?;
+        let mut file = File::open(path).map_err(|e| format!("opening {}: {e}", path.display()))?;
         let mut buf = Vec::new();
         file.read_to_end(&mut buf)
             .map_err(|e| format!("reading {}: {e}", path.display()))?;
@@ -1070,22 +1096,19 @@ fn process_archive(
     let worker_results: ArchiveResults = rx
         .into_iter()
         .par_bridge()
-        .fold(
-            ArchiveResults::default,
-            |mut acc, (name, buf)| {
-                let (logical_name, raw) = maybe_decompress_inner(name, buf, debug);
-                let content = bytes_to_string(raw);
-                process_entry(
-                    &logical_name,
-                    &content,
-                    &specs_for_workers,
-                    &active_for_workers,
-                    &mut acc,
-                    debug,
-                );
-                acc
-            },
-        )
+        .fold(ArchiveResults::default, |mut acc, (name, buf)| {
+            let (logical_name, raw) = maybe_decompress_inner(name, buf, debug);
+            let content = bytes_to_string(raw);
+            process_entry(
+                &logical_name,
+                &content,
+                &specs_for_workers,
+                &active_for_workers,
+                &mut acc,
+                debug,
+            );
+            acc
+        })
         .reduce(ArchiveResults::default, |a, b| {
             merge_archive_results(&multi_file_lookup, a, b)
         });
@@ -1408,10 +1431,7 @@ fn format_text(results: &ArchiveResults) -> String {
                                 .map(|arr| {
                                     let parts: Vec<String> = arr
                                         .iter()
-                                        .filter_map(|a| {
-                                            a.as_object()
-                                                .and_then(|o| s(o, "address"))
-                                        })
+                                        .filter_map(|a| a.as_object().and_then(|o| s(o, "address")))
                                         .collect();
                                     if parts.is_empty() {
                                         "-".to_string()
@@ -1629,10 +1649,8 @@ fn format_text(results: &ArchiveResults) -> String {
                     out.push_str(&format!("  Extensions: {}\n", events.len()));
                     for ev in events {
                         if let Some(o) = ev.as_object() {
-                            let healthy = o
-                                .get("healthy")
-                                .and_then(Value::as_bool)
-                                .unwrap_or(false);
+                            let healthy =
+                                o.get("healthy").and_then(Value::as_bool).unwrap_or(false);
                             let marker = if healthy { "OK " } else { "BAD" };
                             let label = s(o, "label").unwrap_or_default();
                             let version = s(o, "version").unwrap_or_default();
@@ -1726,10 +1744,7 @@ fn format_text(results: &ArchiveResults) -> String {
                 }
                 if let Some(ct) = vd.get("call_trace").and_then(Value::as_array) {
                     if !ct.is_empty() {
-                        out.push_str(&format!(
-                            "    Call trace ({} frames, top 5):\n",
-                            ct.len()
-                        ));
+                        out.push_str(&format!("    Call trace ({} frames, top 5):\n", ct.len()));
                         for frame in ct.iter().take(5) {
                             if let Some(f) = frame.as_str() {
                                 out.push_str(&format!("      {f}\n"));

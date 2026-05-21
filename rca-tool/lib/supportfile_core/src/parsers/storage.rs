@@ -275,9 +275,7 @@ fn validate_lvm(result: &mut LvmConfigResult, source_path: &str) {
                     "Physical Volume {} references Volume Group '{}' which is not present",
                     pv.device, pv.vg
                 ),
-                details: Some(
-                    "This may indicate a missing or corrupted Volume Group".to_string(),
-                ),
+                details: Some("This may indicate a missing or corrupted Volume Group".to_string()),
                 severity: None,
                 recommendation: None,
                 source_path: source_path.to_string(),
@@ -319,7 +317,8 @@ pub fn parse_lvm_config(content: &str, source_path: &str) -> LvmConfigResult {
     // Accept both the compact `lvs` form (4 columns and end-of-line) and
     // the verbose `lvs -v` / `lvs -a -o lv_tags,devices ...` form which
     // appends extra columns after the size — so don't anchor at $.
-    let lv_re = crate::cached_regex!(r"^(\S+)\s+(\S+)\s+([-a-zA-Z]{6,})\s+(<?\d+[\.\d]*[KMGTPmkgtp]?)\b");
+    let lv_re =
+        crate::cached_regex!(r"^(\S+)\s+(\S+)\s+([-a-zA-Z]{6,})\s+(<?\d+[\.\d]*[KMGTPmkgtp]?)\b");
 
     for (idx, raw_line) in content.lines().enumerate() {
         if is_lvm_noise(raw_line) {
@@ -546,8 +545,7 @@ pub fn parse_btrfs_config(content: &str, source_path: &str) -> BtrfsConfigResult
     };
 
     let label_re = crate::cached_regex!(r"Label:\s*(?:'([^']*)'|none)\s+uuid:\s*(\S+)");
-    let dev_re =
-        crate::cached_regex!(r"devid\s+\d+\s+size\s+(\S+)\s+used\s+\S+\s+path\s+(\S+)");
+    let dev_re = crate::cached_regex!(r"devid\s+\d+\s+size\s+(\S+)\s+used\s+\S+\s+path\s+(\S+)");
     let sub_re = crate::cached_regex!(r"ID\s+(\d+)\s+.*\s+path\s+(.+)$");
 
     let mut current_fs: Option<BtrfsFilesystem> = None;
@@ -608,8 +606,7 @@ pub fn parse_block_devices(content: &str, source_path: &str) -> BlockDevicesResu
     let blkid_re = crate::cached_regex!(r"^(\/dev\/\S+):\s*(.*)$");
     let type_re = crate::cached_regex!(r#"TYPE=\"([^\"]+)\""#);
     let uuid_re = crate::cached_regex!(r#"UUID=\"([^\"]+)\""#);
-    let blkid_alt_re =
-        crate::cached_regex!(r"^(\/dev\/\S+):\s+(\S+)\s+\[uuid=([^\]]*)\]");
+    let blkid_alt_re = crate::cached_regex!(r"^(\/dev\/\S+):\s+(\S+)\s+\[uuid=([^\]]*)\]");
 
     for (idx, raw_line) in content.lines().enumerate() {
         let line_no = idx + 1;
@@ -777,7 +774,11 @@ fn extract_fstab_from_scc(content: &str) -> Option<String> {
     while lines.last().map_or(false, |l| l.trim().is_empty()) {
         lines.pop();
     }
-    if lines.is_empty() { None } else { Some(lines.join("\n")) }
+    if lines.is_empty() {
+        None
+    } else {
+        Some(lines.join("\n"))
+    }
 }
 
 pub fn parse_fstab_analysis(content: &str, source_path: &str) -> FstabAnalysisResult {
@@ -789,11 +790,37 @@ pub fn parse_fstab_analysis(content: &str, source_path: &str) -> FstabAnalysisRe
 
     let mut entries = Vec::new();
     let mut warnings = Vec::new();
-    let os_mounts = ["/", "/boot", "/boot/efi", "/usr", "/var", "/tmp", "/home", "/opt"];
+    let os_mounts = [
+        "/",
+        "/boot",
+        "/boot/efi",
+        "/usr",
+        "/var",
+        "/tmp",
+        "/home",
+        "/opt",
+    ];
     let virtual_fs = [
-        "tmpfs", "devtmpfs", "sysfs", "proc", "cgroup", "cgroup2", "securityfs", "devpts",
-        "hugetlbfs", "mqueue", "debugfs", "tracefs", "fusectl", "configfs", "pstore", "efivarfs",
-        "bpf", "binfmt_misc", "autofs", "sunrpc",
+        "tmpfs",
+        "devtmpfs",
+        "sysfs",
+        "proc",
+        "cgroup",
+        "cgroup2",
+        "securityfs",
+        "devpts",
+        "hugetlbfs",
+        "mqueue",
+        "debugfs",
+        "tracefs",
+        "fusectl",
+        "configfs",
+        "pstore",
+        "efivarfs",
+        "bpf",
+        "binfmt_misc",
+        "autofs",
+        "sunrpc",
     ];
 
     for (idx, raw_line) in effective_content.lines().enumerate() {
@@ -948,13 +975,35 @@ pub fn parse_df_output(content: &str, source_path: &str) -> DfOutputResult {
 pub fn parse_mtab_analysis(content: &str, source_path: &str) -> MtabAnalysisResult {
     let mut entries = Vec::new();
     let virtual_fs = [
-        "tmpfs", "devtmpfs", "sysfs", "proc", "cgroup", "cgroup2", "securityfs", "devpts",
-        "hugetlbfs", "mqueue", "debugfs", "tracefs", "fusectl", "configfs", "pstore", "efivarfs",
-        "bpf", "binfmt_misc", "autofs", "sunrpc", "rpc_pipefs", "nfsd", "overlay", "nsfs",
-        "squashfs", "rootfs", "ramfs",
+        "tmpfs",
+        "devtmpfs",
+        "sysfs",
+        "proc",
+        "cgroup",
+        "cgroup2",
+        "securityfs",
+        "devpts",
+        "hugetlbfs",
+        "mqueue",
+        "debugfs",
+        "tracefs",
+        "fusectl",
+        "configfs",
+        "pstore",
+        "efivarfs",
+        "bpf",
+        "binfmt_misc",
+        "autofs",
+        "sunrpc",
+        "rpc_pipefs",
+        "nfsd",
+        "overlay",
+        "nsfs",
+        "squashfs",
+        "rootfs",
+        "ramfs",
     ];
-    let mount_re =
-        crate::cached_regex!(r"^(\S+)\s+on\s+(\S+)\s+type\s+(\S+)\s+\(([^)]*)\)");
+    let mount_re = crate::cached_regex!(r"^(\S+)\s+on\s+(\S+)\s+type\s+(\S+)\s+\(([^)]*)\)");
 
     for (idx, raw_line) in content.lines().enumerate() {
         let line_no = idx + 1;
@@ -1176,10 +1225,7 @@ mod tests {
 
     #[test]
     fn parses_block_and_fstab_data() {
-        let blk = parse_block_devices(
-            "/dev/sda1: UUID=\"1234-ABCD\" TYPE=\"xfs\"\n",
-            BLK_PATH,
-        );
+        let blk = parse_block_devices("/dev/sda1: UUID=\"1234-ABCD\" TYPE=\"xfs\"\n", BLK_PATH);
         let fstab = parse_fstab_analysis("UUID=1234-ABCD /data xfs defaults 0 0\n", FSTAB_PATH);
         assert!(blk.found);
         assert!(fstab.found);
@@ -1272,10 +1318,7 @@ mod tests {
 
     #[test]
     fn json_wrappers_include_source_path_and_line() {
-        let json = parse_fstab_analysis_json(
-            "UUID=data-uuid /data xfs defaults 0 0\n",
-            FSTAB_PATH,
-        );
+        let json = parse_fstab_analysis_json("UUID=data-uuid /data xfs defaults 0 0\n", FSTAB_PATH);
         assert!(json.contains("\"source_path\":\"etc/fstab\""));
         assert!(json.contains("\"source_line\":1"));
     }

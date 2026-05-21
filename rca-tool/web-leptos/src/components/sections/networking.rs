@@ -11,11 +11,17 @@ pub fn NetworkingSection(data: Value) -> impl IntoView {
         .cloned()
         .unwrap_or(Value::Null);
     let firewall = data.get("firewallRules").cloned().unwrap_or(Value::Null);
+    let packet_loss = data.get("packetLoss").cloned().unwrap_or(Value::Null);
+    let ring_buffer = data.get("ringBuffer").cloned().unwrap_or(Value::Null);
+    let net_sysctl = data.get("networkSysctl").cloned().unwrap_or(Value::Null);
 
     let has_intf = json_bool(&interfaces, "found");
     let has_fw = json_bool(&firewall, "found");
+    let has_pl = json_bool(&packet_loss, "found");
+    let has_rb = json_bool(&ring_buffer, "found");
+    let has_sysctl = json_bool(&net_sysctl, "found");
 
-    if !has_intf && !has_fw {
+    if !has_intf && !has_fw && !has_pl && !has_rb && !has_sysctl {
         return view! {}.into_any();
     }
 
@@ -43,10 +49,266 @@ pub fn NetworkingSection(data: Value) -> impl IntoView {
     view! {
         <Section title="Networking" class=section_class open=true>
             {render_interfaces_section(&ifaces, has_intf, accel_net, &raw_interfaces)}
+            {render_packet_loss_section(&packet_loss, has_pl)}
+            {render_ring_buffer_section(&ring_buffer, has_rb)}
+            {render_network_sysctl_section(&net_sysctl, has_sysctl)}
             {render_firewall_section(&firewall, has_fw)}
         </Section>
     }
     .into_any()
+}
+
+fn warnings_from(value: &Value) -> Vec<Value> {
+    value
+        .get("warnings")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default()
+}
+
+fn warning_class(severity: &str) -> &'static str {
+    match severity {
+        "warning" => "text-warning",
+        "danger" | "error" | "critical" => "text-danger",
+        _ => "text-muted",
+    }
+}
+
+fn render_packet_loss_section(packet_loss: &Value, has_pl: bool) -> AnyView {
+    if !has_pl {
+        return view! {}.into_any();
+    }
+    let interfaces = packet_loss
+        .get("interfaces")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    // Hide loopback for clarity.
+    let interfaces: Vec<Value> = interfaces
+        .into_iter()
+        .filter(|i| json_str(i, "interface") != "lo")
+        .collect();
+    let warnings = warnings_from(packet_loss);
+    let has_warn = !warnings.is_empty();
+    let block_class = if has_warn { "warning-block" } else { "info-block" };
+    let summary = if has_warn {
+        format!("{} issue{}", warnings.len(), if warnings.len() == 1 { "" } else { "s" })
+    } else {
+        "no losses detected".to_string()
+    };
+
+    view! {
+        <details class=block_class open=has_warn>
+            <summary>
+                "Packet loss (ip -s link) "
+                <span class="text-muted">{format!("({summary})")}</span>
+            </summary>
+            <div class="section-body">
+                {(!interfaces.is_empty()).then(|| view! {
+                    <table class="kv-table">
+                        <thead>
+                            <tr>
+                                <th class="kv-label">"Interface"</th>
+                                <th class="kv-label">"RX packets"</th>
+                                <th class="kv-label">"RX errors"</th>
+                                <th class="kv-label">"RX dropped"</th>
+                                <th class="kv-label">"RX missed"</th>
+                                <th class="kv-label">"TX packets"</th>
+                                <th class="kv-label">"TX errors"</th>
+                                <th class="kv-label">"TX dropped"</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {interfaces.iter().cloned().map(|i| {
+                                let name = json_str(&i, "interface");
+                                let rx_pkts = json_u64(&i, "rxPackets");
+                                let rx_err = json_u64(&i, "rxErrors");
+                                let rx_drop = json_u64(&i, "rxDropped");
+                                let rx_miss = json_u64(&i, "rxMissed");
+                                let tx_pkts = json_u64(&i, "txPackets");
+                                let tx_err = json_u64(&i, "txErrors");
+                                let tx_drop = json_u64(&i, "txDropped");
+                                let rx_err_cls = if rx_err > 0 { "text-danger" } else { "kv-value" };
+                                let rx_drop_cls = if rx_drop > 0 { "text-warning" } else { "kv-value" };
+                                let rx_miss_cls = if rx_miss > 0 { "text-warning" } else { "kv-value" };
+                                let tx_err_cls = if tx_err > 0 { "text-danger" } else { "kv-value" };
+                                let tx_drop_cls = if tx_drop > 0 { "text-warning" } else { "kv-value" };
+                                view! {
+                                    <tr>
+                                        <td class="kv-value"><strong>{name}</strong></td>
+                                        <td class="kv-value">{rx_pkts.to_string()}</td>
+                                        <td class=rx_err_cls>{rx_err.to_string()}</td>
+                                        <td class=rx_drop_cls>{rx_drop.to_string()}</td>
+                                        <td class=rx_miss_cls>{rx_miss.to_string()}</td>
+                                        <td class="kv-value">{tx_pkts.to_string()}</td>
+                                        <td class=tx_err_cls>{tx_err.to_string()}</td>
+                                        <td class=tx_drop_cls>{tx_drop.to_string()}</td>
+                                    </tr>
+                                }
+                            }).collect::<Vec<_>>()}
+                        </tbody>
+                    </table>
+                })}
+                {has_warn.then(|| view! {
+                    <ul>
+                        {warnings.iter().cloned().map(|w| {
+                            let sev = json_str(&w, "severity");
+                            let cls = warning_class(&sev);
+                            let msg = json_str(&w, "message");
+                            view! { <li class=cls>{msg}</li> }
+                        }).collect::<Vec<_>>()}
+                    </ul>
+                })}
+            </div>
+        </details>
+    }.into_any()
+}
+
+fn render_ring_buffer_section(ring_buffer: &Value, has_rb: bool) -> AnyView {
+    if !has_rb {
+        return view! {}.into_any();
+    }
+    let entries = ring_buffer
+        .get("entries")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let entries: Vec<Value> = entries
+        .into_iter()
+        .filter(|i| json_str(i, "interface") != "lo")
+        .collect();
+    let warnings = warnings_from(ring_buffer);
+    let has_warn = !warnings.is_empty();
+    let block_class = if has_warn { "warning-block" } else { "info-block" };
+    let summary = if has_warn {
+        format!("{} undersized ring{}", warnings.len(), if warnings.len() == 1 { "" } else { "s" })
+    } else {
+        "ring buffers at hardware max".to_string()
+    };
+
+    let fmt_opt = |v: &Value, k: &str| -> String {
+        match v.get(k) {
+            Some(Value::Number(n)) => n.to_string(),
+            _ => "-".to_string(),
+        }
+    };
+
+    view! {
+        <details class=block_class open=has_warn>
+            <summary>
+                "Ring buffers (ethtool -g) "
+                <span class="text-muted">{format!("({summary})")}</span>
+            </summary>
+            <div class="section-body">
+                {(!entries.is_empty()).then(|| view! {
+                    <table class="kv-table">
+                        <thead>
+                            <tr>
+                                <th class="kv-label">"Interface"</th>
+                                <th class="kv-label">"RX current"</th>
+                                <th class="kv-label">"RX max"</th>
+                                <th class="kv-label">"TX current"</th>
+                                <th class="kv-label">"TX max"</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {entries.iter().cloned().map(|i| {
+                                let name = json_str(&i, "interface");
+                                let rx_cur = fmt_opt(&i, "rxCurrent");
+                                let rx_max = fmt_opt(&i, "rxMax");
+                                let tx_cur = fmt_opt(&i, "txCurrent");
+                                let tx_max = fmt_opt(&i, "txMax");
+                                let rx_cls = if rx_cur != rx_max && rx_max != "-" { "text-warning" } else { "kv-value" };
+                                let tx_cls = if tx_cur != tx_max && tx_max != "-" { "text-warning" } else { "kv-value" };
+                                view! {
+                                    <tr>
+                                        <td class="kv-value"><strong>{name}</strong></td>
+                                        <td class=rx_cls>{rx_cur}</td>
+                                        <td class="kv-value">{rx_max}</td>
+                                        <td class=tx_cls>{tx_cur}</td>
+                                        <td class="kv-value">{tx_max}</td>
+                                    </tr>
+                                }
+                            }).collect::<Vec<_>>()}
+                        </tbody>
+                    </table>
+                })}
+                {has_warn.then(|| view! {
+                    <ul>
+                        {warnings.iter().cloned().map(|w| {
+                            let sev = json_str(&w, "severity");
+                            let cls = warning_class(&sev);
+                            let msg = json_str(&w, "message");
+                            view! { <li class=cls>{msg}</li> }
+                        }).collect::<Vec<_>>()}
+                    </ul>
+                })}
+            </div>
+        </details>
+    }.into_any()
+}
+
+fn render_network_sysctl_section(net_sysctl: &Value, has_sysctl: bool) -> AnyView {
+    if !has_sysctl {
+        return view! {}.into_any();
+    }
+    let entries = net_sysctl
+        .get("rpFilter")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let warnings = warnings_from(net_sysctl);
+    let has_warn = !warnings.is_empty();
+    let block_class = if has_warn { "warning-block" } else { "info-block" };
+    let summary = if has_warn {
+        format!("rp_filter active on {} scope{}", warnings.len(), if warnings.len() == 1 { "" } else { "s" })
+    } else {
+        "rp_filter disabled".to_string()
+    };
+
+    view! {
+        <details class=block_class open=has_warn>
+            <summary>
+                "Network sysctl tuning "
+                <span class="text-muted">{format!("({summary})")}</span>
+            </summary>
+            <div class="section-body">
+                {(!entries.is_empty()).then(|| view! {
+                    <table class="kv-table">
+                        <thead>
+                            <tr>
+                                <th class="kv-label">"Sysctl key"</th>
+                                <th class="kv-label">"Value"</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {entries.iter().cloned().map(|e| {
+                                let key = json_str(&e, "key");
+                                let val = json_str(&e, "value");
+                                let cls = if val == "0" { "kv-value" } else { "text-warning" };
+                                view! {
+                                    <tr>
+                                        <td class="kv-value"><code>{key}</code></td>
+                                        <td class=cls><strong>{val}</strong></td>
+                                    </tr>
+                                }
+                            }).collect::<Vec<_>>()}
+                        </tbody>
+                    </table>
+                })}
+                {has_warn.then(|| view! {
+                    <ul>
+                        {warnings.iter().cloned().map(|w| {
+                            let sev = json_str(&w, "severity");
+                            let cls = warning_class(&sev);
+                            let msg = json_str(&w, "message");
+                            view! { <li class=cls>{msg}</li> }
+                        }).collect::<Vec<_>>()}
+                    </ul>
+                })}
+            </div>
+        </details>
+    }.into_any()
 }
 
 fn render_interfaces_section(

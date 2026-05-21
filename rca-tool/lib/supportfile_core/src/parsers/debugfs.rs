@@ -72,7 +72,12 @@ pub fn parse_hv_balloon(content: &str, source_path: &str) -> HvBalloonResult {
         if let Some(caps) = pair_re.captures(line) {
             let key = caps
                 .get(1)
-                .map(|m| m.as_str().trim().to_ascii_lowercase().replace([' ', '-'], "_"))
+                .map(|m| {
+                    m.as_str()
+                        .trim()
+                        .to_ascii_lowercase()
+                        .replace([' ', '-'], "_")
+                })
                 .unwrap_or_default();
             let value = caps.get(2).map(|m| m.as_str().trim()).unwrap_or_default();
 
@@ -84,7 +89,9 @@ pub fn parse_hv_balloon(content: &str, source_path: &str) -> HvBalloonResult {
                 "capabilities" => result.capabilities = Some(value.to_string()),
                 "state" => {
                     if let Some(state_caps) = crate::cached_regex!(r"^(\d+)").captures(value) {
-                        result.state = state_caps.get(1).and_then(|m| m.as_str().parse::<i64>().ok());
+                        result.state = state_caps
+                            .get(1)
+                            .and_then(|m| m.as_str().parse::<i64>().ok());
                     }
                     result.state_text = crate::cached_regex!(r"\(([^)]+)\)")
                         .captures(value)
@@ -102,8 +109,12 @@ pub fn parse_hv_balloon(content: &str, source_path: &str) -> HvBalloonResult {
                 "pages_added" => result.pages_added = value.parse::<i64>().unwrap_or(0),
                 "pages_onlined" => result.pages_onlined = value.parse::<i64>().unwrap_or(0),
                 "pages_ballooned" => result.pages_ballooned = value.parse::<i64>().unwrap_or(0),
-                "total_pages_committed" => result.total_pages_committed = value.parse::<i64>().unwrap_or(0),
-                "max_dynamic_page_count" => result.max_dynamic_page_count = value.parse::<i64>().unwrap_or(0),
+                "total_pages_committed" => {
+                    result.total_pages_committed = value.parse::<i64>().unwrap_or(0)
+                }
+                "max_dynamic_page_count" => {
+                    result.max_dynamic_page_count = value.parse::<i64>().unwrap_or(0)
+                }
                 _ => {}
             }
         }
@@ -115,9 +126,17 @@ pub fn parse_hv_balloon(content: &str, source_path: &str) -> HvBalloonResult {
 
     let bytes_per_gb = 1024_f64 * 1024_f64 * 1024_f64;
     let bytes_per_mb = 1024_f64 * 1024_f64;
-    result.committed_memory_gb = ((result.total_pages_committed as f64 * result.page_size as f64) / bytes_per_gb * 100.0).round() / 100.0;
-    result.max_dynamic_memory_gb = ((result.max_dynamic_page_count as f64 * result.page_size as f64) / bytes_per_gb * 100.0).round() / 100.0;
-    result.ballooned_memory_mb = ((result.pages_ballooned as f64 * result.page_size as f64) / bytes_per_mb * 100.0).round() / 100.0;
+    result.committed_memory_gb =
+        ((result.total_pages_committed as f64 * result.page_size as f64) / bytes_per_gb * 100.0)
+            .round()
+            / 100.0;
+    result.max_dynamic_memory_gb =
+        ((result.max_dynamic_page_count as f64 * result.page_size as f64) / bytes_per_gb * 100.0)
+            .round()
+            / 100.0;
+    result.ballooned_memory_mb =
+        ((result.pages_ballooned as f64 * result.page_size as f64) / bytes_per_mb * 100.0).round()
+            / 100.0;
 
     if result.pages_ballooned > 0 {
         result.warnings.push(format!(
@@ -127,7 +146,8 @@ pub fn parse_hv_balloon(content: &str, source_path: &str) -> HvBalloonResult {
     }
 
     if result.max_dynamic_page_count > 0 && result.total_pages_committed > 0 {
-        let usage_ratio = result.total_pages_committed as f64 / result.max_dynamic_page_count as f64;
+        let usage_ratio =
+            result.total_pages_committed as f64 / result.max_dynamic_page_count as f64;
         if usage_ratio > 0.9 {
             result.warnings.push(format!(
                 "Memory near capacity: {} GB committed of {} GB maximum ({}%).",
@@ -175,8 +195,14 @@ pub fn parse_extfrag(content: &str, source_path: &str) -> ExtfragResult {
         }
 
         if let Some(caps) = line_re.captures(trimmed) {
-            let node = caps.get(1).and_then(|m| m.as_str().parse::<i64>().ok()).unwrap_or(0);
-            let zone_name = caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_default();
+            let node = caps
+                .get(1)
+                .and_then(|m| m.as_str().parse::<i64>().ok())
+                .unwrap_or(0);
+            let zone_name = caps
+                .get(2)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
             let values = caps
                 .get(3)
                 .map(|m| {
@@ -212,7 +238,9 @@ pub fn parse_extfrag(content: &str, source_path: &str) -> ExtfragResult {
         }
     }
 
-    let order_labels = ["4K", "8K", "16K", "32K", "64K", "128K", "256K", "512K", "1M", "2M", "4M"];
+    let order_labels = [
+        "4K", "8K", "16K", "32K", "64K", "128K", "256K", "512K", "1M", "2M", "4M",
+    ];
     for zone in &result.zones {
         for ord in 9..zone.unusable_index.len() {
             let val = zone.unusable_index[ord];
@@ -241,13 +269,15 @@ pub fn parse_extfrag(content: &str, source_path: &str) -> ExtfragResult {
 }
 
 pub fn parse_hv_balloon_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_hv_balloon(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_hv_balloon(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_extfrag_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_extfrag(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_extfrag(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
@@ -284,7 +314,10 @@ mod tests {
         let result = parse_extfrag(input, "sys/kernel/debug/extfrag/extfrag_index");
         assert!(result.found);
         assert_eq!(result.zones.len(), 1);
-        assert_eq!(result.zones[0].source_path, "sys/kernel/debug/extfrag/extfrag_index");
+        assert_eq!(
+            result.zones[0].source_path,
+            "sys/kernel/debug/extfrag/extfrag_index"
+        );
         assert_eq!(result.zones[0].source_line, Some(2));
         assert!(!result.warnings.is_empty());
     }

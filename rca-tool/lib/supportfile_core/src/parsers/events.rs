@@ -6,7 +6,8 @@ fn extract_timestamp(line: &str) -> Option<String> {
     static ISO_RE: OnceLock<Regex> = OnceLock::new();
     static SYSLOG_RE: OnceLock<Regex> = OnceLock::new();
     let iso_re = ISO_RE.get_or_init(|| {
-        Regex::new(r"^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)").unwrap()
+        Regex::new(r"^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)")
+            .unwrap()
     });
     let syslog_re = SYSLOG_RE.get_or_init(|| {
         Regex::new(r"^(\w{3})\s+(\d{1,2})\s+(\d{2}:\d{2}:\d{2}(?:\.\d+)?)").unwrap()
@@ -117,7 +118,8 @@ pub fn parse_emergency_mode(content: &str, source_path: &str) -> EmergencyModeRe
         if emergency_re.is_match(line) {
             let line_no = i + 1;
             events.push(SimpleEvent {
-                timestamp: extract_timestamp(line).unwrap_or_else(|| "Date not detected".to_string()),
+                timestamp: extract_timestamp(line)
+                    .unwrap_or_else(|| "Date not detected".to_string()),
                 line_number: line_no,
                 raw_line: line.trim().to_string(),
                 source_path: source_path.to_string(),
@@ -148,7 +150,12 @@ pub fn parse_kernel_reboots(content: &str, source_path: &str) -> KernelRebootsRe
 
     let mut events = Vec::new();
     for (i, line) in content.lines().enumerate() {
-        if !(line.contains("Linux version") || line.contains("hutting down") || line.contains("tarting Reboot") || line.contains("topped target") || line.contains("reboot:")) {
+        if !(line.contains("Linux version")
+            || line.contains("hutting down")
+            || line.contains("tarting Reboot")
+            || line.contains("topped target")
+            || line.contains("reboot:"))
+        {
             continue;
         }
         let line_no = i + 1;
@@ -199,7 +206,11 @@ pub fn parse_kernel_reboots(content: &str, source_path: &str) -> KernelRebootsRe
             });
         }
     }
-    KernelRebootsResult { count: events.len(), events, source_path: source_path.to_string() }
+    KernelRebootsResult {
+        count: events.len(),
+        events,
+        source_path: source_path.to_string(),
+    }
 }
 
 pub fn parse_oom_killer(content: &str, source_path: &str) -> OomKillerResult {
@@ -218,21 +229,23 @@ pub fn parse_oom_killer(content: &str, source_path: &str) -> OomKillerResult {
     });
     let score_re = SCORE_RE.get_or_init(|| Regex::new(r"(?i)score\s+(\d+)").unwrap());
     let vm_re = VM_RE.get_or_init(|| Regex::new(r"(?i)total-vm:(\d+)kB").unwrap());
-    let invoked_re = INVOKED_RE
-        .get_or_init(|| Regex::new(r"(?i)\]\s+([^\s]+)\s+invoked oom-killer:").unwrap());
+    let invoked_re =
+        INVOKED_RE.get_or_init(|| Regex::new(r"(?i)\]\s+([^\s]+)\s+invoked oom-killer:").unwrap());
     let order_re = ORDER_RE.get_or_init(|| Regex::new(r"(?i)order=(\d+)").unwrap());
     let pid_re = PID_RE.get_or_init(|| Regex::new(r"(?i)reaped process\s+(\d+)").unwrap());
     let process_re = PROCESS_RE.get_or_init(|| Regex::new(r"\]\s+([^\s:]+):").unwrap());
     let invoked_line_re =
         INVOKED_LINE_RE.get_or_init(|| Regex::new(r"(?i)invoked oom-killer:").unwrap());
-    let reaper_line_re =
-        REAPER_LINE_RE.get_or_init(|| Regex::new(r"(?i)oom_reaper:").unwrap());
-    let alloc_re =
-        ALLOC_RE.get_or_init(|| Regex::new(r"(?i)Cannot allocate memory").unwrap());
+    let reaper_line_re = REAPER_LINE_RE.get_or_init(|| Regex::new(r"(?i)oom_reaper:").unwrap());
+    let alloc_re = ALLOC_RE.get_or_init(|| Regex::new(r"(?i)Cannot allocate memory").unwrap());
 
     let mut events: Vec<OomEvent> = Vec::new();
     for (i, line) in content.lines().enumerate() {
-        if !(line.contains("ut of memory") || line.contains("oom-killer") || line.contains("oom_reaper") || line.contains("annot allocate memory")) {
+        if !(line.contains("ut of memory")
+            || line.contains("oom-killer")
+            || line.contains("oom_reaper")
+            || line.contains("annot allocate memory"))
+        {
             continue;
         }
         let line_no = i + 1;
@@ -243,8 +256,12 @@ pub fn parse_oom_killer(content: &str, source_path: &str) -> OomKillerResult {
                 line_number: line_no,
                 pid: caps.get(1).map(|m| m.as_str().to_string()),
                 process_name: caps.get(2).map(|m| m.as_str().to_string()),
-                score: score_re.captures(line).and_then(|c| c.get(1).map(|m| m.as_str().to_string())),
-                total_vm: vm_re.captures(line).and_then(|c| c.get(1).map(|m| format!("{}kB", m.as_str()))),
+                score: score_re
+                    .captures(line)
+                    .and_then(|c| c.get(1).map(|m| m.as_str().to_string())),
+                total_vm: vm_re
+                    .captures(line)
+                    .and_then(|c| c.get(1).map(|m| format!("{}kB", m.as_str()))),
                 invoked_by: None,
                 order: None,
                 event_type: "oom_kill".to_string(),
@@ -268,8 +285,12 @@ pub fn parse_oom_killer(content: &str, source_path: &str) -> OomKillerResult {
                     process_name: None,
                     score: None,
                     total_vm: None,
-                    invoked_by: invoked_re.captures(line).and_then(|c| c.get(1).map(|m| m.as_str().to_string())),
-                    order: order_re.captures(line).and_then(|c| c.get(1).map(|m| m.as_str().to_string())),
+                    invoked_by: invoked_re
+                        .captures(line)
+                        .and_then(|c| c.get(1).map(|m| m.as_str().to_string())),
+                    order: order_re
+                        .captures(line)
+                        .and_then(|c| c.get(1).map(|m| m.as_str().to_string())),
                     event_type: "oom_invoked".to_string(),
                     raw_line: line.trim().to_string(),
                     source_path: source_path.to_string(),
@@ -288,7 +309,9 @@ pub fn parse_oom_killer(content: &str, source_path: &str) -> OomKillerResult {
                 events.push(OomEvent {
                     timestamp: extract_timestamp(line).unwrap_or_else(|| "Unknown".to_string()),
                     line_number: line_no,
-                    pid: pid_re.captures(line).and_then(|c| c.get(1).map(|m| m.as_str().to_string())),
+                    pid: pid_re
+                        .captures(line)
+                        .and_then(|c| c.get(1).map(|m| m.as_str().to_string())),
                     process_name: None,
                     score: None,
                     total_vm: None,
@@ -313,7 +336,9 @@ pub fn parse_oom_killer(content: &str, source_path: &str) -> OomKillerResult {
                     timestamp: extract_timestamp(line).unwrap_or_else(|| "Unknown".to_string()),
                     line_number: line_no,
                     pid: None,
-                    process_name: process_re.captures(line).and_then(|c| c.get(1).map(|m| m.as_str().to_string())),
+                    process_name: process_re
+                        .captures(line)
+                        .and_then(|c| c.get(1).map(|m| m.as_str().to_string())),
                     score: None,
                     total_vm: None,
                     invoked_by: None,
@@ -327,14 +352,17 @@ pub fn parse_oom_killer(content: &str, source_path: &str) -> OomKillerResult {
             }
         }
     }
-    OomKillerResult { count: events.len(), events, source_path: source_path.to_string() }
+    OomKillerResult {
+        count: events.len(),
+        events,
+        source_path: source_path.to_string(),
+    }
 }
 
 pub fn parse_xfs_errors(content: &str, source_path: &str) -> XfsErrorsResult {
     static XFS_RE: OnceLock<Regex> = OnceLock::new();
     static CRITICAL_RE: OnceLock<Regex> = OnceLock::new();
-    let xfs_pattern =
-        XFS_RE.get_or_init(|| Regex::new(r"(?i)XFS\s+\(([^)]+)\):\s*(.+)").unwrap());
+    let xfs_pattern = XFS_RE.get_or_init(|| Regex::new(r"(?i)XFS\s+\(([^)]+)\):\s*(.+)").unwrap());
     let critical_re = CRITICAL_RE.get_or_init(|| {
         Regex::new(r"(?i)please unmount.*rectify|metadata.*corruption|corruption.*detected|corruption warning|internal error|shutting down filesystem|filesystem has been shut down|duplicate UUID.*can't mount|unrecovered unlinked inode").unwrap()
     });
@@ -346,8 +374,14 @@ pub fn parse_xfs_errors(content: &str, source_path: &str) -> XfsErrorsResult {
         }
         let trimmed = line.trim();
         if let Some(caps) = xfs_pattern.captures(trimmed) {
-            let device = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
-            let message = caps.get(2).map(|m| m.as_str().trim().to_string()).unwrap_or_default();
+            let device = caps
+                .get(1)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
+            let message = caps
+                .get(2)
+                .map(|m| m.as_str().trim().to_string())
+                .unwrap_or_default();
             if critical_re.is_match(&message) {
                 let line_no = i + 1;
                 events.push(XfsErrorEvent {
@@ -363,23 +397,31 @@ pub fn parse_xfs_errors(content: &str, source_path: &str) -> XfsErrorsResult {
             }
         }
     }
-    XfsErrorsResult { count: events.len(), events, source_path: source_path.to_string() }
+    XfsErrorsResult {
+        count: events.len(),
+        events,
+        source_path: source_path.to_string(),
+    }
 }
 
 pub fn parse_emergency_mode_json(content: &str, source_path: &str) -> String {
-    serde_json::to_string(&parse_emergency_mode(content, source_path)).unwrap_or_else(|_| "{}".to_string())
+    serde_json::to_string(&parse_emergency_mode(content, source_path))
+        .unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_kernel_reboots_json(content: &str, source_path: &str) -> String {
-    serde_json::to_string(&parse_kernel_reboots(content, source_path)).unwrap_or_else(|_| "{}".to_string())
+    serde_json::to_string(&parse_kernel_reboots(content, source_path))
+        .unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_oom_killer_json(content: &str, source_path: &str) -> String {
-    serde_json::to_string(&parse_oom_killer(content, source_path)).unwrap_or_else(|_| "{}".to_string())
+    serde_json::to_string(&parse_oom_killer(content, source_path))
+        .unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_xfs_errors_json(content: &str, source_path: &str) -> String {
-    serde_json::to_string(&parse_xfs_errors(content, source_path)).unwrap_or_else(|_| "{}".to_string())
+    serde_json::to_string(&parse_xfs_errors(content, source_path))
+        .unwrap_or_else(|_| "{}".to_string())
 }
 
 #[cfg(test)]

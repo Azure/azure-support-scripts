@@ -30,6 +30,16 @@ pub struct AzureVmPropertiesResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AzureVmGenerationResult {
+    pub found: bool,
+    pub vm_size: Option<String>,
+    pub vm_generation: Option<u32>,
+    pub is_legacy_generation: bool,
+    pub recommendation: Option<String>,
+    pub source_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SuseCloudRegisterResult {
     pub found: bool,
     pub billing_model: Option<String>,
@@ -129,7 +139,10 @@ fn norm_bool(val: Option<&String>) -> Option<bool> {
     }
 }
 
-fn detect_billing_model(license_type: Option<&str>, billing_code: Option<&str>) -> (Option<String>, Option<String>) {
+fn detect_billing_model(
+    license_type: Option<&str>,
+    billing_code: Option<&str>,
+) -> (Option<String>, Option<String>) {
     let license_upper = license_type
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
@@ -137,10 +150,35 @@ fn detect_billing_model(license_type: Option<&str>, billing_code: Option<&str>) 
 
     if let Some(ref lt) = license_upper {
         if ["RHEL_BYOS", "SLES_BYOS"].contains(&lt.as_str()) {
-            return (Some("BYOS".to_string()), Some(format!("License Type: {}", license_type.unwrap_or_default())));
+            return (
+                Some("BYOS".to_string()),
+                Some(format!(
+                    "License Type: {}",
+                    license_type.unwrap_or_default()
+                )),
+            );
         }
-        if ["RHEL_BASE", "RHEL_SAPAPPS", "RHEL_BASESAPHA", "RHEL_SAPHA", "RHEL_EUS", "SLES", "SLES_SAP", "SLES_STANDARD", "SLES_HPC", "UBUNTU_PRO"].contains(&lt.as_str()) {
-            return (Some("PAYG".to_string()), Some(format!("License Type: {}", license_type.unwrap_or_default())));
+        if [
+            "RHEL_BASE",
+            "RHEL_SAPAPPS",
+            "RHEL_BASESAPHA",
+            "RHEL_SAPHA",
+            "RHEL_EUS",
+            "SLES",
+            "SLES_SAP",
+            "SLES_STANDARD",
+            "SLES_HPC",
+            "UBUNTU_PRO",
+        ]
+        .contains(&lt.as_str())
+        {
+            return (
+                Some("PAYG".to_string()),
+                Some(format!(
+                    "License Type: {}",
+                    license_type.unwrap_or_default()
+                )),
+            );
         }
     }
 
@@ -158,7 +196,10 @@ fn detect_billing_model(license_type: Option<&str>, billing_code: Option<&str>) 
         ]
         .contains(&code)
         {
-            return (Some("BYOS".to_string()), Some(format!("Billing Code: {}", code)));
+            return (
+                Some("BYOS".to_string()),
+                Some(format!("Billing Code: {}", code)),
+            );
         }
         if [
             "Linux_IaaS_SUSE",
@@ -174,22 +215,74 @@ fn detect_billing_model(license_type: Option<&str>, billing_code: Option<&str>) 
         ]
         .contains(&code)
         {
-            return (Some("PAYG".to_string()), Some(format!("Billing Code: {}", code)));
+            return (
+                Some("PAYG".to_string()),
+                Some(format!("Billing Code: {}", code)),
+            );
         }
     }
 
     (None, None)
 }
 
+fn extract_vm_generation(vm_size: &str) -> Option<u32> {
+    crate::cached_regex!(r"(?i)_v(\d+)$")
+        .captures(vm_size.trim())
+        .and_then(|c| c.get(1).and_then(|m| m.as_str().parse::<u32>().ok()))
+}
+
+pub fn parse_azure_vm_generation(content: &str, source_path: &str) -> AzureVmGenerationResult {
+    let vm = parse_azure_vm_properties(content, source_path);
+    let vm_size = vm.vm_size.clone();
+    let vm_generation = vm_size.as_deref().and_then(extract_vm_generation);
+    let is_legacy_generation = vm_generation.is_some_and(|g| g <= 3);
+
+    let recommendation = if is_legacy_generation {
+        Some(
+            "Legacy VM generation detected (v3 or older). Consider migrating to newer SKUs such as v6 for better price/performance."
+                .to_string(),
+        )
+    } else {
+        None
+    };
+
+    AzureVmGenerationResult {
+        found: vm_size.is_some(),
+        vm_size,
+        vm_generation,
+        is_legacy_generation,
+        recommendation,
+        source_path: source_path.to_string(),
+    }
+}
+
 pub fn parse_azure_vm_properties(content: &str, source_path: &str) -> AzureVmPropertiesResult {
     if let Ok(metadata) = serde_json::from_str::<Value>(content) {
         let compute = metadata.get("compute").unwrap_or(&metadata);
-        let vm_size = compute.get("vmSize").and_then(Value::as_str).map(|s| s.to_string());
-        let offer = compute.get("offer").and_then(Value::as_str).map(|s| s.to_string());
-        let publisher = compute.get("publisher").and_then(Value::as_str).map(|s| s.to_string());
-        let sku = compute.get("sku").and_then(Value::as_str).map(|s| s.to_string());
-        let license_type = compute.get("licenseType").and_then(Value::as_str).map(|s| s.to_string());
-        let billing_code = compute.get("billingCode").and_then(Value::as_str).map(|s| s.to_string());
+        let vm_size = compute
+            .get("vmSize")
+            .and_then(Value::as_str)
+            .map(|s| s.to_string());
+        let offer = compute
+            .get("offer")
+            .and_then(Value::as_str)
+            .map(|s| s.to_string());
+        let publisher = compute
+            .get("publisher")
+            .and_then(Value::as_str)
+            .map(|s| s.to_string());
+        let sku = compute
+            .get("sku")
+            .and_then(Value::as_str)
+            .map(|s| s.to_string());
+        let license_type = compute
+            .get("licenseType")
+            .and_then(Value::as_str)
+            .map(|s| s.to_string());
+        let billing_code = compute
+            .get("billingCode")
+            .and_then(Value::as_str)
+            .map(|s| s.to_string());
 
         let os_disk_type = compute
             .get("storageProfile")
@@ -207,7 +300,10 @@ pub fn parse_azure_vm_properties(content: &str, source_path: &str) -> AzureVmPro
                 arr.iter()
                     .map(|disk| AzureVmDataDisk {
                         lun: disk.get("lun").and_then(Value::as_i64),
-                        name: disk.get("name").and_then(Value::as_str).map(|s| s.to_string()),
+                        name: disk
+                            .get("name")
+                            .and_then(Value::as_str)
+                            .map(|s| s.to_string()),
                         disk_size_gb: disk.get("diskSizeGB").and_then(Value::as_i64),
                         storage_account_type: disk
                             .get("managedDisk")
@@ -220,9 +316,16 @@ pub fn parse_azure_vm_properties(content: &str, source_path: &str) -> AzureVmPro
             })
             .unwrap_or_default();
 
-        let (billing_model, detection_method) = detect_billing_model(license_type.as_deref(), billing_code.as_deref());
-        let has_ultra_disk = os_disk_type.as_deref() == Some("UltraSSD_LRS") || data_disks.iter().any(|d| d.storage_account_type.as_deref() == Some("UltraSSD_LRS"));
-        let has_premium_v2 = os_disk_type.as_deref() == Some("PremiumV2_LRS") || data_disks.iter().any(|d| d.storage_account_type.as_deref() == Some("PremiumV2_LRS"));
+        let (billing_model, detection_method) =
+            detect_billing_model(license_type.as_deref(), billing_code.as_deref());
+        let has_ultra_disk = os_disk_type.as_deref() == Some("UltraSSD_LRS")
+            || data_disks
+                .iter()
+                .any(|d| d.storage_account_type.as_deref() == Some("UltraSSD_LRS"));
+        let has_premium_v2 = os_disk_type.as_deref() == Some("PremiumV2_LRS")
+            || data_disks
+                .iter()
+                .any(|d| d.storage_account_type.as_deref() == Some("PremiumV2_LRS"));
 
         return AzureVmPropertiesResult {
             found: true,
@@ -245,7 +348,17 @@ pub fn parse_azure_vm_properties(content: &str, source_path: &str) -> AzureVmPro
     let mut values = HashMap::new();
     for line in content.lines() {
         if let Some(caps) = crate::cached_regex!(r"^(\w+):\s*(.+)$").captures(line.trim()) {
-            values.insert(caps.get(1).map(|m| m.as_str()).unwrap_or_default().to_string(), caps.get(2).map(|m| m.as_str()).unwrap_or_default().trim().to_string());
+            values.insert(
+                caps.get(1)
+                    .map(|m| m.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                caps.get(2)
+                    .map(|m| m.as_str())
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string(),
+            );
         }
     }
 
@@ -255,10 +368,16 @@ pub fn parse_azure_vm_properties(content: &str, source_path: &str) -> AzureVmPro
     let sku = values.get("sku").cloned();
     let license_type = values.get("licenseType").cloned();
     let billing_code = values.get("billingCode").cloned();
-    let (billing_model, detection_method) = detect_billing_model(license_type.as_deref(), billing_code.as_deref());
+    let (billing_model, detection_method) =
+        detect_billing_model(license_type.as_deref(), billing_code.as_deref());
 
     AzureVmPropertiesResult {
-        found: !(vm_size.is_none() && offer.is_none() && publisher.is_none() && sku.is_none() && license_type.is_none() && billing_code.is_none()),
+        found: !(vm_size.is_none()
+            && offer.is_none()
+            && publisher.is_none()
+            && sku.is_none()
+            && license_type.is_none()
+            && billing_code.is_none()),
         vm_size,
         publisher,
         offer,
@@ -276,14 +395,20 @@ pub fn parse_azure_vm_properties(content: &str, source_path: &str) -> AzureVmPro
 }
 
 pub fn parse_suse_cloud_register(content: &str, source_path: &str) -> SuseCloudRegisterResult {
-    let truncated = if content.len() > 100 * 1024 { &content[..100 * 1024] } else { content };
+    let truncated = if content.len() > 100 * 1024 {
+        &content[..100 * 1024]
+    } else {
+        content
+    };
     let mut registration_server: Option<String> = None;
     let mut server_line: Option<usize> = None;
 
     for (line_idx, line) in truncated.lines().enumerate().take(1000) {
         let line_no = line_idx + 1;
         let trimmed = line.trim();
-        if let Some(caps) = crate::cached_regex!(r"SUSEConnect\s+--url\s+(https?://[^\s]+)").captures(trimmed) {
+        if let Some(caps) =
+            crate::cached_regex!(r"SUSEConnect\s+--url\s+(https?://[^\s]+)").captures(trimmed)
+        {
             registration_server = caps.get(1).map(|m| m.as_str().trim().to_string());
             server_line = Some(line_no);
             break;
@@ -308,11 +433,17 @@ pub fn parse_suse_cloud_register(content: &str, source_path: &str) -> SuseCloudR
 
     if let Some(server) = registration_server.clone() {
         let server_lower = server.to_ascii_lowercase();
-        if server_lower.contains("smt-azure") || server_lower.contains("smt.suse.de") || server_lower.contains("susecloud.net") || server_lower.contains("update.suse.com") {
+        if server_lower.contains("smt-azure")
+            || server_lower.contains("smt.suse.de")
+            || server_lower.contains("susecloud.net")
+            || server_lower.contains("update.suse.com")
+        {
             billing_model = Some("PAYG".to_string());
             registration_type = Some("Microsoft SMT (Subscription Management Tool)".to_string());
             detection_method = Some(format!("Cloud Registration: {}", server));
-        } else if server_lower.contains("scc.suse.com") || server_lower.contains("customer.suse.com") {
+        } else if server_lower.contains("scc.suse.com")
+            || server_lower.contains("customer.suse.com")
+        {
             billing_model = Some("BYOS".to_string());
             registration_type = Some("SUSE Customer Center (SCC)".to_string());
             detection_method = Some(format!("Cloud Registration: {}", server));
@@ -352,14 +483,21 @@ pub fn parse_waagent_config(content: &str, source_path: &str) -> WaagentConfigRe
 
     let summary = WaagentConfigSummary {
         extensions_enabled: norm_bool(config.get("Extensions.Enabled")),
-        provisioning_agent: config.get("Provisioning.Agent").cloned().or_else(|| config.get("Provisioning.Enabled").cloned()),
+        provisioning_agent: config
+            .get("Provisioning.Agent")
+            .cloned()
+            .or_else(|| config.get("Provisioning.Enabled").cloned()),
         resource_disk_format: norm_bool(config.get("ResourceDisk.Format")),
         resource_disk_enable_swap: norm_bool(config.get("ResourceDisk.EnableSwap")),
-        resource_disk_swap_size_mb: config.get("ResourceDisk.SwapSizeMB").and_then(|v| v.parse::<i64>().ok()),
+        resource_disk_swap_size_mb: config
+            .get("ResourceDisk.SwapSizeMB")
+            .and_then(|v| v.parse::<i64>().ok()),
         resource_disk_mount_point: config.get("ResourceDisk.MountPoint").cloned(),
         enable_firewall: norm_bool(config.get("OS.EnableFirewall")),
         enable_fips: norm_bool(config.get("OS.EnableFIPS")),
-        root_device_scsi_timeout: config.get("OS.RootDeviceScsiTimeout").and_then(|v| v.parse::<i64>().ok()),
+        root_device_scsi_timeout: config
+            .get("OS.RootDeviceScsiTimeout")
+            .and_then(|v| v.parse::<i64>().ok()),
         logs_verbose: norm_bool(config.get("Logs.Verbose")),
         logs_collect: norm_bool(config.get("Logs.Collect")),
         auto_update_enabled: norm_bool(config.get("AutoUpdate.Enabled")),
@@ -371,8 +509,13 @@ pub fn parse_waagent_config(content: &str, source_path: &str) -> WaagentConfigRe
         warnings.push(WaagentConfigWarning {
             severity: "warning".to_string(),
             setting: "Extensions.Enabled".to_string(),
-            value: config.get("Extensions.Enabled").cloned().unwrap_or_default(),
-            message: "VM extensions are disabled — extensions (monitoring, backups, CSE) will not run.".to_string(),
+            value: config
+                .get("Extensions.Enabled")
+                .cloned()
+                .unwrap_or_default(),
+            message:
+                "VM extensions are disabled — extensions (monitoring, backups, CSE) will not run."
+                    .to_string(),
             source_path: source_path.to_string(),
             source_line: config_lines.get("Extensions.Enabled").copied(),
         });
@@ -392,7 +535,8 @@ pub fn parse_waagent_config(content: &str, source_path: &str) -> WaagentConfigRe
             severity: "warning".to_string(),
             setting: "OS.EnableFirewall".to_string(),
             value: config.get("OS.EnableFirewall").cloned().unwrap_or_default(),
-            message: "The Azure agent OS-level firewall (wire-server access control) is disabled.".to_string(),
+            message: "The Azure agent OS-level firewall (wire-server access control) is disabled."
+                .to_string(),
             source_path: source_path.to_string(),
             source_line: config_lines.get("OS.EnableFirewall").copied(),
         });
@@ -411,7 +555,10 @@ pub fn parse_waagent_config(content: &str, source_path: &str) -> WaagentConfigRe
         warnings.push(WaagentConfigWarning {
             severity: "info".to_string(),
             setting: "AutoUpdate.Enabled".to_string(),
-            value: config.get("AutoUpdate.Enabled").cloned().unwrap_or_default(),
+            value: config
+                .get("AutoUpdate.Enabled")
+                .cloned()
+                .unwrap_or_default(),
             message: "Auto-update of the Azure Linux Agent is disabled.".to_string(),
             source_path: source_path.to_string(),
             source_line: config_lines.get("AutoUpdate.Enabled").copied(),
@@ -457,10 +604,16 @@ pub fn parse_waagent_log(content: &str, source_path: &str) -> WaagentLogResult {
             .and_then(|c| c.get(1).map(|m| m.as_str().replace('T', " ")));
 
         if let Some(caps) = heartbeat_regex.captures(line) {
-            let version = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
+            let version = caps
+                .get(1)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
             if current_version.as_deref() != Some(version.as_str()) {
                 current_version = Some(version.clone());
-                version_history.push(WaagentVersionEntry { version, first_seen: timestamp.clone() });
+                version_history.push(WaagentVersionEntry {
+                    version,
+                    first_seen: timestamp.clone(),
+                });
             }
             continue;
         }
@@ -478,12 +631,20 @@ pub fn parse_waagent_log(content: &str, source_path: &str) -> WaagentLogResult {
 
         if line.contains(" ERROR ") {
             if line.contains("Error fetching the goal state") {
-                entry.correlation_id = corr_regex.captures(line).and_then(|c| c.get(1).map(|m| m.as_str().to_string()));
+                entry.correlation_id = corr_regex
+                    .captures(line)
+                    .and_then(|c| c.get(1).map(|m| m.as_str().to_string()));
                 goal_state_errors.push(entry);
             } else if line.contains("op=Enable") || line.contains("op=Install") {
-                entry.extension_name = name_regex.captures(line).and_then(|c| c.get(1).map(|m| m.as_str().to_string()));
-                entry.operation = op_regex.captures(line).and_then(|c| c.get(1).map(|m| m.as_str().to_string()));
-                entry.message = msg_regex.captures(line).and_then(|c| c.get(1).map(|m| m.as_str().chars().take(300).collect()));
+                entry.extension_name = name_regex
+                    .captures(line)
+                    .and_then(|c| c.get(1).map(|m| m.as_str().to_string()));
+                entry.operation = op_regex
+                    .captures(line)
+                    .and_then(|c| c.get(1).map(|m| m.as_str().to_string()));
+                entry.message = msg_regex
+                    .captures(line)
+                    .and_then(|c| c.get(1).map(|m| m.as_str().chars().take(300).collect()));
                 extension_errors.push(entry);
             } else if line.contains("ResourceDisk") || line.contains("resource disk") {
                 entry.message = Some(line.chars().take(300).collect());
@@ -494,8 +655,13 @@ pub fn parse_waagent_log(content: &str, source_path: &str) -> WaagentLogResult {
         } else if line.contains(" WARNING ") {
             if line.contains("IMDS_CONNECTION_ERROR") {
                 imds_errors.push(entry);
-            } else if line.contains("no status file was reported") || line.contains("incorrect format") {
-                entry.extension_name = ext_regex.captures(line).and_then(|c| c.get(1).map(|m| m.as_str().trim_end_matches(':').to_string()));
+            } else if line.contains("no status file was reported")
+                || line.contains("incorrect format")
+            {
+                entry.extension_name = ext_regex.captures(line).and_then(|c| {
+                    c.get(1)
+                        .map(|m| m.as_str().trim_end_matches(':').to_string())
+                });
                 status_file_warnings.push(entry);
             } else if line.contains("ResourceDisk") || line.contains("resource disk") {
                 entry.message = Some(line.chars().take(300).collect());
@@ -509,14 +675,17 @@ pub fn parse_waagent_log(content: &str, source_path: &str) -> WaagentLogResult {
     let mut extension_status_summary = None;
     for line in lines.iter().rev() {
         if line.contains("Extension status:") {
-            if let Some(caps) = crate::cached_regex!(r"Extension status:\s*\[(.+)\]").captures(line) {
+            if let Some(caps) = crate::cached_regex!(r"Extension status:\s*\[(.+)\]").captures(line)
+            {
                 let raw = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
                 let entries = tuple_regex
                     .captures_iter(raw)
-                    .filter_map(|m| Some(WaagentExtensionStatus {
-                        name: m.get(1)?.as_str().to_string(),
-                        status: m.get(2)?.as_str().to_string(),
-                    }))
+                    .filter_map(|m| {
+                        Some(WaagentExtensionStatus {
+                            name: m.get(1)?.as_str().to_string(),
+                            status: m.get(2)?.as_str().to_string(),
+                        })
+                    })
                     .collect::<Vec<_>>();
                 if !entries.is_empty() {
                     extension_status_summary = Some(entries);
@@ -526,7 +695,10 @@ pub fn parse_waagent_log(content: &str, source_path: &str) -> WaagentLogResult {
         }
     }
 
-    let total_errors = goal_state_errors.len() + extension_errors.len() + resource_disk_errors.len() + other_errors.len();
+    let total_errors = goal_state_errors.len()
+        + extension_errors.len()
+        + resource_disk_errors.len()
+        + other_errors.len();
     let total_warnings = imds_errors.len() + status_file_warnings.len() + other_warnings.len();
 
     WaagentLogResult {
@@ -550,25 +722,36 @@ pub fn parse_waagent_log(content: &str, source_path: &str) -> WaagentLogResult {
 }
 
 pub fn parse_azure_vm_properties_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_azure_vm_properties(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_azure_vm_properties(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
+    crate::parsers::fill_source_path(&mut value, source_path);
+    serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
+}
+
+pub fn parse_azure_vm_generation_json(content: &str, source_path: &str) -> String {
+    let mut value = serde_json::to_value(parse_azure_vm_generation(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_suse_cloud_register_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_suse_cloud_register(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_suse_cloud_register(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_waagent_config_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_waagent_config(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_waagent_config(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_waagent_log_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_waagent_log(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_waagent_log(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
@@ -599,6 +782,36 @@ mod tests {
         assert!(result.found);
         assert_eq!(result.billing_model.as_deref(), Some("BYOS"));
         assert!(result.has_ultra_disk);
+    }
+
+    #[test]
+    fn detects_legacy_vm_generation() {
+        let input = r#"{
+                    "compute": {
+                        "vmSize": "Standard_D8s_v2"
+                    }
+                }"#;
+
+        let result = parse_azure_vm_generation(input, "");
+        assert!(result.found);
+        assert_eq!(result.vm_generation, Some(2));
+        assert!(result.is_legacy_generation);
+        assert!(result.recommendation.is_some());
+    }
+
+    #[test]
+    fn detects_modern_vm_generation() {
+        let input = r#"{
+                    "compute": {
+                        "vmSize": "Standard_D4s_v6"
+                    }
+                }"#;
+
+        let result = parse_azure_vm_generation(input, "");
+        assert!(result.found);
+        assert_eq!(result.vm_generation, Some(6));
+        assert!(!result.is_legacy_generation);
+        assert!(result.recommendation.is_none());
     }
 
     #[test]

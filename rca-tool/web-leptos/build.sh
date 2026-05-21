@@ -14,6 +14,9 @@ cd "$(dirname "$0")"
 
 SUPPORTFILE_WASM_DIR="../lib/supportfile_wasm"
 SUPPORTFILE_WASM_PKG="${SUPPORTFILE_WASM_DIR}/pkg"
+LZMA_STREAM_WASM_DIR="../exploratory/lzma_stream_wasm"
+LZMA_STREAM_WASM_PKG="${LZMA_STREAM_WASM_DIR}/pkg"
+PATCH_WORKER_SCRIPT="../exploratory/patch-worker.cjs"
 
 if [[ "${SKIP_WASM_BUILD:-0}" != "1" ]]; then
     echo "==> Building supportfile WASM (wasm-pack, target=no-modules, release)…"
@@ -22,17 +25,28 @@ else
     echo "==> SKIP_WASM_BUILD=1 — using existing ${SUPPORTFILE_WASM_PKG}/"
 fi
 
+if [[ "${SKIP_LZMA_WASM_BUILD:-0}" != "1" ]]; then
+    echo "==> Building Rust XZ streaming WASM (wasm-pack, target=no-modules, release)…"
+    (cd "${LZMA_STREAM_WASM_DIR}" && wasm-pack build --target no-modules --release --out-dir pkg)
+else
+    echo "==> SKIP_LZMA_WASM_BUILD=1 — using existing ${LZMA_STREAM_WASM_PKG}/"
+fi
+
+# Avoid global name collisions between supportfile_wasm.js and lzma_stream_wasm.js
+# (both are wasm-pack no-modules bundles that default to `wasm_bindgen`).
+if grep -q '^let wasm_bindgen =' "${LZMA_STREAM_WASM_PKG}/lzma_stream_wasm.js"; then
+    sed -i 's/^let wasm_bindgen =/let lzma_bindgen =/' "${LZMA_STREAM_WASM_PKG}/lzma_stream_wasm.js"
+fi
+
 echo "==> Copying JS assets…"
-mkdir -p assets/parsers assets/liblzma-wasm/dist-streaming assets/supportfile-wasm
-cp ../src/worker.js           assets/liblzma-streaming-worker.js
+mkdir -p assets/parsers assets/lzma-stream-wasm assets/supportfile-wasm
+node "${PATCH_WORKER_SCRIPT}" ../src/worker.js assets/liblzma-streaming-worker.js
 cp ../src/parsers/*.js        assets/parsers/
 cp ../src/utils.js            assets/
 cp ../src/performance.js      assets/
 cp ../src/wasm-bridge.js      assets/
-# liblzma streaming WASM: produced by `../web/liblzma-wasm/build-liblzma-streaming.sh`
-# (the only piece of the legacy web/ tree that web-leptos still consumes; move
-# it out of web/ when the legacy interface is fully retired).
-cp -r ../web/liblzma-wasm/dist-streaming/* assets/liblzma-wasm/dist-streaming/
+cp "${LZMA_STREAM_WASM_PKG}/lzma_stream_wasm.js"      assets/lzma-stream-wasm/
+cp "${LZMA_STREAM_WASM_PKG}/lzma_stream_wasm_bg.wasm" assets/lzma-stream-wasm/
 cp "${SUPPORTFILE_WASM_PKG}/supportfile_wasm.js"     assets/supportfile-wasm/
 cp "${SUPPORTFILE_WASM_PKG}/supportfile_wasm_bg.wasm" assets/supportfile-wasm/
 

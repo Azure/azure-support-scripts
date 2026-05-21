@@ -26,7 +26,10 @@ jobs:
     - name: Cache Rust build artifacts
       uses: Swatinem/rust-cache@v2
       with:
-        workspaces: rca-tool/web-leptos -> target
+        workspaces: |
+          rca-tool/web-leptos -> target
+          rca-tool/exploratory/lzma_stream_wasm -> target
+          rca-tool/lib/supportfile_core -> target
 
     - name: Install Trunk
       uses: taiki-e/install-action@v2
@@ -38,31 +41,14 @@ jobs:
       with:
         tool: wasm-pack
 
-    - name: Setup Emscripten
-      uses: mymindstorm/setup-emsdk@v14
-      with:
-        version: 'latest'
+    - name: Build Rust CLI
+      run: cargo build --locked --release --features cli --bin rca_cli
+      working-directory: rca-tool/lib/supportfile_core
         
-    - name: Build liblzma streaming WASM
-      # Still consumed by the Leptos build (see rca-tool/web-leptos/build.sh,
-      # which copies ../web/liblzma-wasm/dist-streaming/* into its assets).
-      run: |
-        cd rca-tool/web/liblzma-wasm
-        chmod +x build-liblzma-streaming.sh
-        ./build-liblzma-streaming.sh
-
-    - name: Install CLI dependencies
-      run: npm ci
-      working-directory: rca-tool/cli
-        
-    - name: Build Leptos Web Interface
+    - name: Build Leptos UI
       run: ./build.sh
       working-directory: rca-tool/web-leptos
     
-    - name: Build CLI
-      run: npm run build
-      working-directory: rca-tool/cli
-        
     - name: Install test dependencies
       run: npm ci
       working-directory: rca-tool/tests
@@ -73,8 +59,8 @@ jobs:
         ./create-fixtures.sh
       working-directory: rca-tool/tests
  
-    - name: Install Playwright Browsers
-      run: npx playwright install --with-deps chromium
+    - name: Install Playwright Edge
+      run: npx playwright install --with-deps msedge
       working-directory: rca-tool/tests
 
     - name: Instrument source files for coverage
@@ -91,11 +77,16 @@ jobs:
         ACCESSIBILITY_URL=http://localhost:8080/web-leptos/dist/ node accessibility-check.js
       working-directory: rca-tool/tests
     
-    - name: Test CLI with all fixtures
+    - name: Test Rust CLI with all fixtures
       run: |
-        # Test CLI with all fixture files (excluding intentionally corrupted ones)
+        # Test Rust CLI with all fixture files (excluding intentionally corrupted ones)
         failed=0
         total=0
+        rust_cli="../lib/supportfile_core/target/release/rca_cli"
+        if [[ ! -x "${rust_cli}" ]]; then
+          echo "Rust CLI binary not found: ${rust_cli}"
+          exit 1
+        fi
         for fixture in fixtures/*.tar.xz; do
           # Skip intentionally corrupted test files
           if [[ "$fixture" == *"corrupted"* ]]; then
@@ -104,7 +95,7 @@ jobs:
           fi
           total=$((total + 1))
           echo "Testing: $fixture"
-          if node ../cli/dist/rca-cli.cjs "$fixture" > /dev/null 2>&1; then
+          if "${rust_cli}" "$fixture" > /dev/null 2>&1; then
             echo "  [OK] $fixture"
           else
             echo "  [FAIL] $fixture"
@@ -112,7 +103,7 @@ jobs:
           fi
         done
         echo ""
-        echo "CLI tests completed: $((total - failed))/$total passed"
+        echo "Rust CLI tests completed: $((total - failed))/$total passed"
         if [ $failed -gt 0 ]; then
           exit 1
         fi

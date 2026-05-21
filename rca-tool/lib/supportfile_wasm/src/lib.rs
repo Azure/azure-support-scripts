@@ -214,6 +214,21 @@ pub fn parse_firewall_rules_json(content: &str, source_path: &str) -> String {
     sf::parse_firewall_rules_json(content, source_path)
 }
 
+#[wasm_bindgen(js_name = parsePacketLoss)]
+pub fn parse_packet_loss_json(content: &str, source_path: &str) -> String {
+    sf::parse_packet_loss_json(content, source_path)
+}
+
+#[wasm_bindgen(js_name = parseRingBuffer)]
+pub fn parse_ring_buffer_json(content: &str, source_path: &str) -> String {
+    sf::parse_ring_buffer_json(content, source_path)
+}
+
+#[wasm_bindgen(js_name = parseNetworkSysctl)]
+pub fn parse_network_sysctl_json(content: &str, source_path: &str) -> String {
+    sf::parse_network_sysctl_json(content, source_path)
+}
+
 #[wasm_bindgen(js_name = parseFstabAnalysis)]
 pub fn parse_fstab_analysis_json(content: &str, source_path: &str) -> String {
     sf::parse_fstab_analysis_json(content, source_path)

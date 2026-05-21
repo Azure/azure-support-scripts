@@ -3,7 +3,8 @@
 use pyo3::prelude::*;
 use supportfile_core::{
     parse_automation_events_json, parse_azure_extensions_json, parse_azure_site_recovery_json,
-    parse_azure_vm_properties_json, parse_basic_environment_json, parse_block_devices_json,
+    parse_azure_vm_generation_json, parse_azure_vm_properties_json,
+    parse_basic_environment_json, parse_block_devices_json,
     parse_btrfs_config_json, parse_chrony_makestep_json, parse_chrony_tracking_json,
     parse_cluster_events_json, parse_cluster_maintenance_mode_json, parse_cluster_status_json,
     parse_corosync_config_json, parse_crash_listing_json, parse_crypto_policies_json,
@@ -19,7 +20,8 @@ use supportfile_core::{
     parse_lvm_config_json, parse_ms_defender_config_json, parse_ms_defender_json,
     parse_mtab_analysis_json, parse_network_interfaces_json, parse_oom_killer_json,
     parse_os_release_json, parse_pacemaker_high_cpu_json, parse_ptp_clock_source_json,
-    parse_ptp_device_json, parse_raid_config_json, parse_rhel_rhui_check_json,
+    parse_ptp_device_json, parse_raid_config_json, parse_package_distro_mismatch_json,
+    parse_rhel_rhui_check_json,
     parse_rhui_config_json, parse_rhui_errors_json, parse_ssh_service_issues_json,
     parse_suse_cloud_register_json, parse_time_sync_json, parse_time_sync_service_json,
     parse_timedatectl_json, parse_trend_micro_json, parse_vmcore_dmesg_json,
@@ -183,6 +185,20 @@ fn parse_automation_events(content: &str, source_path: &str) -> PyResult<String>
 #[pyo3(signature = (content, source_path=""))]
 fn parse_azure_vm_properties(content: &str, source_path: &str) -> PyResult<String> {
     Ok(parse_azure_vm_properties_json(content, source_path))
+}
+
+/// Classify Azure VM generation from ``vmSize`` and flag legacy generations.
+///
+/// Args:
+///     content (str): IMDS JSON content or key-value metadata text.
+///
+/// Returns:
+///     str: JSON object ``{"found", "vmSize", "vmGeneration",
+///     "isLegacyGeneration", "recommendation"}``.
+#[pyfunction]
+#[pyo3(signature = (content, source_path=""))]
+fn parse_azure_vm_generation(content: &str, source_path: &str) -> PyResult<String> {
+    Ok(parse_azure_vm_generation_json(content, source_path))
 }
 
 /// Detect SUSE cloud registration server and infer billing model.
@@ -473,6 +489,37 @@ fn parse_network_interfaces(content: &str, source_path: &str) -> PyResult<String
 #[pyo3(signature = (content, source_path=""))]
 fn parse_distro_packages(content: &str, source_path: &str) -> PyResult<String> {
     Ok(parse_distro_packages_json(content, source_path))
+}
+
+/// Detect cross-distro and major-version package drift.
+///
+/// Examples:
+/// * SUSE packages on a RHEL host
+/// * ``.el7`` packages on a RHEL 9 host
+///
+/// Args:
+///     content (str): Package listing content.
+///     running_distro_id (str): Host distro ID (e.g. ``rhel``, ``sles``).
+///     running_version_id (str): Host distro version (e.g. ``9.4``, ``15.6``).
+///     source_path (str): Optional source path.
+///
+/// Returns:
+///     str: JSON object ``{"found", "count", "mismatches": [...],
+///     "runningDistroId", "runningVersionId"}``.
+#[pyfunction]
+#[pyo3(signature = (content, running_distro_id, running_version_id, source_path=""))]
+fn parse_package_distro_mismatch(
+    content: &str,
+    running_distro_id: &str,
+    running_version_id: &str,
+    source_path: &str,
+) -> PyResult<String> {
+    Ok(parse_package_distro_mismatch_json(
+        content,
+        source_path,
+        running_distro_id,
+        running_version_id,
+    ))
 }
 
 // ============================================================================
@@ -1270,6 +1317,7 @@ fn parse_vmcore_summary(content: &str, source_path: &str) -> PyResult<String> {
 ///   :func:`parse_cluster_maintenance_mode`
 /// * Automation: :func:`parse_automation_events`
 /// * Azure: :func:`parse_azure_vm_properties`,
+///   :func:`parse_azure_vm_generation`,
 ///   :func:`parse_suse_cloud_register`, :func:`parse_waagent_config`,
 ///   :func:`parse_waagent_log`, :func:`parse_azure_extensions`
 /// * Debugfs: :func:`parse_hv_balloon`, :func:`parse_extfrag`
@@ -1278,7 +1326,8 @@ fn parse_vmcore_summary(content: &str, source_path: &str) -> PyResult<String> {
 ///   :func:`parse_xfs_errors`
 /// * Networking: :func:`parse_firewall_rules`,
 ///   :func:`parse_network_interfaces`
-/// * Packages: :func:`parse_distro_packages`
+/// * Packages: :func:`parse_distro_packages`,
+///   :func:`parse_package_distro_mismatch`
 /// * Services: :func:`parse_ssh_service_issues`, :func:`parse_dlm_service`,
 ///   :func:`parse_azure_site_recovery`, :func:`parse_guardicore_agent`,
 ///   :func:`parse_illumio`, :func:`parse_trend_micro`,
@@ -1314,6 +1363,7 @@ fn supportfile(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_cluster_maintenance_mode, m)?)?;
     m.add_function(wrap_pyfunction!(parse_automation_events, m)?)?;
     m.add_function(wrap_pyfunction!(parse_azure_vm_properties, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_azure_vm_generation, m)?)?;
     m.add_function(wrap_pyfunction!(parse_suse_cloud_register, m)?)?;
     m.add_function(wrap_pyfunction!(parse_waagent_config, m)?)?;
     m.add_function(wrap_pyfunction!(parse_waagent_log, m)?)?;
@@ -1326,6 +1376,7 @@ fn supportfile(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_firewall_rules, m)?)?;
     m.add_function(wrap_pyfunction!(parse_network_interfaces, m)?)?;
     m.add_function(wrap_pyfunction!(parse_distro_packages, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_package_distro_mismatch, m)?)?;
     m.add_function(wrap_pyfunction!(parse_ssh_service_issues, m)?)?;
     m.add_function(wrap_pyfunction!(parse_dlm_service, m)?)?;
     m.add_function(wrap_pyfunction!(parse_azure_site_recovery, m)?)?;

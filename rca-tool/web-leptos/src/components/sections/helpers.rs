@@ -82,6 +82,11 @@ pub fn json_bool(v: &serde_json::Value, key: &str) -> bool {
     v.get(key).and_then(|x| x.as_bool()).unwrap_or(false)
 }
 
+/// Extract a u64 from a JSON value (numbers only; defaults to 0).
+pub fn json_u64(v: &serde_json::Value, key: &str) -> u64 {
+    v.get(key).and_then(|x| x.as_u64()).unwrap_or(0)
+}
+
 /// Extract an array from a JSON value or return empty vec.
 pub fn json_array(v: &serde_json::Value, key: &str) -> Vec<serde_json::Value> {
     v.get(key)

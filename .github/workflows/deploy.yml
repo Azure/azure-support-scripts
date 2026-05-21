@@ -43,7 +43,9 @@ jobs:
     - name: Cache Rust build artifacts
       uses: Swatinem/rust-cache@v2
       with:
-        workspaces: rca-tool/web-leptos -> target
+        workspaces: |
+          rca-tool/web-leptos -> target
+          rca-tool/exploratory/lzma_stream_wasm -> target
 
     - name: Install Trunk
       uses: taiki-e/install-action@v2
@@ -55,24 +57,7 @@ jobs:
       with:
         tool: wasm-pack
 
-    - name: Setup Emscripten
-      uses: mymindstorm/setup-emsdk@v14
-      with:
-        version: 'latest'
-        
-    - name: Verify Emscripten installation
-      run: |
-        emcc --version
-        
-    - name: Build liblzma streaming WASM
-      # Still consumed by the Leptos build (see rca-tool/web-leptos/build.sh,
-      # which copies ../web/liblzma-wasm/dist-streaming/* into its assets).
-      run: |
-        cd rca-tool/web/liblzma-wasm
-        chmod +x build-liblzma-streaming.sh
-        ./build-liblzma-streaming.sh
-
-    - name: Build Leptos web interface
+    - name: Build Leptos UI
       run: ./build.sh
       working-directory: rca-tool/web-leptos
 
@@ -152,8 +137,8 @@ jobs:
         ./create-fixtures.sh
       working-directory: rca-tool/tests
       
-    - name: Install Playwright Browsers
-      run: npx playwright install --with-deps chromium
+    - name: Install Playwright Edge
+      run: npx playwright install --with-deps msedge
       working-directory: rca-tool/tests
       
     - name: Wait for deployment to be ready

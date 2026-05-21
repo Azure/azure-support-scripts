@@ -27,15 +27,19 @@ fn extract_timestamp(line: &str) -> Option<String> {
     static ISO_RE: OnceLock<Regex> = OnceLock::new();
     static SYSLOG_RE: OnceLock<Regex> = OnceLock::new();
     let iso_re = ISO_RE.get_or_init(|| {
-        Regex::new(r"^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)").unwrap()
+        Regex::new(r"^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)")
+            .unwrap()
     });
-    let syslog_re = SYSLOG_RE.get_or_init(|| {
-        Regex::new(r"^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?)").unwrap()
-    });
+    let syslog_re = SYSLOG_RE
+        .get_or_init(|| Regex::new(r"^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?)").unwrap());
     iso_re
         .captures(line)
         .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
-        .or_else(|| syslog_re.captures(line).and_then(|c| c.get(1).map(|m| m.as_str().to_string())))
+        .or_else(|| {
+            syslog_re
+                .captures(line)
+                .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
+        })
 }
 
 fn strip_ansi_codes(input: &str) -> String {
@@ -60,10 +64,8 @@ pub fn parse_automation_events(content: &str, source_path: &str) -> AutomationRe
         ANSIBLE_SETUP_RE.get_or_init(|| Regex::new(r"ansible-setup:\s*(.+)").unwrap());
     let puppet_agent_re =
         PUPPET_AGENT_RE.get_or_init(|| Regex::new(r"puppet-agent:\s*(.+)").unwrap());
-    let puppet_apply_re =
-        PUPPET_APPLY_RE.get_or_init(|| Regex::new(r"(puppet apply.+)").unwrap());
-    let puppet_run_re =
-        PUPPET_RUN_RE.get_or_init(|| Regex::new(r"puppet-run:\s*(.+)").unwrap());
+    let puppet_apply_re = PUPPET_APPLY_RE.get_or_init(|| Regex::new(r"(puppet apply.+)").unwrap());
+    let puppet_run_re = PUPPET_RUN_RE.get_or_init(|| Regex::new(r"puppet-run:\s*(.+)").unwrap());
     let chef_client_re =
         CHEF_CLIENT_RE.get_or_init(|| Regex::new(r"chef-client\[\d+\]:\s*(.+)").unwrap());
     let chef_solo_re =
@@ -105,7 +107,8 @@ pub fn parse_automation_events(content: &str, source_path: &str) -> AutomationRe
             pattern_type = Some("apply");
             command = caps.get(1).map(|m| m.as_str().trim().to_string());
         } else if let Some(caps) = chef_client_re.captures(line) {
-            let message = strip_ansi_codes(caps.get(1).map(|m| m.as_str()).unwrap_or_default().trim());
+            let message =
+                strip_ansi_codes(caps.get(1).map(|m| m.as_str()).unwrap_or_default().trim());
             if [
                 "Starting Chef",
                 "Chef Infra Client finished",
@@ -127,7 +130,13 @@ pub fn parse_automation_events(content: &str, source_path: &str) -> AutomationRe
                 for j in 1..=5 {
                     if let Some(next_line) = lines.get(i + j) {
                         if let Some(next_caps) = chef_client_re.captures(next_line) {
-                            context.push(strip_ansi_codes(next_caps.get(1).map(|m| m.as_str()).unwrap_or_default().trim()));
+                            context.push(strip_ansi_codes(
+                                next_caps
+                                    .get(1)
+                                    .map(|m| m.as_str())
+                                    .unwrap_or_default()
+                                    .trim(),
+                            ));
                             end_line = i + j + 1;
                         } else {
                             break;
@@ -137,20 +146,39 @@ pub fn parse_automation_events(content: &str, source_path: &str) -> AutomationRe
                 command = Some(context.join(" | "));
             }
         } else if let Some(caps) = chef_solo_re.captures(line) {
-            let message = strip_ansi_codes(caps.get(1).map(|m| m.as_str()).unwrap_or_default().trim());
-            if ["Starting Chef", "Chef Solo finished", "Chef Run complete", "Synchronizing Cookbooks", "Compiling Cookbooks", "Converging", "FATAL:", "ERROR:"]
-                .iter()
-                .any(|kw| message.contains(kw))
+            let message =
+                strip_ansi_codes(caps.get(1).map(|m| m.as_str()).unwrap_or_default().trim());
+            if [
+                "Starting Chef",
+                "Chef Solo finished",
+                "Chef Run complete",
+                "Synchronizing Cookbooks",
+                "Compiling Cookbooks",
+                "Converging",
+                "FATAL:",
+                "ERROR:",
+            ]
+            .iter()
+            .any(|kw| message.contains(kw))
             {
                 tool_type = Some("chef");
                 pattern_type = Some("solo");
                 command = Some(message);
             }
         } else if let Some(caps) = chef_apply_re.captures(line) {
-            let message = strip_ansi_codes(caps.get(1).map(|m| m.as_str()).unwrap_or_default().trim());
-            if ["Starting Chef", "Chef Apply finished", "Chef Run complete", "Compiling Cookbooks", "Converging", "FATAL:", "ERROR:"]
-                .iter()
-                .any(|kw| message.contains(kw))
+            let message =
+                strip_ansi_codes(caps.get(1).map(|m| m.as_str()).unwrap_or_default().trim());
+            if [
+                "Starting Chef",
+                "Chef Apply finished",
+                "Chef Run complete",
+                "Compiling Cookbooks",
+                "Converging",
+                "FATAL:",
+                "ERROR:",
+            ]
+            .iter()
+            .any(|kw| message.contains(kw))
             {
                 tool_type = Some("chef");
                 pattern_type = Some("apply");
@@ -160,7 +188,8 @@ pub fn parse_automation_events(content: &str, source_path: &str) -> AutomationRe
 
         if let (Some(tool_type), Some(pattern_type)) = (tool_type, pattern_type) {
             events.push(AutomationEvent {
-                timestamp: extract_timestamp(line).unwrap_or_else(|| "Date not detected".to_string()),
+                timestamp: extract_timestamp(line)
+                    .unwrap_or_else(|| "Date not detected".to_string()),
                 line_number: i + 1,
                 tool_type: tool_type.to_string(),
                 pattern_type: pattern_type.to_string(),
@@ -217,7 +246,11 @@ mod tests {
         let result = parse_automation_events(content, PATH);
         assert!(result.found);
         assert_eq!(result.events[0].tool_type, "chef");
-        assert!(result.events[0].command.as_deref().unwrap_or("").contains("Chef Run complete"));
+        assert!(result.events[0]
+            .command
+            .as_deref()
+            .unwrap_or("")
+            .contains("Chef Run complete"));
     }
 
     #[test]
@@ -245,10 +278,8 @@ mod tests {
 
     #[test]
     fn automation_json_wrapper_includes_source_path() {
-        let json = parse_automation_events_json(
-            "Jan 10 12:00:00 node1 root: ansible-command: ls\n",
-            PATH,
-        );
+        let json =
+            parse_automation_events_json("Jan 10 12:00:00 node1 root: ansible-command: ls\n", PATH);
         assert!(json.contains("\"source_path\":\"var/log/messages\""));
         assert!(json.contains("\"source_line\":1"));
     }

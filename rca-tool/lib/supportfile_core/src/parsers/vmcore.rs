@@ -79,17 +79,14 @@ pub fn parse_vmcore_dmesg(content: &str, source_path: &str) -> VmcoreCrash {
     let mut in_call_trace = false;
     for (line_idx, line) in content.lines().enumerate() {
         let line_no = line_idx + 1;
-        if let Some(c) = crate::cached_regex!(r"Kernel panic - not syncing:\s*(.+)")
-            .captures(line)
+        if let Some(c) = crate::cached_regex!(r"Kernel panic - not syncing:\s*(.+)").captures(line)
         {
             crash.panic_reason = Some(c[1].trim().to_string());
             crash.panic_line = Some(line_no);
             in_call_trace = false;
             crash.call_trace.clear();
         }
-        if let Some(c) = crate::cached_regex!(r"Hardware name:\s*(.+)")
-            .captures(line)
-        {
+        if let Some(c) = crate::cached_regex!(r"Hardware name:\s*(.+)").captures(line) {
             crash.hardware = Some(c[1].trim().replace(", BIOS", ""));
         }
         if let Some(c) = crate::cached_regex!(r"CPU:\s*(\d+)\s+PID:\s*(\d+)\s+Comm:\s*(\S+).*(Not tainted|Tainted:\s*\S*)\s+(\S+?)(?:\s+#\d+)?\s*$")
@@ -139,23 +136,24 @@ pub fn parse_crash_listing(content: &str, source_path: &str) -> Option<CrashList
 
     for (line_idx, line) in content.lines().enumerate() {
         let line_no = line_idx + 1;
-        if let Some(c) = crate::cached_regex!(r"^(\/var\/crash\/.+):$")
-            .captures(line.trim())
-        {
+        if let Some(c) = crate::cached_regex!(r"^(\/var\/crash\/.+):$").captures(line.trim()) {
             current_dir = Some(c[1].to_string());
             continue;
         }
-        let Some(dir) = &current_dir else { continue; };
+        let Some(dir) = &current_dir else {
+            continue;
+        };
         if dir == "/var/crash" {
             continue;
         }
-        if let Some(c) = crate::cached_regex!(r"\s+(\d+)\s+\w+\s+\d+\s+[\d:]+\s+(vmcore)$")
-            .captures(line)
+        if let Some(c) =
+            crate::cached_regex!(r"\s+(\d+)\s+\w+\s+\d+\s+[\d:]+\s+(vmcore)$").captures(line)
         {
             let size_bytes = c[1].parse::<i64>().unwrap_or(0);
-            let crash_date = crate::cached_regex!(r"(\d{4}-\d{2}-\d{2}[:-]\d{2}[:-]\d{2}[:-]\d{2})")
-                .captures(dir)
-                .and_then(|m| m.get(1).map(|x| x.as_str().to_string()));
+            let crash_date =
+                crate::cached_regex!(r"(\d{4}-\d{2}-\d{2}[:-]\d{2}[:-]\d{2}[:-]\d{2})")
+                    .captures(dir)
+                    .and_then(|m| m.get(1).map(|x| x.as_str().to_string()));
             entries.push(CrashListingEntry {
                 directory: dir.clone(),
                 crash_date,
@@ -200,8 +198,8 @@ pub fn parse_kdump_conf(content: &str, source_path: &str) -> KdumpConf {
         if let Some(c) = crate::cached_regex!(r"^core_collector\s+(.+)$").captures(trimmed) {
             conf.core_collector = Some(c[1].trim().to_string());
         }
-        if let Some(c) = crate::cached_regex!(r"^(?:default|failure_action)\s+(.+)$")
-            .captures(trimmed)
+        if let Some(c) =
+            crate::cached_regex!(r"^(?:default|failure_action)\s+(.+)$").captures(trimmed)
         {
             conf.default_action = Some(c[1].trim().to_string());
         }
@@ -212,7 +210,8 @@ pub fn parse_kdump_conf(content: &str, source_path: &str) -> KdumpConf {
 pub fn parse_vmcore_summary(content: &str, source_path: &str) -> VmcoreSummary {
     VmcoreSummary {
         found: !content.trim().is_empty(),
-        crash: if content.contains("Kernel panic - not syncing") || content.contains("Call Trace:") {
+        crash: if content.contains("Kernel panic - not syncing") || content.contains("Call Trace:")
+        {
             Some(parse_vmcore_dmesg(content, source_path))
         } else {
             None
@@ -227,7 +226,10 @@ pub fn parse_vmcore_summary(content: &str, source_path: &str) -> VmcoreSummary {
         } else {
             None
         },
-        kdump_conf: if content.contains("core_collector") || content.contains("failure_action") || content.contains("path ") {
+        kdump_conf: if content.contains("core_collector")
+            || content.contains("failure_action")
+            || content.contains("path ")
+        {
             Some(parse_kdump_conf(content, source_path))
         } else {
             None
@@ -237,31 +239,36 @@ pub fn parse_vmcore_summary(content: &str, source_path: &str) -> VmcoreSummary {
 }
 
 pub fn parse_vmcore_dmesg_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_vmcore_dmesg(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_vmcore_dmesg(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_kdump_status_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_kdump_status(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_kdump_status(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_crash_listing_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_crash_listing(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_crash_listing(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_kdump_conf_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_kdump_conf(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_kdump_conf(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_vmcore_summary_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_vmcore_summary(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_vmcore_summary(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
@@ -294,7 +301,10 @@ mod tests {
         assert_eq!(parsed.source_path, "var/crash/listing.txt");
         assert_eq!(parsed.entries[0].source_line, Some(2));
 
-        let conf = parse_kdump_conf("path /var/crash\ncore_collector makedumpfile -c\nfailure_action reboot\n", "etc/kdump.conf");
+        let conf = parse_kdump_conf(
+            "path /var/crash\ncore_collector makedumpfile -c\nfailure_action reboot\n",
+            "etc/kdump.conf",
+        );
         assert_eq!(conf.path, "/var/crash");
         assert_eq!(conf.default_action.as_deref(), Some("reboot"));
         assert_eq!(conf.source_path, "etc/kdump.conf");

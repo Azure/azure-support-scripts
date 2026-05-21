@@ -3,12 +3,18 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 fn extract_timestamp(line: &str) -> Option<String> {
-    let iso_re = crate::cached_regex!(r"^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)");
+    let iso_re = crate::cached_regex!(
+        r"^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:\d{2})?)"
+    );
     let syslog_re = crate::cached_regex!(r"^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?)");
     iso_re
         .captures(line)
         .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
-        .or_else(|| syslog_re.captures(line).and_then(|c| c.get(1).map(|m| m.as_str().to_string())))
+        .or_else(|| {
+            syslog_re
+                .captures(line)
+                .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
+        })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -107,7 +113,11 @@ fn detect_systemd_service(
     documentation_url: Option<&str>,
     source_path: &str,
 ) -> ServiceDetectionResult {
-    let re = Regex::new(&format!(r"(?im)\b{}(?:\.service)?\b", regex::escape(service_name))).unwrap();
+    let re = Regex::new(&format!(
+        r"(?im)\b{}(?:\.service)?\b",
+        regex::escape(service_name)
+    ))
+    .unwrap();
     let mut source_line: Option<usize> = None;
     let mut found = false;
     for (i, line) in content.lines().enumerate() {
@@ -122,8 +132,16 @@ fn detect_systemd_service(
         found,
         service_name: service_name.to_string(),
         severity: severity.to_string(),
-        message: if found { message.to_string() } else { String::new() },
-        documentation_url: if found { documentation_url.map(|s| s.to_string()) } else { None },
+        message: if found {
+            message.to_string()
+        } else {
+            String::new()
+        },
+        documentation_url: if found {
+            documentation_url.map(|s| s.to_string())
+        } else {
+            None
+        },
         source_path: source_path.to_string(),
         source_line,
     }
@@ -151,28 +169,44 @@ fn detect_security_software(
     }
     if !found {
         // Fallback: detect across the full content even if line iter missed it.
-        found = markers.iter().any(|m| lowered.contains(&m.to_ascii_lowercase()));
+        found = markers
+            .iter()
+            .any(|m| lowered.contains(&m.to_ascii_lowercase()));
     }
     SecuritySoftwareResult {
         found,
         software_name: software_name.to_string(),
-        message: if found { message.to_string() } else { String::new() },
+        message: if found {
+            message.to_string()
+        } else {
+            String::new()
+        },
         source_path: source_path.to_string(),
         source_line,
     }
 }
 
-fn check_exclusions(content: &str, keywords: &[&str], software_name: &str, source_path: &str) -> ConfigCheckResult {
+fn check_exclusions(
+    content: &str,
+    keywords: &[&str],
+    software_name: &str,
+    source_path: &str,
+) -> ConfigCheckResult {
     let lowered = content.to_ascii_lowercase();
     let mut source_line: Option<usize> = None;
     for (i, line) in content.lines().enumerate() {
         let line_lower = line.to_ascii_lowercase();
-        if keywords.iter().any(|k| line_lower.contains(&k.to_ascii_lowercase())) {
+        if keywords
+            .iter()
+            .any(|k| line_lower.contains(&k.to_ascii_lowercase()))
+        {
             source_line = Some(i + 1);
             break;
         }
     }
-    let has_exclusions = keywords.iter().any(|k| lowered.contains(&k.to_ascii_lowercase()));
+    let has_exclusions = keywords
+        .iter()
+        .any(|k| lowered.contains(&k.to_ascii_lowercase()));
     ConfigCheckResult {
         found: has_exclusions,
         has_exclusions,
@@ -194,7 +228,8 @@ pub fn parse_ssh_service_issues(content: &str, source_path: &str) -> ServiceEven
         }
         if crate::cached_regex!(r"(?i)Failed to start OpenSSH server daemon").is_match(line) {
             events.push(ServiceEvent {
-                timestamp: extract_timestamp(line).unwrap_or_else(|| "Date not detected".to_string()),
+                timestamp: extract_timestamp(line)
+                    .unwrap_or_else(|| "Date not detected".to_string()),
                 line_number: i + 1,
                 issue_type: "ssh_start_failed".to_string(),
                 message: "Failed to start OpenSSH server daemon".to_string(),
@@ -202,12 +237,18 @@ pub fn parse_ssh_service_issues(content: &str, source_path: &str) -> ServiceEven
                 source_path: source_path.to_string(),
             });
         }
-        if crate::cached_regex!(r"(?i)/var/empty/sshd must be owned by root and not group or world-writable").is_match(line) {
+        if crate::cached_regex!(
+            r"(?i)/var/empty/sshd must be owned by root and not group or world-writable"
+        )
+        .is_match(line)
+        {
             events.push(ServiceEvent {
-                timestamp: extract_timestamp(line).unwrap_or_else(|| "Date not detected".to_string()),
+                timestamp: extract_timestamp(line)
+                    .unwrap_or_else(|| "Date not detected".to_string()),
                 line_number: i + 1,
                 issue_type: "ssh_permission_error".to_string(),
-                message: "/var/empty/sshd must be owned by root and not group or world-writable".to_string(),
+                message: "/var/empty/sshd must be owned by root and not group or world-writable"
+                    .to_string(),
                 raw_line: line.trim().to_string(),
                 source_path: source_path.to_string(),
             });
@@ -285,7 +326,12 @@ pub fn parse_falcon_sensor(content: &str, source_path: &str) -> SecuritySoftware
 }
 
 pub fn parse_falcon_sensor_config(content: &str, source_path: &str) -> ConfigCheckResult {
-    check_exclusions(content, &["exclude", "exception"], "Falcon Sensor", source_path)
+    check_exclusions(
+        content,
+        &["exclude", "exception"],
+        "Falcon Sensor",
+        source_path,
+    )
 }
 
 pub fn parse_ms_defender(content: &str, source_path: &str) -> SecuritySoftwareResult {
@@ -299,7 +345,12 @@ pub fn parse_ms_defender(content: &str, source_path: &str) -> SecuritySoftwareRe
 }
 
 pub fn parse_ms_defender_config(content: &str, source_path: &str) -> ConfigCheckResult {
-    check_exclusions(content, &["exclusion", "exclude"], "Microsoft Defender", source_path)
+    check_exclusions(
+        content,
+        &["exclusion", "exclude"],
+        "Microsoft Defender",
+        source_path,
+    )
 }
 
 pub fn parse_involflt_version(content: &str, source_path: &str) -> InvolfltVersionResult {
@@ -337,7 +388,10 @@ pub fn parse_involflt_version(content: &str, source_path: &str) -> InvolfltVersi
     result
 }
 
-pub fn parse_involflt_kernel_version(content: &str, source_path: &str) -> InvolfltKernelVersionResult {
+pub fn parse_involflt_kernel_version(
+    content: &str,
+    source_path: &str,
+) -> InvolfltKernelVersionResult {
     let re = crate::cached_regex!(r"(?i)involflt\[involflt_init[^\]]*\]:\s*Version\s*-\s*([\d.]+)");
     let mut version = None;
     let mut source_line = None;
@@ -368,7 +422,11 @@ pub fn parse_azure_extensions(content: &str, source_path: &str) -> AzureExtensio
         };
     };
 
-    let name = status.get("name").and_then(Value::as_str).unwrap_or_default().to_string();
+    let name = status
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
     if name.is_empty() {
         return AzureExtensionsResult {
             found: false,
@@ -381,7 +439,9 @@ pub fn parse_azure_extensions(content: &str, source_path: &str) -> AzureExtensio
     let label = match name.as_str() {
         "Microsoft.Azure.AzureDefenderForServers.MDE.Linux" => "Microsoft Defender for Endpoint",
         "Microsoft.Azure.RecoveryServices.VMSnapshotLinux" => "Azure Backup – VM Snapshot",
-        "Microsoft.Azure.RecoveryServices.WorkloadBackup.AzureBackupLinuxWorkload" => "Azure Backup – Workload",
+        "Microsoft.Azure.RecoveryServices.WorkloadBackup.AzureBackupLinuxWorkload" => {
+            "Azure Backup – Workload"
+        }
         "Microsoft.CPlat.Core.LinuxPatchExtension" => "Azure Update Manager",
         "Microsoft.CPlat.Core.RunCommandLinux" => "Run Command",
         "Microsoft.Azure.RecoveryServices.SiteRecovery.Linux" => "Azure Site Recovery",
@@ -393,10 +453,22 @@ pub fn parse_azure_extensions(content: &str, source_path: &str) -> AzureExtensio
     }
     .to_string();
 
-    let version = status.get("version").and_then(Value::as_str).unwrap_or("unknown").to_string();
-    let runtime_status = status.get("status").and_then(Value::as_str).unwrap_or("unknown").to_string();
-    let code = status.get("code") .and_then(Value::as_i64).unwrap_or(-1);
-    let message = status.get("message").and_then(Value::as_str).unwrap_or("").to_string();
+    let version = status
+        .get("version")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+        .to_string();
+    let runtime_status = status
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+        .to_string();
+    let code = status.get("code").and_then(Value::as_i64).unwrap_or(-1);
+    let message = status
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
     let healthy = runtime_status == "Ready" && code == 0;
 
     AzureExtensionsResult {
@@ -417,79 +489,92 @@ pub fn parse_azure_extensions(content: &str, source_path: &str) -> AzureExtensio
 }
 
 pub fn parse_ssh_service_issues_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_ssh_service_issues(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_ssh_service_issues(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_dlm_service_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_dlm_service(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_dlm_service(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_azure_site_recovery_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_azure_site_recovery(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_azure_site_recovery(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_guardicore_agent_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_guardicore_agent(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_guardicore_agent(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_illumio_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_illumio(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_illumio(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_trend_micro_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_trend_micro(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_trend_micro(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_falcon_sensor_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_falcon_sensor(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_falcon_sensor(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_falcon_sensor_config_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_falcon_sensor_config(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_falcon_sensor_config(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_ms_defender_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_ms_defender(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_ms_defender(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_ms_defender_config_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_ms_defender_config(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_ms_defender_config(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_involflt_version_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_involflt_version(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_involflt_version(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_involflt_kernel_version_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_involflt_kernel_version(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_involflt_kernel_version(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
 pub fn parse_azure_extensions_json(content: &str, source_path: &str) -> String {
-    let mut value = serde_json::to_value(parse_azure_extensions(content, source_path)).unwrap_or(serde_json::Value::Null);
+    let mut value = serde_json::to_value(parse_azure_extensions(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
     crate::parsers::fill_source_path(&mut value, source_path);
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
