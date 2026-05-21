@@ -25,12 +25,17 @@ cd "$CORE_LIB_DIR"
 # Ensure stale profdata/profraw files do not pollute the report.
 cargo llvm-cov clean --workspace
 
-# Focus on library + tests coverage and emit both HTML and LCOV.
+# Collect coverage once, then generate reports separately.
 cargo llvm-cov \
   --lib \
   --tests \
+  --no-report
+
+cargo llvm-cov report \
   --html \
-  --output-dir "$RUST_REPORT_DIR/html" \
+  --output-dir "$RUST_REPORT_DIR"
+
+cargo llvm-cov report \
   --lcov \
   --output-path "$RUST_REPORT_DIR/lcov.info"
 
