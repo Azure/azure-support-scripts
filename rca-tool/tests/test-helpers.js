@@ -112,6 +112,28 @@ export async function navigateToApp(page, testInfo) {
   const cacheBuster = isDeployed && process.env.CACHE_BUSTER
     ? `?cb=${encodeURIComponent(process.env.CACHE_BUSTER)}`
     : '';
-  const navPath = isDeployed ? `./${cacheBuster}` : '/web-leptos/dist/';
-  await page.goto(navPath);
+
+  if (isDeployed) {
+    await page.goto(`./${cacheBuster}`);
+    return;
+  }
+
+  // Local runs may serve the app at '/' (current) or '/web-leptos/dist/' (legacy).
+  // Try root first and fall back for compatibility.
+  const localCandidates = [
+    `/${cacheBuster}`,
+    `/web-leptos/dist/${cacheBuster}`
+  ];
+
+  let lastError;
+  for (const candidate of localCandidates) {
+    try {
+      await page.goto(candidate);
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
 }
