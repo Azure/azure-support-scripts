@@ -1,83 +1,39 @@
 #!/bin/bash
-# Instrument source files with Istanbul for coverage collection in Web Workers.
+# Generate Rust coverage for the supportfile_core library.
 #
-# This script instruments src/parsers/, src/utils.js, and src/worker.js
-# with Istanbul counters and copies the instrumented files into
-# web-leptos/dist/assets/ (overwriting the un-instrumented Leptos build output).
-#
-# Run AFTER `bash build.sh` and BEFORE `npx playwright test`.
-#
-# Istanbul writes per-file coverage counters to `self.__coverage__` in the
-# worker scope.  The coverage-fixture.js auto-fixture collects this data
-# after each test and feeds it to monocart-reporter.
+# This script intentionally does NOT instrument Node/JS worker files.
+# It produces Rust coverage artifacts under tests/coverage-report-rust/.
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR/.."
-DIST_DIR="$PROJECT_ROOT/web-leptos/dist/assets"
-TMPDIR=$(mktemp -d)
+CORE_LIB_DIR="$PROJECT_ROOT/lib/supportfile_core"
+RUST_REPORT_DIR="$SCRIPT_DIR/coverage-report-rust"
 
-trap 'rm -rf "$TMPDIR"' EXIT
+if ! command -v cargo-llvm-cov >/dev/null 2>&1; then
+  echo "cargo-llvm-cov is required but was not found in PATH."
+  echo "Install it with: cargo install cargo-llvm-cov"
+  exit 1
+fi
 
-echo "Instrumenting source files for coverage..."
+echo "Generating Rust coverage for supportfile_core..."
+mkdir -p "$RUST_REPORT_DIR"
 
-# nyc requires the files to be inside its project root, so run from rca-tool/
-cd "$PROJECT_ROOT"
+cd "$CORE_LIB_DIR"
 
-# Instrument parser files (paths in __coverage__ will reference src/parsers/)
-npx --prefix tests nyc instrument src/parsers "$TMPDIR/parsers" --compact false
-cp "$TMPDIR/parsers"/*.js "$DIST_DIR/parsers/"
-echo "  [OK] parsers/"
+# Ensure stale profdata/profraw files do not pollute the report.
+cargo llvm-cov clean --workspace
 
-# Instrument utils.js
-npx --prefix tests nyc instrument src/utils.js "$TMPDIR" --compact false
-cp "$TMPDIR/src/utils.js" "$DIST_DIR/utils.js"
-echo "  [OK] utils.js"
+# Focus on library + tests coverage and emit both HTML and LCOV.
+cargo llvm-cov \
+  --lib \
+  --tests \
+  --html \
+  --output-dir "$RUST_REPORT_DIR/html" \
+  --lcov \
+  --output-path "$RUST_REPORT_DIR/lcov.info"
 
-# Instrument the source worker directly.
-cp src/worker.js "$TMPDIR/liblzma-streaming-worker.js"
-npx --prefix tests nyc instrument "$TMPDIR/liblzma-streaming-worker.js" "$TMPDIR/instrumented" --compact false
-cp "$TMPDIR/instrumented/liblzma-streaming-worker.js" "$DIST_DIR/liblzma-streaming-worker.js"
-echo "  [OK] worker.js (instrumented) → liblzma-streaming-worker.js"
-
-# Inject a postMessage hook into the instrumented worker so that __coverage__
-# data piggybacks on every message sent back to the main thread.  This lets the
-# test fixture capture coverage even though the worker is terminated right after
-# sending results.
-#
-# Also define DEBUG_CONFIG so that parser debugLog() bodies are exercised,
-# covering the otherwise-untestable console.log branches.
-WORKER="$DIST_DIR/liblzma-streaming-worker.js"
-
-cat >> "$WORKER" << 'COVERAGE_HOOK'
-
-// --- Istanbul Coverage Hook (injected by instrument-coverage.sh) ---
-// Piggybacks __coverage__ data onto every postMessage from the worker so the
-// main-thread test fixture can capture it before the worker is terminated.
-(function() {
-  var _origPost = self.postMessage;
-  self.postMessage = function(data) {
-    if (typeof __coverage__ !== 'undefined' && data && typeof data === 'object') {
-      data.__istanbulCoverage = __coverage__;
-    }
-    return _origPost.apply(self, arguments);
-  };
-})();
-COVERAGE_HOOK
-echo "  [OK] coverage hook injected into worker"
-
-# Enable debug logging for all parsers so debugLog() console.log branches
-# are exercised during tests, covering those otherwise-untestable lines.
-# DEBUG_CONFIG is a const object in the worker — its properties are mutable.
-cat >> "$WORKER" << 'DEBUG_HOOK'
-
-// --- Debug Config Enablement (injected by instrument-coverage.sh) ---
-// Turns on debugLog() for every parser so coverage captures the console.log body.
-if (typeof DEBUG_CONFIG !== 'undefined') {
-  Object.keys(DEBUG_CONFIG).forEach(function(k) { DEBUG_CONFIG[k] = true; });
-}
-DEBUG_HOOK
-echo "  [OK] debug config enablement injected"
-
-echo "Instrumentation complete."
+echo "Rust coverage complete."
+echo "  HTML report: $RUST_REPORT_DIR/html/index.html"
+echo "  LCOV report: $RUST_REPORT_DIR/lcov.info"
