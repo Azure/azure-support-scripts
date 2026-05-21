@@ -8,6 +8,7 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,
+  timeout: 10_000,
   workers: process.env.CI ? 1 : 4,
   reporter: [
     ['html', { outputFolder: 'playwright-report-leptos', open: 'never' }],
