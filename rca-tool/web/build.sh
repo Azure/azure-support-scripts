@@ -4,6 +4,10 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+LZMA_STREAM_WASM_DIR="$SCRIPT_DIR/../lib/lzma_stream_wasm"
+LZMA_STREAM_WASM_PKG="$LZMA_STREAM_WASM_DIR/pkg"
+
 echo "Building RCA Tool Web Interface..."
 
 # Clean and prepare directories
@@ -23,9 +27,15 @@ echo "Copying parsers..."
 mkdir -p public/parsers
 cp -r ../src/parsers/*.js public/parsers/
 
-# Copy WASM files
-echo "Copying WASM modules..."
-cp -r liblzma-wasm public/
+# Build/copy Rust XZ streaming WASM files
+echo "Building Rust XZ streaming WASM..."
+(cd "$LZMA_STREAM_WASM_DIR" && wasm-pack build --target no-modules --release --out-dir pkg)
+if grep -q '^let wasm_bindgen =' "$LZMA_STREAM_WASM_PKG/lzma_stream_wasm.js"; then
+    sed -i 's/^let wasm_bindgen =/let lzma_bindgen =/' "$LZMA_STREAM_WASM_PKG/lzma_stream_wasm.js"
+fi
+mkdir -p public/lzma-stream-wasm
+cp "$LZMA_STREAM_WASM_PKG/lzma_stream_wasm.js" public/lzma-stream-wasm/
+cp "$LZMA_STREAM_WASM_PKG/lzma_stream_wasm_bg.wasm" public/lzma-stream-wasm/
 
 # Copy supportfile_core WASM package (produced by `wasm-pack build --target web`
 # in ../lib/supportfile_wasm).  Worker.js loads supportfile-wasm/supportfile_wasm.js
