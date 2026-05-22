@@ -4,25 +4,9 @@
  * reboots, OOM-killer, XFS errors).  All four are WASM-backed shims
  * delegating to `supportfile_core::parsers::events`.
  *
- * Field aliases applied after `WASM_BRIDGE.parseJson(...)` so the
- * Leptos UI components keep using their legacy schema:
- *   - Rust `event_type` → JS `type` (already snake→camelCase'd to
- *     `eventType`, then aliased)
- *   - Rust `total_vm`  → JS `totalVM` (uppercase `VM`)
- *   - Each event gets `sourceFile` mirrored from `sourcePath`
+ * Rust-native field names are now consumed directly by the Leptos UI
+ * helper fallbacks, so this shim only delegates to WASM.
  */
-
-function debugLog() {
-    if (typeof DEBUG_CONFIG !== 'undefined' && DEBUG_CONFIG.events) {
-        console.log.apply(console, ['[events.js]'].concat(Array.from(arguments)));
-    }
-}
-
-const EVENTS_ALIASES = {
-    eventType: 'type',
-    totalVm: 'totalVM',
-    sourcePath: 'sourceFile',
-};
 
 function emptyEventsResult() {
     return { found: false, count: 0, events: [] };
@@ -30,7 +14,6 @@ function emptyEventsResult() {
 
 function callWasmEvents(fnName, content, filename) {
     if (typeof WASM_BRIDGE === 'undefined' || !WASM_BRIDGE.isReady()) {
-        debugLog('WASM not ready --', fnName, 'returning empty for', filename);
         return emptyEventsResult();
     }
     let result;
@@ -41,7 +24,6 @@ function callWasmEvents(fnName, content, filename) {
         return emptyEventsResult();
     }
     if (result == null) return emptyEventsResult();
-    WASM_BRIDGE.aliasKeys(result, EVENTS_ALIASES);
     if (typeof result.found === 'undefined') {
         result.found = (result.count || (result.events && result.events.length) || 0) > 0;
     }

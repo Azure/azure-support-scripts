@@ -14,12 +14,6 @@
  * an end-of-batch hook.
  */
 
-function debugLog() {
-    if (typeof DEBUG_CONFIG !== 'undefined' && DEBUG_CONFIG.debugfs) {
-        console.log.apply(console, ['[debugfs.js]'].concat(Array.from(arguments)));
-    }
-}
-
 function emptyHvBalloon() {
     return {
         found: false, warnings: [], rawContent: '',

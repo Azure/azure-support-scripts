@@ -20,25 +20,16 @@
  *     reason; this shim rebuilds the legacy `{ "node1": "10.0.0.1", ... }`
  *     hostname → IP object.
  *
- * The factory `createClusterParsers(SCC_RULES, debugLog, parseXMLSimple,
- * querySelectorAll)` is preserved for binary compatibility with worker.js
- * (line 902). The legacy `parseXMLSimple` / `querySelectorAll` arguments are
- * accepted but unused — Rust handles XML extraction internally.
+ * The factory `createClusterParsers()` is preserved for worker.js wiring.
+ * XML extraction is handled in Rust.
  *
  * Fallback: if WASM is not loaded, every parser returns `{ found: false }`.
  *
  * @see {@link module:worker} for registration in SCC_RULES.
  */
 
-function debugLog(...args) {
-    if (typeof DEBUG_CONFIG !== 'undefined' && DEBUG_CONFIG.cluster) {
-        console.log('[cluster.js]', ...args);
-    }
-}
-
 function _wasmCall(fnName, content, filename, fallback) {
     if (typeof WASM_BRIDGE === 'undefined' || !WASM_BRIDGE.isReady()) {
-        debugLog('WASM not ready -- returning empty result for', fnName, filename);
         return fallback;
     }
     try {
@@ -165,11 +156,7 @@ const clusterEventsParser = {
     processAllRotations: true,
     filePattern: /\/(pacemaker\.log|corosync\.log|cluster\.log|ha-log|messages|journalctl[^\/]*)(?:[.-]\d+)?(?:\.txt)?(?:\.gz)?$|\/ha\.txt$/,
     parse: function(content, filename, _lines) {
-        const result = _wasmCall('parseClusterEvents', content, filename, { found: false });
-        if (result && typeof WASM_BRIDGE !== 'undefined' && WASM_BRIDGE.aliasKeys) {
-            WASM_BRIDGE.aliasKeys(result, { sourcePath: 'sourceFile' });
-        }
-        return result;
+        return _wasmCall('parseClusterEvents', content, filename, { found: false });
     }
 };
 
@@ -221,13 +208,10 @@ const iscsiConfigParser = {
 };
 
 // ---------------------------------------------------------------------------
-// Factory: preserved signature for worker.js binary compatibility.
-// The legacy parseXMLSimple / querySelectorAll args are accepted but unused;
-// Rust handles XML attribute extraction inline.
+// Factory used by worker.js to register cluster parser shims.
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line no-unused-vars
-const createClusterParsers = function(SCC_RULES, debugLog, parseXMLSimple, querySelectorAll) {
+const createClusterParsers = function() {
     return {
         corosyncConfig: corosyncConfigParser,
         clusterNodes: clusterNodesParser,

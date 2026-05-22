@@ -8,28 +8,16 @@
  * into the final consolidated view (same shape as the legacy parser).
  */
 
-function debugLog() {
-    if (typeof DEBUG_CONFIG !== 'undefined' && DEBUG_CONFIG.vmcore) {
-        console.log.apply(console, ['[vmcore.js]'].concat(Array.from(arguments)));
-    }
-}
-
 function emptyResult() {
     return { found: false, type: null, crash: null, kdumpStatus: null, crashListing: null, kdumpConf: null };
 }
-
-const VMCORE_ALIASES = {
-    sourcePath: 'sourceFile',
-};
 
 function callWasm(fnName, content, filename) {
     if (typeof WASM_BRIDGE === 'undefined' || !WASM_BRIDGE.isReady()) {
         return null;
     }
     try {
-        const r = WASM_BRIDGE.parseJson(fnName, content, filename || '');
-        if (r != null) WASM_BRIDGE.aliasKeys(r, VMCORE_ALIASES);
-        return r;
+        return WASM_BRIDGE.parseJson(fnName, content, filename || '');
     } catch (err) {
         console.error('[vmcore.js]', fnName, 'WASM call failed:', err);
         return null;
@@ -40,7 +28,6 @@ var vmcoreParser = {
     filePattern: /(?:var\/crash\/[^/]+\/vmcore-dmesg\.txt|sos_commands\/kdump\/kdumpctl_status|sos_commands\/kdump\/ls_-alZR_\.var\.crash|etc\/kdump\.conf)$/,
 
     parse: function(content, filename, _lines) {
-        debugLog('Parsing:', filename, '(' + content.length + ' bytes)');
         const result = emptyResult();
 
         if (filename.indexOf('vmcore-dmesg.txt') !== -1) {

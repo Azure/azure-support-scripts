@@ -50,8 +50,8 @@ self.onerror = function(message, source, lineno, colno, error) {
     }
     // Try to send error message to main thread
     try {
-        self.postMessage({ 
-            error: 'Worker uncaught error: ' + message + ' at ' + source + ':' + lineno 
+        self.postMessage({
+            error: 'Worker uncaught error: ' + message + ' at ' + source + ':' + lineno
         });
     } catch (e) {
         console.error('[Worker] Failed to send error message:', e);
@@ -95,7 +95,190 @@ function debugLog(...args) {
     }
 }
 
-// Import utility functions (only in Web Worker context)
+// ---------------------------------------------------------------------------
+// Performance tracking/reporting runtime (inlined from performance.js)
+// ---------------------------------------------------------------------------
+
+class PerformanceTracker {
+    constructor() {
+        this.fileEntries = [];
+        this.parserEntries = [];
+        this.startTime = performance.now();
+        this.totalBytes = 0;
+        this.totalFiles = 0;
+        this._fileStart = 0;
+        this._decodeMs = 0;
+    }
+
+    startFile() {
+        this._fileStart = performance.now();
+        this._decodeMs = 0;
+    }
+
+    recordDecode(ms) {
+        this._decodeMs = ms;
+    }
+
+    recordParser(file, parser, parseMs, result, accumulatedResult) {
+        this.parserEntries.push({
+            file,
+            parser,
+            parseMs,
+            events: countEvents(result),
+            accumulated: accumulatedResult ? countEvents(accumulatedResult) : 0
+        });
+    }
+
+    endFile(file, contentLen, parserCount) {
+        this.totalBytes += contentLen;
+        this.totalFiles++;
+        this.fileEntries.push({
+            file,
+            size: contentLen,
+            parsers: parserCount,
+            totalMs: performance.now() - this._fileStart,
+            decodeMs: this._decodeMs
+        });
+    }
+
+    getReport() {
+        return {
+            fileEntries: this.fileEntries,
+            parserEntries: this.parserEntries,
+            totalTimeMs: performance.now() - this.startTime,
+            totalFiles: this.totalFiles,
+            totalBytes: this.totalBytes
+        };
+    }
+}
+
+function countEvents(result) {
+    if (!result) return 0;
+    if (typeof result.count === 'number') return result.count;
+    if (Array.isArray(result.events)) return result.events.length;
+    const migrations = result.resourceMigrations?.length || 0;
+    const fencing = result.fencingEvents?.length || 0;
+    if (migrations || fencing) return migrations + fencing;
+    if (Array.isArray(result.errors)) return result.errors.length;
+    return 0;
+}
+
+function formatPerformanceReport(perfData, memoryMB) {
+    const { fileEntries, parserEntries, totalTimeMs, totalFiles, totalBytes } = perfData;
+    const lines = [];
+    const push = (s) => lines.push(s);
+
+    push('');
+    push('='.repeat(70));
+    push('  PERFORMANCE REPORT');
+    push('='.repeat(70));
+    push(`  Total time: ${(totalTimeMs / 1000).toFixed(2)}s`);
+    push(`  Files processed: ${totalFiles}`);
+    push(`  Files parsed: ${fileEntries.length}`);
+    push(`  Total content size: ${(totalBytes / (1024 * 1024)).toFixed(1)} MB`);
+    if (memoryMB != null) {
+        push(`  Memory peak: ${memoryMB.toFixed(1)} MB`);
+    }
+    push('');
+
+    const sortedFiles = [...fileEntries].sort((a, b) => b.totalMs - a.totalMs);
+    push('  Top 20 slowest files:');
+    push(`  ${'File'.padEnd(60)} ${'Size'.padStart(10)} ${'Parsers'.padStart(8)} ${'Time(ms)'.padStart(10)} ${'Decode(ms)'.padStart(11)}`);
+    push(`  ${'-'.repeat(60)} ${'-'.repeat(10)} ${'-'.repeat(8)} ${'-'.repeat(10)} ${'-'.repeat(11)}`);
+    for (const f of sortedFiles.slice(0, 20)) {
+        const shortName = f.file.length > 58 ? '...' + f.file.slice(-55) : f.file;
+        const sizeStr = f.size >= 1024 * 1024
+            ? `${(f.size / (1024 * 1024)).toFixed(1)}MB`
+            : `${(f.size / 1024).toFixed(1)}KB`;
+        push(`  ${shortName.padEnd(60)} ${sizeStr.padStart(10)} ${String(f.parsers).padStart(8)} ${f.totalMs.toFixed(1).padStart(10)} ${f.decodeMs.toFixed(1).padStart(11)}`);
+    }
+
+    const sortedParsers = [...parserEntries].sort((a, b) => b.parseMs - a.parseMs);
+    push('');
+    push('  Top 20 slowest parser calls:');
+    push(`  ${'Parser'.padEnd(25)} ${'File'.padEnd(40)} ${'Time(ms)'.padStart(10)} ${'Events'.padStart(8)} ${'Accum'.padStart(8)}`);
+    push(`  ${'-'.repeat(25)} ${'-'.repeat(40)} ${'-'.repeat(10)} ${'-'.repeat(8)} ${'-'.repeat(8)}`);
+    for (const p of sortedParsers.slice(0, 20)) {
+        const shortFile = p.file.length > 38 ? '...' + p.file.slice(-35) : p.file;
+        push(`  ${p.parser.padEnd(25)} ${shortFile.padEnd(40)} ${p.parseMs.toFixed(1).padStart(10)} ${String(p.events).padStart(8)} ${String(p.accumulated).padStart(8)}`);
+    }
+
+    const parserAgg = {};
+    for (const p of parserEntries) {
+        if (!parserAgg[p.parser]) parserAgg[p.parser] = { calls: 0, totalMs: 0, totalEvents: 0 };
+        parserAgg[p.parser].calls++;
+        parserAgg[p.parser].totalMs += p.parseMs;
+        parserAgg[p.parser].totalEvents += p.events;
+    }
+    const sortedAgg = Object.entries(parserAgg).sort((a, b) => b[1].totalMs - a[1].totalMs);
+    push('');
+    push('  Parser aggregate (all files):');
+    push(`  ${'Parser'.padEnd(30)} ${'Calls'.padStart(6)} ${'Total(ms)'.padStart(10)} ${'Avg(ms)'.padStart(10)} ${'Events'.padStart(8)}`);
+    push(`  ${'-'.repeat(30)} ${'-'.repeat(6)} ${'-'.repeat(10)} ${'-'.repeat(10)} ${'-'.repeat(8)}`);
+    for (const [name, agg] of sortedAgg) {
+        push(`  ${name.padEnd(30)} ${String(agg.calls).padStart(6)} ${agg.totalMs.toFixed(1).padStart(10)} ${(agg.totalMs / agg.calls).toFixed(1).padStart(10)} ${String(agg.totalEvents).padStart(8)}`);
+    }
+
+    push('');
+    push('  --- TSV DATA (pipe stderr to file for processing) ---');
+    push('FILE\tsize\tparsers\ttotal_ms\tdecode_ms');
+    for (const f of sortedFiles) {
+        push(`FILE\t${f.file}\t${f.size}\t${f.parsers}\t${f.totalMs.toFixed(1)}\t${f.decodeMs.toFixed(1)}`);
+    }
+    push('PARSER\tfile\tparser\tparse_ms\tevents\taccumulated');
+    for (const p of parserEntries) {
+        push(`PARSER\t${p.file}\t${p.parser}\t${p.parseMs.toFixed(1)}\t${p.events}\t${p.accumulated}`);
+    }
+    push('');
+
+    return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Utility runtime
+// ---------------------------------------------------------------------------
+
+function deduplicateEvents(existingEvents, newEvents, comparisonFields, logFn) {
+    const keySet = new Set();
+    for (let i = 0; i < existingEvents.length; i++) {
+        const evt = existingEvents[i];
+        let key = '';
+        for (let f = 0; f < comparisonFields.length; f++) {
+            if (f > 0) key += '\0';
+            key += evt[comparisonFields[f]];
+        }
+        keySet.add(key);
+    }
+
+    const addedEvents = [];
+    let duplicateCount = 0;
+
+    for (let i = 0; i < newEvents.length; i++) {
+        const newEvent = newEvents[i];
+        let key = '';
+        for (let f = 0; f < comparisonFields.length; f++) {
+            if (f > 0) key += '\0';
+            key += newEvent[comparisonFields[f]];
+        }
+        if (keySet.has(key)) {
+            duplicateCount++;
+        } else {
+            keySet.add(key);
+            addedEvents.push(newEvent);
+        }
+    }
+
+    if (logFn) {
+        logFn(`[deduplicateEvents] Added ${addedEvents.length} new events, skipped ${duplicateCount} duplicates`);
+    }
+
+    return {
+        addedEvents,
+        duplicateCount
+    };
+}
+
+// Runtime imports
 if (typeof importScripts === 'function') {
     // Import pako for gzip decompression of nested .gz files
     try {
@@ -116,8 +299,6 @@ if (typeof importScripts === 'function') {
         debugLog('[Worker] Failed to load fflate library:', e);
     }
     
-    importScripts(versionedAsset('utils.js'));
-    importScripts(versionedAsset('performance.js'));
     // Import the supportfile WASM module (compiled from supportfile_core via
     // wasm-pack, target=no-modules).  After importScripts, `wasm_bindgen` is
     // a global initializer; we await it inside the Module init promise below
@@ -125,26 +306,72 @@ if (typeof importScripts === 'function') {
     // call into `wasm_bindgen.parse*` functions once initialization completes.
     try {
         importScripts(versionedAsset('supportfile-wasm/supportfile_wasm.js'));
-        importScripts(versionedAsset('wasm-bridge.js'));
+        if (typeof WASM_BRIDGE === 'undefined') {
+            importScripts(versionedAsset('wasm-bridge.js'));
+        }
         debugLog('[Worker] supportfile WASM glue + bridge loaded');
     } catch (e) {
         console.error('[Worker] Failed to load supportfile WASM glue:', e);
     }
-    // Import external parser modules
-    importScripts(versionedAsset('parsers/packages.js'));
-    importScripts(versionedAsset('parsers/unix.js'));
-    importScripts(versionedAsset('parsers/services.js'));
-    importScripts(versionedAsset('parsers/events.js'));
-    importScripts(versionedAsset('parsers/azure.js'));
-    importScripts(versionedAsset('parsers/cluster.js'));
-    importScripts(versionedAsset('parsers/storage.js'));
-    importScripts(versionedAsset('parsers/networking.js'));
-    importScripts(versionedAsset('parsers/network-interfaces.js'));
-    importScripts(versionedAsset('parsers/vmcore.js'));
-    importScripts(versionedAsset('parsers/debugfs.js'));
+
+    // Fallback path for standalone worker.js execution (without the build-time
+    // bundled asset that inlines parsers).
+    if (typeof basicEnvironmentParser === 'undefined') {
+        importScripts(versionedAsset('parsers/unix.js'));
+        importScripts(versionedAsset('parsers/services.js'));
+        importScripts(versionedAsset('parsers/events.js'));
+        importScripts(versionedAsset('parsers/azure.js'));
+        importScripts(versionedAsset('parsers/cluster.js'));
+        importScripts(versionedAsset('parsers/storage.js'));
+        importScripts(versionedAsset('parsers/networking.js'));
+        importScripts(versionedAsset('parsers/network-interfaces.js'));
+        importScripts(versionedAsset('parsers/vmcore.js'));
+        importScripts(versionedAsset('parsers/debugfs.js'));
+    }
     debugLog('[Worker] Running in Web Worker context');
     debugLog('[Worker] Browser:', typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown');
 }
+
+function emptyPackagesResult() {
+    return {
+        found: false,
+        packages: {},
+        warnings: [],
+        fipsPackages: [],
+        hasDracutFips: false,
+    };
+}
+
+function emptyAutomationResult() {
+    return {
+        found: false,
+        count: 0,
+        events: []
+    };
+}
+
+// Inlined distro packages parser.
+const distroPackagesParser = {
+    filePattern: /\/(rpm\.txt|installed-rpms|package-data|dpkg_-l|dnf[_-]list[_-]installed|yum[_-]list[_-]installed|var\/log\/zypp\/history|var\/log\/(?:dnf|yum)\.log)$/,
+
+    parse: function(content, filename, _lines) {
+        if (typeof WASM_BRIDGE === 'undefined' || !WASM_BRIDGE.isReady()) {
+            return emptyPackagesResult();
+        }
+        let result;
+        try {
+            result = WASM_BRIDGE.parseJson('parseDistroPackages', content, filename || '');
+        } catch (err) {
+            console.error('[worker.js] parseDistroPackages WASM call failed:', err);
+            return emptyPackagesResult();
+        }
+        if (result == null) return emptyPackagesResult();
+        if (result.isDpkg || result.isRpmRaw || result.isZypperHistory || result.isDnfYumLog) {
+            result.filename = filename;
+        }
+        return result;
+    }
+};
 
 // ============================================================================
 // SCC REPORT ANALYSIS RULES
@@ -153,98 +380,9 @@ if (typeof importScripts === 'function') {
 // Each rule defines which file to extract and how to parse it
 
 const SCC_RULES = {
-    // ========================================================================
-    // UTILITY FUNCTIONS - Wrappers that call imported utilities with debugLog
-    // ========================================================================
-    
-    grepLines: function(content, patterns, options = {}) {
-        return RCA_UTILITIES.grepLines(content, patterns, options);
-    },
-    
-    detectSystemdService: function(content, filename, serviceName, severity, message) {
-        return RCA_UTILITIES.detectSystemdService(content, filename, serviceName, severity, message, debugLog);
-    },
-    
-    checkSAPExclusions: function(content, parserName, exclusionKeywords = ['exclude', 'exclusion']) {
-        return RCA_UTILITIES.checkSAPExclusions(content, parserName, exclusionKeywords, debugLog);
-    },
-    
-    detectRPMPackage: function(content, packagePrefix, parserName = '') {
-        return RCA_UTILITIES.detectRPMPackage(content, packagePrefix, parserName, debugLog);
-    },
-    
-    detectProcess: function(content, processIndicators, parserName = '') {
-        return RCA_UTILITIES.detectProcess(content, processIndicators, parserName, debugLog);
-    },
-    
-    detectSecuritySoftware: function(content, parserName, packagePrefix, processIndicators, displayName, message) {
-        return RCA_UTILITIES.detectSecuritySoftware(content, parserName, packagePrefix, processIndicators, displayName, message, debugLog);
-    },
-    
-    extractSection: function(content, filename, sectionMarker, directFilePattern) {
-        return RCA_UTILITIES.extractSection(content, filename, sectionMarker, directFilePattern, debugLog);
-    },
-    
-    parseKeyValueFile: function(content, options = {}) {
-        return RCA_UTILITIES.parseKeyValueFile(content, options, debugLog);
-    },
-    
-    extractRawFile: function(content, filename) {
-        return RCA_UTILITIES.extractRawFile(content, filename, debugLog);
-    },
-    
-    extractTimestamp: function(line) {
-        return RCA_UTILITIES.extractTimestamp(line);
-    },
-    
-    stripAnsiCodes: function(text) {
-        return RCA_UTILITIES.stripAnsiCodes(text);
-    },
-    
-    deduplicateEvents: function(existingEvents, newEvents, comparisonFields, debugLog) {
-        if (typeof RCA_UTILITIES !== 'undefined') {
-            return RCA_UTILITIES.deduplicateEvents(existingEvents, newEvents, comparisonFields, debugLog);
-        }
-        
-        // Inline fallback — Set-based O(N+M) dedup
-        const keySet = new Set();
-        for (let i = 0; i < existingEvents.length; i++) {
-            const evt = existingEvents[i];
-            let key = '';
-            for (let f = 0; f < comparisonFields.length; f++) {
-                if (f > 0) key += '\0';
-                key += evt[comparisonFields[f]];
-            }
-            keySet.add(key);
-        }
-        
-        const addedEvents = [];
-        let duplicateCount = 0;
-        
-        for (let i = 0; i < newEvents.length; i++) {
-            const newEvent = newEvents[i];
-            let key = '';
-            for (let f = 0; f < comparisonFields.length; f++) {
-                if (f > 0) key += '\0';
-                key += newEvent[comparisonFields[f]];
-            }
-            if (keySet.has(key)) {
-                duplicateCount++;
-            } else {
-                keySet.add(key);
-                addedEvents.push(newEvent);
-            }
-        }
-        
-        return { addedEvents, duplicateCount };
-    },
-    
-    compareVersion: function(actual, expected, operator) {
-        return RCA_UTILITIES.compareVersion(actual, expected, operator);
-    },
-    
+    // Utility function for merging multi-file event streams.
     deduplicateEvents: function(existingEvents, newEvents, comparisonFields) {
-        return RCA_UTILITIES.deduplicateEvents(existingEvents, newEvents, comparisonFields, debugLog);
+        return deduplicateEvents(existingEvents, newEvents, comparisonFields, debugLog);
     },
     
     // ========================================================================
@@ -275,493 +413,33 @@ const SCC_RULES = {
     automation: {
         // Target file path patterns - messages, syslog, journalctl
         filePattern: /\/(messages|localmessages|syslog|journalctl[^\/]*)(?:[.-]\d+)?(?:\.txt)?$/,
-        
-        // Parse function receives file content as string
-        // Detects automation tool usage:
-        // - "ansible-command: " (Ansible command executions)
-        // - "ansible-setup: " (Ansible setup/facts gathering)
-        // - "puppet-agent: " (Puppet agent executions)
-        // - "puppet apply" (Puppet apply commands)
-        // - "puppet-run: " (Puppet run executions)
-        // - "chef-client: " (Chef client executions)
-        // - "chef-solo: " (Chef solo executions)
-        // - "chef-apply: " (Chef apply executions)
-        // Future: SaltStack, etc.
-        // Returns array of detected automation events with timestamps and full command lines
+
+        // Rust-native parser bridge.
         parse: function(content, filename, _lines) {
-            const lines = _lines || content.split('\n');
-            const automationEvents = [];
-            
-            debugLog('[automation parser] Analyzing', lines.length, 'lines for automation tool usage');
-            
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                
-                let toolType = null;
-                let patternType = null;
-                let command = null;
-                
-                // Pattern 1: Ansible command execution
-                if (line.includes('ansible-command:')) {
-                    toolType = 'ansible';
-                    patternType = 'command';
-                    // Extract everything after "ansible-command: "
-                    const ansibleMatch = line.match(/ansible-command:\s*(.+)/);
-                    if (ansibleMatch) {
-                        command = ansibleMatch[1].trim();
-                    }
-                }
-                
-                // Pattern 2: Ansible setup/facts gathering
-                if (line.includes('ansible-setup:')) {
-                    toolType = 'ansible';
-                    patternType = 'setup';
-                    // Extract everything after "ansible-setup: "
-                    const ansibleMatch = line.match(/ansible-setup:\s*(.+)/);
-                    if (ansibleMatch) {
-                        command = ansibleMatch[1].trim();
-                    }
-                }
-                
-                // Pattern 3: Puppet agent execution
-                if (line.includes('puppet-agent:')) {
-                    toolType = 'puppet';
-                    patternType = 'agent';
-                    // Extract everything after "puppet-agent: "
-                    const puppetMatch = line.match(/puppet-agent:\s*(.+)/);
-                    if (puppetMatch) {
-                        command = puppetMatch[1].trim();
-                    }
-                }
-                
-                // Pattern 4: Puppet apply
-                if (line.includes('puppet apply')) {
-                    toolType = 'puppet';
-                    patternType = 'apply';
-                    // Extract the puppet apply command
-                    const puppetMatch = line.match(/(puppet apply.+)/);
-                    if (puppetMatch) {
-                        command = puppetMatch[1].trim();
-                    }
-                }
-                
-                // Pattern 5: Puppet run
-                if (line.includes('puppet-run:')) {
-                    toolType = 'puppet';
-                    patternType = 'run';
-                    // Extract everything after "puppet-run: "
-                    const puppetMatch = line.match(/puppet-run:\s*(.+)/);
-                    if (puppetMatch) {
-                        command = puppetMatch[1].trim();
-                    }
-                }
-                
-                // Pattern 6: Chef client execution (format: chef-client[PID]: message)
-                // Capture important events and include next 5 lines for context
-                if (line.includes('chef-client[')) {
-                    const chefMatch = line.match(/chef-client\[\d+\]:\s*(.+)/);
-                    if (chefMatch) {
-                        const message = SCC_RULES.stripAnsiCodes(chefMatch[1].trim());
-                        // Capture important events with context
-                        if (message.includes('Starting Chef') || 
-                            message.includes('Chef Infra Client finished') ||
-                            message.includes('Chef Run complete') ||
-                            message.includes('Chef Client finished') ||
-                            message.includes('Synchronizing Cookbooks') ||
-                            message.includes('Installing Cookbook Gems') ||
-                            message.includes('Compiling Cookbooks') ||
-                            message.includes('Converging') ||
-                            message.includes('FATAL:') ||
-                            message.includes('ERROR:')) {
-                            toolType = 'chef';
-                            patternType = 'client';
-                            
-                            // Capture the current line plus next 5 lines for context
-                            const contextLines = [message];
-                            for (let j = 1; j <= 5 && (i + j) < lines.length; j++) {
-                                const nextLine = lines[i + j];
-                                const nextMatch = nextLine.match(/chef-client\[\d+\]:\s*(.+)/);
-                                if (nextMatch) {
-                                    contextLines.push(SCC_RULES.stripAnsiCodes(nextMatch[1].trim()));
-                                } else {
-                                    break; // Stop if next line is not chef-client
-                                }
-                            }
-                            command = contextLines.join(' | ');
-                        }
-                    }
-                }
-                
-                // Pattern 7: Chef solo (format: chef-solo[PID]: message)
-                if (line.includes('chef-solo[')) {
-                    const chefMatch = line.match(/chef-solo\[\d+\]:\s*(.+)/);
-                    if (chefMatch) {
-                        const message = SCC_RULES.stripAnsiCodes(chefMatch[1].trim());
-                        // Capture important events with context
-                        if (message.includes('Starting Chef') || 
-                            message.includes('Chef Solo finished') ||
-                            message.includes('Chef Run complete') ||
-                            message.includes('Synchronizing Cookbooks') ||
-                            message.includes('Compiling Cookbooks') ||
-                            message.includes('Converging') ||
-                            message.includes('FATAL:') ||
-                            message.includes('ERROR:')) {
-                            toolType = 'chef';
-                            patternType = 'solo';
-                            
-                            // Capture the current line plus next 5 lines for context
-                            const contextLines = [message];
-                            for (let j = 1; j <= 5 && (i + j) < lines.length; j++) {
-                                const nextLine = lines[i + j];
-                                const nextMatch = nextLine.match(/chef-solo\[\d+\]:\s*(.+)/);
-                                if (nextMatch) {
-                                    contextLines.push(SCC_RULES.stripAnsiCodes(nextMatch[1].trim()));
-                                } else {
-                                    break;
-                                }
-                            }
-                            command = contextLines.join(' | ');
-                        }
-                    }
-                }
-                
-                // Pattern 8: Chef apply (format: chef-apply[PID]: message)
-                if (line.includes('chef-apply[')) {
-                    const chefMatch = line.match(/chef-apply\[\d+\]:\s*(.+)/);
-                    if (chefMatch) {
-                        const message = SCC_RULES.stripAnsiCodes(chefMatch[1].trim());
-                        // Capture important events with context
-                        if (message.includes('Starting Chef') || 
-                            message.includes('Chef Apply finished') ||
-                            message.includes('Chef Run complete') ||
-                            message.includes('Compiling Cookbooks') ||
-                            message.includes('Converging') ||
-                            message.includes('FATAL:') ||
-                            message.includes('ERROR:')) {
-                            toolType = 'chef';
-                            patternType = 'apply';
-                            
-                            // Capture the current line plus next 5 lines for context
-                            const contextLines = [message];
-                            for (let j = 1; j <= 5 && (i + j) < lines.length; j++) {
-                                const nextLine = lines[i + j];
-                                const nextMatch = nextLine.match(/chef-apply\[\d+\]:\s*(.+)/);
-                                if (nextMatch) {
-                                    contextLines.push(SCC_RULES.stripAnsiCodes(nextMatch[1].trim()));
-                                } else {
-                                    break;
-                                }
-                            }
-                            command = contextLines.join(' | ');
-                        }
-                    }
-                }
-                
-                // Future patterns can be added here:
-                // - SaltStack: "salt-minion"
-                
-                if (toolType) {
-                    const timestamp = SCC_RULES.extractTimestamp(line);
-                    
-                    automationEvents.push({
-                        timestamp: timestamp || 'Date not detected',
-                        lineNumber: i + 1,
-                        toolType: toolType,
-                        patternType: patternType,
-                        command: command,
-                        rawLine: line.trim(),
-                        sourceFile: filename
-                    });
-                    
-                    debugLog('[automation parser] [OK] Detected', toolType, 'at line', i + 1, ':', timestamp);
-                }
+            if (typeof WASM_BRIDGE === 'undefined' || !WASM_BRIDGE.isReady()) {
+                return emptyAutomationResult();
             }
-            
-            debugLog('[automation parser] Found', automationEvents.length, 'automation events');
-            
-            return {
-                found: automationEvents.length > 0,
-                count: automationEvents.length,
-                events: automationEvents
-            };
+
+            try {
+                const result = WASM_BRIDGE.parseJson('parseAutomationEvents', content, filename || '');
+                if (result == null) return emptyAutomationResult();
+                if (typeof result.found === 'undefined') {
+                    result.found = (result.count || (result.events && result.events.length) || 0) > 0;
+                }
+                return result;
+            } catch (err) {
+                console.error('[worker.js] parseAutomationEvents WASM call failed:', err);
+                return emptyAutomationResult();
+            }
         }
     },
     
-    // Rule: Validate distribution packages (RPM and DEB)
-    distroPackages: {
-        // Target file patterns
-        // supportconfig: */rpm.txt
-        // sosreport (RHEL/SLES): */installed-rpms or */sos_commands/rpm/package-data or */sos_commands/dnf/dnf_list_installed or */sos_commands/yum/yum_list_installed
-        // sosreport (Debian/Ubuntu): */sos_commands/dpkg/dpkg_-l (installed-debs is a symlink)
-        // InspectIaaSDisk (SUSE): device_0/var/log/zypp/history
-        // InspectIaaSDisk (RHEL): device_0/var/log/dnf.log, device_0/var/log/yum.log
-        filePattern: /\/(rpm\.txt|installed-rpms|package-data|dpkg_-l|dnf[_-]list[_-]installed|yum[_-]list[_-]installed|var\/log\/zypp\/history|var\/log\/(?:dnf|yum)\.log)$/,
-        
-        // Parse function receives package list content
-        // Validates Azure-required packages with specific version requirements
-        parse: function(content, filename, _lines) {
-            const lines = _lines || content.split('\n');
-            
-            debugLog('[distroPackages parser] Analyzing', lines.length, 'lines from', filename);
-            
-            // If this is a dpkg file, return raw content for display
-            if (filename && filename.includes('dpkg')) {
-                debugLog('[distroPackages parser] Detected dpkg format, returning raw content');
-                return {
-                    found: true,
-                    isDpkg: true,
-                    rawContent: content,
-                    filename: filename,
-                    packageCount: lines.filter(l => l.trim() && !l.startsWith('Desired') && !l.startsWith('|') && !l.startsWith('+++')).length
-                };
-            }
-            
-            // If this is a dnf/yum list file, return raw content for display
-            if (filename && (filename.includes('dnf_list_installed') || filename.includes('dnf-list-installed') || filename.includes('dnf_list-installed') || filename.includes('yum_list_installed') || filename.includes('yum-list-installed') || filename.includes('yum_list-installed'))) {
-                // Filter out yum/dnf header lines before displaying
-                const filteredLines = lines.filter(l => {
-                    const trimmed = l.trim();
-                    if (!trimmed) return true; // Keep empty lines for formatting
-                    // Skip header lines
-                    if (l.startsWith('Installed Packages') || 
-                        l.startsWith('Last metadata') || 
-                        l.startsWith('Loaded plugins') ||
-                        l.match(/^:\s+(manager|plugins)/) ||  // Continuation lines from Loaded plugins
-                        l.match(/^Repository.*is listed more than once/)) {
-                        return false;
-                    }
-                    return true;
-                });
-                const filteredContent = filteredLines.join('\n');
-                const pkgCount = lines.filter(l => l.trim() && !l.startsWith('Installed') && !l.startsWith('Last metadata') && !l.startsWith('Loaded plugins')).length;
-                debugLog('[distroPackages parser] Detected dnf/yum format, returning raw content');
-                debugLog('[distroPackages parser] Filename:', filename);
-                debugLog('[distroPackages parser] Content length:', content.length);
-                debugLog('[distroPackages parser] Package count:', pkgCount);
-                debugLog('[distroPackages parser] First 500 chars:', content.substring(0, 500));
-                return {
-                    found: true,
-                    isRpmRaw: true,
-                    rawContent: filteredContent,
-                    filename: filename,
-                    packageCount: pkgCount
-                };
-            }
-            
-            // If this is rpm.txt from supportconfig (SUSE), return raw content for display
-            if (filename && filename.includes('rpm.txt')) {
-                // Extract the section with package list (usually after "# rpm -qa --queryformat")
-                // Filter out command headers and keep the formatted package list
-                const filteredLines = [];
-                let inPackageList = false;
-                
-                for (const line of lines) {
-                    // Detect start of package list section
-                    if (line.match(/^# rpm -qa --queryformat.*NAME.*DISTRIBUTION.*VERSION/i)) {
-                        inPackageList = true;
-                        continue; // Skip the command line itself
-                    }
-                    // Detect start of a new command section (end of package list)
-                    if (line.startsWith('#==[ Command ]======') || line.match(/^# rpm -qa --queryformat.*SIGPGP/i)) {
-                        inPackageList = false;
-                    }
-                    
-                    // Include lines if we're in the package list section
-                    if (inPackageList) {
-                        filteredLines.push(line);
-                    }
-                }
-                
-                const filteredContent = filteredLines.join('\n');
-                const pkgCount = filteredLines.filter(l => {
-                    const trimmed = l.trim();
-                    // Count only package lines (not header or empty lines)
-                    return trimmed && !trimmed.startsWith('NAME') && !trimmed.startsWith('DISTRIBUTION');
-                }).length;
-                
-                debugLog('[distroPackages parser] Detected rpm.txt format (SUSE supportconfig), returning raw content');
-                debugLog('[distroPackages parser] Filename:', filename);
-                debugLog('[distroPackages parser] Package count:', pkgCount);
-                
-                return {
-                    found: true,
-                    isRpmRaw: true,
-                    rawContent: filteredContent,
-                    filename: filename,
-                    packageCount: pkgCount
-                };
-            }
-            
-            // Required Azure packages with minimum version requirements
-            const requiredPackages = {
-                'fence-agents': { version: '4.4', operator: 'gte' },
-                'python3-azure-mgmt-compute': { version: '17.0', operator: 'gte' },
-                'python3-azure-identity': { version: '1.0', operator: 'gte' },
-                'cloud-netconfig-azure': { version: '1.3', operator: 'gte' },
-                'resource-agents': { version: '4.3', operator: 'gte' },
-                'python3-azure-core': { minVersion: '1.9', maxVersion: '1.22', operator: 'range' }
-            };
-            
-            const foundPackages = {};
-            const warnings = [];
-            
-            // Parse RPM listing
-            // Common RPM formats:
-            // - "package-name-1.2.3-4.el8.x86_64"
-            // - "package-name-1.2.3-4.noarch"
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed) continue;
-                
-                // Try to match RPM package format
-                // Pattern: package-name-version-release.arch
-                for (const [pkgName, requirements] of Object.entries(requiredPackages)) {
-                    // Look for package name at start of line
-                    const pkgRegex = new RegExp(`^${pkgName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-(\\d+\\.\\d+(?:\\.\\d+)?)`);
-                    const match = trimmed.match(pkgRegex);
-                    
-                    if (match) {
-                        const version = match[1];
-                        foundPackages[pkgName] = version;
-                        debugLog('[distroPackages parser] Found', pkgName, 'version', version);
-                        
-                        // Validate version
-                        if (requirements.operator === 'gte') {
-                            if (!SCC_RULES.compareVersion(version, requirements.version, 'gte')) {
-                                warnings.push({
-                                    package: pkgName,
-                                    expected: `>= ${requirements.version}`,
-                                    actual: version,
-                                    severity: 'error',
-                                    message: `Package ${pkgName} version is ${version}, but should be >= ${requirements.version} for Azure environments`,
-                                    documentationUrl: 'https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-suse-pacemaker'
-                                });
-                                debugLog('[distroPackages parser] WARNING:', pkgName, 'version too old');
-                            }
-                        } else if (requirements.operator === 'range') {
-                            // Check if version is INSIDE the problematic range (inverted logic)
-                            if (SCC_RULES.compareVersion(version, requirements.minVersion, 'gte') && 
-                                SCC_RULES.compareVersion(version, requirements.maxVersion, 'lte')) {
-                                warnings.push({
-                                    package: pkgName,
-                                    expected: `< ${requirements.minVersion} or > ${requirements.maxVersion}`,
-                                    actual: version,
-                                    severity: 'error',
-                                    message: `Package ${pkgName} version is ${version}, but should be lower than ${requirements.minVersion} or higher than ${requirements.maxVersion} for Azure environments`,
-                                    documentationUrl: 'https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-suse-pacemaker'
-                                });
-                                debugLog('[distroPackages parser] WARNING:', pkgName, 'version in problematic range');
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Check for missing packages
-            for (const [pkgName, requirements] of Object.entries(requiredPackages)) {
-                if (!foundPackages[pkgName]) {
-                    warnings.push({
-                        package: pkgName,
-                        expected: requirements.operator === 'gte' ? `>= ${requirements.version}` : `${requirements.minVersion} - ${requirements.maxVersion}`,
-                        actual: 'not found',
-                        severity: 'error',
-                        message: `Required package ${pkgName} not found in package list`,
-                        documentationUrl: 'https://learn.microsoft.com/en-us/azure/sap/workloads/high-availability-guide-suse-pacemaker'
-                    });
-                    debugLog('[distroPackages parser] WARNING:', pkgName, 'not found');
-                }
-            }
-            
-            return {
-                found: true,
-                packages: foundPackages,
-                warnings: warnings
-            };
-        }
-    },
+    // distroPackages and azureSiteRecovery are provided by Rust-backed parser
+    // shims (`distroPackagesParser` and `azureSiteRecoveryParser`) and
+    // assigned after SCC_RULES initialization.
     
-    // Rule: Detect Azure Site Recovery (ASR) service
-    azureSiteRecovery: {
-        filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
-        
-        parse: function(content, filename, _lines) {
-            debugLog('[azureSiteRecovery parser] Analyzing for Azure Site Recovery in:', filename);
-            
-            return SCC_RULES.detectSystemdService(
-                content,
-                filename,
-                'involflt_start',
-                'info',
-                'Azure Site Recovery (ASR) is enabled on this system. The involflt driver is used for replication.'
-            );
-        }
-    },
-    
-    // Rule: Detect Puppet agent (configuration management)
-    puppetAgent: {
-        filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
-        
-        parse: function(content, filename, _lines) {
-            debugLog('[puppetAgent parser] Analyzing for Puppet agent in:', filename);
-            
-            return SCC_RULES.detectSystemdService(
-                content,
-                filename,
-                'puppet',
-                'info',
-                'Puppet agent is enabled on this system. This configuration management tool automates system configuration and management.'
-            );
-        }
-    },
-    
-    // Rule: Detect Chef client (configuration management)
-    chefClient: {
-        filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
-        
-        parse: function(content, filename, _lines) {
-            debugLog('[chefClient parser] Analyzing for Chef client in:', filename);
-            
-            return SCC_RULES.detectSystemdService(
-                content,
-                filename,
-                'chef-client',
-                'info',
-                'Chef client is enabled on this system. This configuration management tool automates infrastructure deployment and management.'
-            );
-        }
-    },
-    
-    // Rule: Detect NVMe drives in sosreports
-    nvmeList: {
-        filePattern: /sos_commands\/nvme\/nvme_list$/,
-        
-        parse: function(content, filename, _lines) {
-            debugLog('[nvmeList parser] Analyzing NVMe drives in:', filename);
-            
-            // Count non-empty lines
-            const lines = content.split('\n').filter(line => line.trim().length > 0);
-            
-            // If only 2 lines (header), no NVMe drives present
-            if (lines.length <= 2) {
-                debugLog('[nvmeList parser] No NVMe drives detected (header only)');
-                return {
-                    found: false,
-                    hasNVMe: false
-                };
-            }
-            
-            // More than 2 lines means NVMe drives are present
-            debugLog('[nvmeList parser] NVMe drives detected:', lines.length - 2, 'drives');
-            
-            return {
-                found: true,
-                hasNVMe: true,
-                driveCount: lines.length - 2,
-                content: content,
-                filename: filename
-            };
-        }
-    }
+    // puppetAgent, chefClient and nvmeList are provided by Rust-backed
+    // parser shims and assigned after SCC_RULES initialization.
     
     // ADD MORE RULES HERE
     // Example:
@@ -781,7 +459,7 @@ const SCC_RULES = {
 // Manual parser assignments - Load external parsers after SCC_RULES is fully defined
 // This avoids "SCC_RULES is not defined" errors during module loading
 
-// From parsers/packages.js
+// Distro packages parser
 if (typeof distroPackagesParser !== 'undefined') {
     SCC_RULES.distroPackages = distroPackagesParser;
 }
@@ -840,6 +518,12 @@ if (typeof azureSiteRecoveryParser !== 'undefined') {
 if (typeof guardicoreAgentParser !== 'undefined') {
     SCC_RULES.guardicoreAgent = guardicoreAgentParser;
 }
+if (typeof puppetAgentParser !== 'undefined') {
+    SCC_RULES.puppetAgent = puppetAgentParser;
+}
+if (typeof chefClientParser !== 'undefined') {
+    SCC_RULES.chefClient = chefClientParser;
+}
 if (typeof illumioParser !== 'undefined') {
     SCC_RULES.illumio = illumioParser;
 }
@@ -897,9 +581,9 @@ if (typeof waagentLogParser !== 'undefined') {
 }
 
 // From parsers/cluster.js
-// Initialize cluster parsers with required dependencies
+// Initialize cluster parsers
 if (typeof createClusterParsers !== 'undefined') {
-    const clusterParsers = createClusterParsers(SCC_RULES, debugLog, parseXMLSimple, querySelectorAll);
+    const clusterParsers = createClusterParsers();
     SCC_RULES.clusterNodes = clusterParsers.clusterNodes;
     SCC_RULES.hostsFile = clusterParsers.hostsFile;
     SCC_RULES.corosyncConfig = clusterParsers.corosyncConfig;
@@ -941,6 +625,9 @@ if (typeof dfOutputParser !== 'undefined') {
 if (typeof mtabAnalysisParser !== 'undefined') {
     SCC_RULES.mtabAnalysis = mtabAnalysisParser;
 }
+if (typeof nvmeListParser !== 'undefined') {
+    SCC_RULES.nvmeList = nvmeListParser;
+}
 
 // From parsers/unix.js - RHUI/EUS parsers
 if (typeof rhuiConfigParser !== 'undefined') {
@@ -978,6 +665,15 @@ if (typeof firewallRulesParser !== 'undefined') {
 } else {
     console.warn('[Worker] firewallRulesParser is NOT defined - networking.js may have failed to load');
 }
+if (typeof packetLossParser !== 'undefined') {
+    SCC_RULES.packetLoss = packetLossParser;
+}
+if (typeof ringBufferParser !== 'undefined') {
+    SCC_RULES.ringBuffer = ringBufferParser;
+}
+if (typeof networkSysctlParser !== 'undefined') {
+    SCC_RULES.networkSysctl = networkSysctlParser;
+}
 
 // From parsers/network-interfaces.js
 if (typeof networkInterfacesParser !== 'undefined') {
@@ -1010,74 +706,53 @@ if (typeof extfragParser !== 'undefined') {
 }
 // ============================================================================
 
-// Load the streaming WASM module
-importScripts(
-    versionedAsset('./liblzma-wasm/dist-streaming/liblzma-xz-streaming.js')
-);
+// Load the Rust streaming WASM module.
+//
+// The build step renames the LZMA module's top-level global from
+// `wasm_bindgen` to `lzma_bindgen` so it can co-exist with the
+// supportfile_wasm module (also target=no-modules) without redeclaring
+// the same identifier.
+importScripts(versionedAsset('./lzma-stream-wasm/lzma_stream_wasm.js'));
+const rustLzmaInit = lzma_bindgen;
+const rustLzmaModule = lzma_bindgen;
 
 let moduleReady = false;
-let Module = null;
+let LzmaModule = null;
+let Module = {};
 
-// Initialize the WASM module
-LZMA_XZ_Streaming_Module({
-    locateFile: (path) => {
-        if (path.endsWith('.wasm')) {
-            // Return the correct path relative to worker location
-            const wasmPath = versionedAsset('./liblzma-wasm/dist-streaming/liblzma-xz-streaming.wasm');
-            debugLog('[XZ Streaming Worker] Loading WASM from:', wasmPath);
-            return wasmPath;
+(async () => {
+    try {
+        debugLog('[XZ Streaming Worker] Initializing Rust LZMA wasm...');
+        await rustLzmaInit(
+            versionedAsset('./lzma-stream-wasm/lzma_stream_wasm_bg.wasm'));
+        LzmaModule = rustLzmaModule;
+        if (typeof LzmaModule.xzStreamInit !== 'function' ||
+            typeof LzmaModule.xzStreamProcess !== 'function' ||
+            typeof LzmaModule.xzStreamError !== 'function' ||
+            typeof LzmaModule.xzStreamFree !== 'function') {
+            throw new Error('Rust XZ wasm module is missing expected exports');
         }
-        return versionedAsset(path);
+
+        moduleReady = true;
+        debugLog('[XZ Streaming Worker] Rust LZMA module initialized successfully');
+
+        if (typeof wasm_bindgen === 'function') {
+            await wasm_bindgen(
+                versionedAsset('supportfile-wasm/supportfile_wasm_bg.wasm'));
+            self.SUPPORTFILE_WASM_READY = true;
+            debugLog('[Worker] supportfile WASM initialized');
+        } else {
+            self.SUPPORTFILE_WASM_READY = false;
+            console.warn('[Worker] supportfile wasm-bindgen init was not available');
+        }
+
+        self.postMessage({ ready: true });
+        debugLog('[XZ Streaming Worker] Ready message sent to main thread');
+    } catch (err) {
+        console.error('[XZ Streaming Worker] Module initialization failed:', err);
+        self.postMessage({ error: 'WASM module initialization failed: ' + err.message });
     }
-}).then((mod) => {
-    Module = mod;
-    debugLog('[XZ Streaming Worker] Module object received');
-    
-    // Verify critical properties are available
-    if (!Module.HEAPU8) {
-        console.error('[XZ Streaming Worker] HEAPU8 not available in module');
-        console.error('[XZ Streaming Worker] Available properties:', Object.keys(Module));
-        self.postMessage({ error: 'WASM module initialization incomplete: HEAPU8 missing' });
-        moduleReady = false;
-        return;
-    }
-    if (!Module._xz_stream_init || !Module._xz_stream_process) {
-        console.error('[XZ Streaming Worker] Required functions not available');
-        console.error('[XZ Streaming Worker] Available functions:', Object.keys(Module).filter(k => k.startsWith('_')));
-        self.postMessage({ error: 'WASM module initialization incomplete: functions missing' });
-        moduleReady = false;
-        return;
-    }
-    
-    moduleReady = true;
-    debugLog('[XZ Streaming Worker] Module initialized successfully');
-    debugLog('[XZ Streaming Worker] HEAPU8 available:', !!Module.HEAPU8);
-    debugLog('[XZ Streaming Worker] Exported functions:', Object.keys(Module).filter(k => k.startsWith('_')));
-    
-    // Initialize the supportfile WASM module before signalling ready, so the
-    // first parse call from any shim is sync against an already-loaded WASM
-    // instance.  If wasm_bindgen is missing (script failed to load) we still
-    // continue — JS shims must check for self.SUPPORTFILE_WASM_READY.
-    return (typeof wasm_bindgen === 'function'
-        ? wasm_bindgen(versionedAsset('supportfile-wasm/supportfile_wasm_bg.wasm'))
-            .then(() => {
-                self.SUPPORTFILE_WASM_READY = true;
-                debugLog('[Worker] supportfile WASM initialized; version=' + wasm_bindgen.supportfileVersion());
-            })
-            .catch((err) => {
-                self.SUPPORTFILE_WASM_READY = false;
-                console.error('[Worker] supportfile WASM init failed:', err);
-            })
-        : Promise.resolve()
-    );
-}).then(() => {
-    // Signal to main thread that worker is ready
-    self.postMessage({ ready: true });
-    debugLog('[XZ Streaming Worker] Ready message sent to main thread');
-}).catch((err) => {
-    console.error('[XZ Streaming Worker] Module initialization failed:', err);
-    self.postMessage({ error: 'WASM module initialization failed: ' + err.message });
-});
+})();
 
 // Parse TAR headers incrementally as data arrives
 class IncrementalTARParser {
@@ -2470,11 +2145,11 @@ class IncrementalTARParser {
                         if (!this.analysisResults[ruleName].resourceMigrations) this.analysisResults[ruleName].resourceMigrations = [];
                         if (!this.analysisResults[ruleName].fencingEvents) this.analysisResults[ruleName].fencingEvents = [];
                         if (result && result.resourceMigrations) {
-                            const dedup = SCC_RULES.deduplicateEvents(this.analysisResults[ruleName].resourceMigrations, result.resourceMigrations, ['timestamp', 'resource', 'action'], debugLog);
+                            const dedup = SCC_RULES.deduplicateEvents(this.analysisResults[ruleName].resourceMigrations, result.resourceMigrations, ['timestamp', 'resource', 'action']);
                             this.analysisResults[ruleName].resourceMigrations.push(...dedup.addedEvents);
                         }
                         if (result && result.fencingEvents) {
-                            const dedup = SCC_RULES.deduplicateEvents(this.analysisResults[ruleName].fencingEvents, result.fencingEvents, ['timestamp', 'node', 'action'], debugLog);
+                            const dedup = SCC_RULES.deduplicateEvents(this.analysisResults[ruleName].fencingEvents, result.fencingEvents, ['timestamp', 'node', 'action']);
                             this.analysisResults[ruleName].fencingEvents.push(...dedup.addedEvents);
                         }
                         this.analysisResults[ruleName].count = (this.analysisResults[ruleName].resourceMigrations?.length || 0) + (this.analysisResults[ruleName].fencingEvents?.length || 0);
@@ -2530,7 +2205,7 @@ class IncrementalTARParser {
                             if (result.events && Array.isArray(result.events)) {
                                 if (!this.analysisResults[ruleName].events) this.analysisResults[ruleName].events = [];
                                 const compFields = ['timestamp', 'message'];
-                                const dedup = SCC_RULES.deduplicateEvents(this.analysisResults[ruleName].events, result.events, compFields, debugLog);
+                                const dedup = SCC_RULES.deduplicateEvents(this.analysisResults[ruleName].events, result.events, compFields);
                                 this.analysisResults[ruleName].events.push(...dedup.addedEvents);
                             }
                             this.analysisResults[ruleName].found = this.analysisResults[ruleName].found || result.found;
@@ -2546,7 +2221,7 @@ class IncrementalTARParser {
                                 : ruleName === 'automation' ? ['timestamp', 'toolType', 'command']
                                 : ruleName === 'azureExtensions' ? ['name']
                                 : ['timestamp', 'message'];
-                            const dedup = SCC_RULES.deduplicateEvents(this.analysisResults[ruleName].events, result.events, compFields, debugLog);
+                            const dedup = SCC_RULES.deduplicateEvents(this.analysisResults[ruleName].events, result.events, compFields);
                             this.analysisResults[ruleName].events.push(...dedup.addedEvents);
                             this.analysisResults[ruleName].count = this.analysisResults[ruleName].events.length;
                             if (result.found) this.analysisResults[ruleName].found = true;
@@ -3244,6 +2919,9 @@ class IncrementalTARParser {
             iscsiConfig: this.analysisResults.iscsiConfig || null,
             firewallRules: this.analysisResults.firewallRules || null,
             networkInterfaces: this.analysisResults.networkInterfaces || null,
+            packetLoss: this.analysisResults.packetLoss || null,
+            ringBuffer: this.analysisResults.ringBuffer || null,
+            networkSysctl: this.analysisResults.networkSysctl || null,
             vmcore: this.analysisResults.vmcore || null,
             waagentConfig: this.analysisResults.waagentConfig || null,
             waagentLog: this.analysisResults.waagentLog || null,
@@ -3485,11 +3163,11 @@ self.onmessage = async function(e) {
                     debugLog(`[Worker] Parser ${parserName} completed`);
                     
                     if (result) {
-                        // Add sourceFile to all events for plain text logs
+                        // Ensure event provenance is set for plain-text logs.
                         if (result.events && Array.isArray(result.events)) {
                             result.events.forEach(event => {
-                                if (!event.sourceFile) {
-                                    event.sourceFile = filename;
+                                if (!event.sourcePath && !event.sourceFile) {
+                                    event.sourcePath = filename;
                                 }
                             });
                         }
@@ -3672,7 +3350,7 @@ self.onmessage = async function(e) {
     
     // Handle streaming XZ decompression (existing code)
     if (e.data.cmd === 'decompress_streaming') {
-        if (!moduleReady || !Module || !Module.HEAPU8) {
+        if (!moduleReady || !LzmaModule) {
             self.postMessage({ error: 'WASM module not properly initialized' });
             return;
         }
@@ -3691,15 +3369,9 @@ self.onmessage = async function(e) {
 
             debugLog(`[XZ Streaming Worker] Starting streaming decompression: ${inputSize} bytes input`);
 
-            // Initialize streaming decoder
-            const errBufSize = 256;
-            const errBuf = Module._malloc(errBufSize);
-            const handle = Module._xz_stream_init(errBuf, errBufSize);
-
+            const handle = LzmaModule.xzStreamInit();
             if (!handle) {
-                const errMsg = Module.UTF8ToString(errBuf);
-                Module._free(errBuf);
-                throw new Error(`Failed to initialize stream: ${errMsg}`);
+                throw new Error('Failed to initialize Rust XZ stream');
             }
 
             debugLog('[XZ Streaming Worker] Stream initialized');
@@ -3724,46 +3396,16 @@ self.onmessage = async function(e) {
                 const currentChunkSize = Math.min(effectiveChunkSize, remainingInput);
                 const isLastChunk = (inputOffset + currentChunkSize >= inputSize);
 
-                // Copy input chunk to WASM memory
-                const inputPtr = Module._malloc(currentChunkSize);
-                Module.HEAPU8.set(
-                    new Uint8Array(compressedData, inputOffset, currentChunkSize),
-                    inputPtr
-                );
-
-                // Allocate status and output length variables
-                const outLenPtr = Module._malloc(4);
-                const statusPtr = Module._malloc(4);
-
-                // Process chunk
-                const outputPtr = Module._xz_stream_process(
-                    handle,
-                    inputPtr,
-                    currentChunkSize,
-                    outLenPtr,
-                    statusPtr
-                );
-
-                const outLen = Module.getValue(outLenPtr, 'i32');
-                const status = Module.getValue(statusPtr, 'i32');
+                const chunk = new Uint8Array(compressedData, inputOffset, currentChunkSize);
+                const result = LzmaModule.xzStreamProcess(handle, chunk);
+                const status = result.status;
+                const outputData = result.output;
+                const outLen = outputData ? outputData.length : 0;
                 lastStatus = status;
 
                 debugLog(`[XZ Streaming Worker] Chunk ${chunkCount}: input=${currentChunkSize}, output=${outLen}, status=${status}, isLast=${isLastChunk}`);
 
-                // Free input and status buffers
-                Module._free(inputPtr);
-                Module._free(outLenPtr);
-                Module._free(statusPtr);
-
-                // Check for output
-                if (outputPtr && outLen > 0) {
-                    // Copy output data to a new buffer
-                    const outputData = new Uint8Array(outLen);
-                    outputData.set(Module.HEAPU8.subarray(outputPtr, outputPtr + outLen));
-                    
-                    // Free WASM memory immediately
-                    Module._free(outputPtr);
-
+                if (outLen > 0) {
                     // Feed to TAR parser
                     tarParser.addChunk(outputData);
                     totalDecompressed += outLen;
@@ -3783,18 +3425,12 @@ self.onmessage = async function(e) {
                         });
                     }
                     
-                    // Hint to GC that outputData can be collected
-                    // (it's been processed by tarParser.addChunk)
-                } else if (outputPtr) {
-                    // Free even if no data
-                    Module._free(outputPtr);
                 }
 
                 // Check status
                 if (status < 0) {
-                    const errMsg = Module.UTF8ToString(Module._xz_stream_error(handle));
-                    Module._xz_stream_free(handle);
-                    Module._free(errBuf);
+                    const errMsg = LzmaModule.xzStreamError(handle);
+                    LzmaModule.xzStreamFree(handle);
                     throw new Error(`Decompression error: ${errMsg} (status=${status})`);
                 }
 
@@ -3820,9 +3456,36 @@ self.onmessage = async function(e) {
                 }
             }
 
-            // Cleanup
-            Module._xz_stream_free(handle);
-            Module._free(errBuf);
+            // Final finish flush: the Rust stream validates the footer once it
+            // receives an empty input chunk signaling end-of-stream.
+            if (!streamComplete && lastStatus >= 0) {
+                const emptyChunk = new Uint8Array(0);
+                for (let i = 0; i < 16; i++) {
+                    const flushResult = LzmaModule.xzStreamProcess(handle, emptyChunk);
+                    const flushStatus = flushResult.status;
+                    const flushData = flushResult.output;
+                    const flushOutLen = flushData ? flushData.length : 0;
+                    if (flushOutLen > 0) {
+                        tarParser.addChunk(flushData);
+                        totalDecompressed += flushOutLen;
+                    }
+                    lastStatus = flushStatus;
+                    if (flushStatus === 1) {
+                        streamComplete = true;
+                        debugLog('[XZ Streaming Worker] Stream finished during flush');
+                        break;
+                    }
+                    if (flushStatus < 0) {
+                        debugLog(`[XZ Streaming Worker] Flush returned error status=${flushStatus}`);
+                        break;
+                    }
+                    // status==0 means the decoder still wants more input but
+                    // none is available — bail after the bounded retries to
+                    // avoid livelock on a genuinely truncated stream.
+                }
+            }
+
+            LzmaModule.xzStreamFree(handle);
 
             // Final analysis
             const finalAnalysis = tarParser.finish();

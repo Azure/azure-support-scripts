@@ -295,6 +295,28 @@ pub fn parse_guardicore_agent(content: &str, source_path: &str) -> ServiceDetect
     )
 }
 
+pub fn parse_puppet_agent(content: &str, source_path: &str) -> ServiceDetectionResult {
+    detect_systemd_service(
+        content,
+        "puppet",
+        "info",
+        "Puppet agent is enabled on this system. This configuration management tool automates system configuration and management.",
+        None,
+        source_path,
+    )
+}
+
+pub fn parse_chef_client(content: &str, source_path: &str) -> ServiceDetectionResult {
+    detect_systemd_service(
+        content,
+        "chef-client",
+        "info",
+        "Chef client is enabled on this system. This configuration management tool automates infrastructure deployment and management.",
+        None,
+        source_path,
+    )
+}
+
 pub fn parse_illumio(content: &str, source_path: &str) -> SecuritySoftwareResult {
     detect_security_software(
         content,
@@ -516,6 +538,20 @@ pub fn parse_guardicore_agent_json(content: &str, source_path: &str) -> String {
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
+pub fn parse_puppet_agent_json(content: &str, source_path: &str) -> String {
+    let mut value = serde_json::to_value(parse_puppet_agent(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
+    crate::parsers::fill_source_path(&mut value, source_path);
+    serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
+}
+
+pub fn parse_chef_client_json(content: &str, source_path: &str) -> String {
+    let mut value = serde_json::to_value(parse_chef_client(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
+    crate::parsers::fill_source_path(&mut value, source_path);
+    serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
+}
+
 pub fn parse_illumio_json(content: &str, source_path: &str) -> String {
     let mut value = serde_json::to_value(parse_illumio(content, source_path))
         .unwrap_or(serde_json::Value::Null);
@@ -597,8 +633,12 @@ mod tests {
     #[test]
     fn detects_systemd_and_security_software() {
         let dlm = parse_dlm_service("dlm.service enabled", "");
+        let puppet = parse_puppet_agent("puppet.service enabled", "");
+        let chef = parse_chef_client("chef-client.service enabled", "");
         let falcon = parse_falcon_sensor("falcon-sensor running from /opt/CrowdStrike", "");
         assert!(dlm.found);
+        assert!(puppet.found);
+        assert!(chef.found);
         assert!(falcon.found);
     }
 

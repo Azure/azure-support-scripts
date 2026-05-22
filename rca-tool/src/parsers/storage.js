@@ -1,38 +1,27 @@
 /**
  * @module parsers/storage
- * @description Storage parsers — partial migration to WASM thin shims.
+ * @description Storage parser shims delegated to `supportfile_core` Rust.
  *
- * Migrated to thin shims (delegated to `supportfile_core` Rust):
- *   - `lvmConfigParser`     → `parseLvmConfig`
- *   - `raidConfigParser`    → `parseRaidConfig`
- *   - `fstabAnalysisParser` → `parseFstabAnalysis`
- *   - `dfOutputParser`      → `parseDfOutput`
- *   - `mtabAnalysisParser`  → `parseMtabAnalysis`
+ * This file intentionally does not implement storage parsing logic in JS.
+ * Each parser calls `WASM_BRIDGE.parseJson(...)` and only performs minimal
+ * compatibility shaping for current Leptos consumers (raw panes, field aliases,
+ * and multi-file result merges).
  *
- * Still legacy thick JS (Rust port has feature gaps — see TODO blocks below):
- *   - `btrfsConfigParser`   — Rust `BtrfsFilesystem` is missing `deviceCount`,
- *                              device entries, and `BtrfsSubvolume` is missing
- *                              `parent`/`topLevel` fields that the Leptos UI
- *                              renders.
- *   - `blockDevicesParser`  — Rust `BlockDevicesResult` does not expose the
- *                              per-device `deviceMap` that
- *                              `worker.correlateFstabWithBlockDevices()`
- *                              relies on for UUID/fstype lookups.
+ * Rust-backed parser entrypoints used here:
+ *   - `parseLvmConfig`
+ *   - `parseRaidConfig`
+ *   - `parseFstabAnalysis`
+ *   - `parseDfOutput`
+ *   - `parseMtabAnalysis`
+ *   - `parseBtrfsConfig`
+ *   - `parseBlockDevices`
  *
- * SCC fs-diskio.txt section extraction (fstab / df / mount) stays in JS for
- * now — the Rust parsers expect already-extracted content.  This avoids
- * duplicating section-marker logic in two languages.
+ * SCC `fs-diskio.txt` extraction (fstab / df / mount sections) remains as
+ * lightweight pre-processing in JS before invoking Rust.
  */
-
-function storageDebugLog(...args) {
-    if (typeof DEBUG_CONFIG !== 'undefined' && DEBUG_CONFIG.storage) {
-        console.log('[storage.js]', ...args);
-    }
-}
 
 function _storageWasmCall(fnName, content, filename, fallback) {
     if (typeof WASM_BRIDGE === 'undefined' || !WASM_BRIDGE.isReady()) {
-        storageDebugLog('WASM not ready -- returning fallback for', fnName, filename);
         return fallback;
     }
     try {
@@ -54,17 +43,11 @@ function _storageWasmCall(fnName, content, filename, fallback) {
 //      `rawOutput.{pvs,vgs,lvs}` panes shown by the Leptos UI stay clean).
 //   2. Routing the cleaned content into the right `rawOutput` slot based
 //      on the filename.
-//   3. Re-aliasing `pvCount`/`lvCount` (mechanical camelCase from
-//      `pv_count`/`lv_count`) back to snake_case, because the Leptos LVM
-//      table currently reads `vg.pv_count` / `vg.lv_count`.
+//   3. Keeping raw panes mapped by filename so the Leptos LVM
+//      table and diagnostics stay coherent across split files.
 //
 // `mergeResults` is preserved so the worker can accumulate sosreport's
 // separate `pvs.txt`, `vgs.txt`, and `lvs.txt` files into one result.
-
-const LVM_VG_ALIASES = {
-    pvCount: 'pv_count',
-    lvCount: 'lv_count',
-};
 
 function _cleanLvmOutput(content) {
     return content
@@ -84,8 +67,6 @@ const lvmConfigParser = {
     filePattern: /\/(lvm\.txt|pvs\.txt|vgs\.txt|lvs\.txt|pvdisplay|vgdisplay|lvdisplay)$|\/lvm2\/pvs_|\/lvm2\/vgs_|\/lvm2\/lvs_/,
 
     parse: function(content, filename, _lines) {
-        storageDebugLog('[LVM parser] Analyzing:', filename);
-
         const result = _storageWasmCall('parseLvmConfig', content, filename, null);
         if (!result) {
             return { found: false, pvs: [], vgs: [], lvs: [], warnings: [], rawOutput: {} };
@@ -111,15 +92,6 @@ const lvmConfigParser = {
         } else if (basename.startsWith('lvs') || basename === 'lvdisplay') {
             result.rawOutput.lvs = cleanContent;
         }
-
-        WASM_BRIDGE.aliasKeys(result, LVM_VG_ALIASES);
-
-        storageDebugLog('[LVM parser] Found:', {
-            found: result.found,
-            pvs: result.pvs?.length || 0,
-            vgs: result.vgs?.length || 0,
-            lvs: result.lvs?.length || 0,
-        });
         return result;
     },
 
@@ -155,7 +127,6 @@ const raidConfigParser = {
     filePattern: /\/(mdstat|md-arrays\.txt|mdadm\.txt|proc\/mdstat)$/,
 
     parse: function(content, filename, _lines) {
-        storageDebugLog('[RAID parser] Analyzing:', filename);
         const result = _storageWasmCall('parseRaidConfig', content, filename, null);
         if (!result) {
             return { found: false, arrays: [], warnings: [], rawOutput: { mdstat: content } };
@@ -164,7 +135,6 @@ const raidConfigParser = {
             result.rawOutput = {};
         }
         result.rawOutput.mdstat = content;
-        storageDebugLog('[RAID parser] Found:', result.arrays?.length || 0, 'arrays');
         return result;
     },
 };
@@ -202,13 +172,10 @@ const fstabAnalysisParser = {
     filePattern: /\/etc\/fstab$|\/fs-diskio\.txt$/,
 
     parse: function(content, filename, _lines) {
-        storageDebugLog('[fstabAnalysis parser] Analyzing:', filename);
-
         let fstabContent = content;
         if ((filename || '').includes('fs-diskio.txt')) {
             fstabContent = _extractFstabFromSCC(content);
             if (!fstabContent) {
-                storageDebugLog('[fstabAnalysis parser] No fstab section in fs-diskio.txt');
                 return { found: false, entries: [], warnings: [] };
             }
         }
@@ -218,7 +185,6 @@ const fstabAnalysisParser = {
             return { found: false, entries: [], warnings: [], rawContent: fstabContent };
         }
         result.rawContent = fstabContent;
-        storageDebugLog('[fstabAnalysis parser] Found:', result.entries?.length || 0, 'entries');
         return result;
     },
 };
@@ -248,8 +214,6 @@ const dfOutputParser = {
     filePattern: /\/df$|\/df_-aliT|\/df_-al_|\/fs-diskio\.txt$/,
 
     parse: function(content, filename, _lines) {
-        storageDebugLog('[dfOutput parser] Analyzing:', filename);
-
         let dfContent = content;
         if ((filename || '').includes('fs-diskio.txt')) {
             dfContent = _extractDfFromSCC(content);
@@ -262,7 +226,6 @@ const dfOutputParser = {
         if (!result) {
             return { found: false, filesystems: [], mountToUsage: {} };
         }
-        storageDebugLog('[dfOutput parser] Found:', result.filesystems?.length || 0, 'filesystems');
         return result;
     },
 };
@@ -300,8 +263,6 @@ const mtabAnalysisParser = {
     filePattern: /\/etc\/mtab$|\/proc\/mounts$|\/proc\/self\/mounts$|\/fs-diskio\.txt$|\/mount_-l$|\/mount$/,
 
     parse: function(content, filename, _lines) {
-        storageDebugLog('[mtabAnalysis parser] Analyzing:', filename);
-
         let mtabContent = content;
         if ((filename || '').includes('fs-diskio.txt')) {
             mtabContent = _extractMountFromSCC(content);
@@ -315,321 +276,130 @@ const mtabAnalysisParser = {
             return { found: false, entries: [], extraMounts: [], rawContent: mtabContent };
         }
         result.rawContent = mtabContent;
-        storageDebugLog('[mtabAnalysis parser] Found:', result.entries?.length || 0, 'entries');
         return result;
     },
 };
 
 // ===========================================================================
-// btrfsConfig — LEGACY THICK JS (Rust port lacks deviceCount, devices[],
-// parent, topLevel fields needed by the Leptos BTRFS section)
+// btrfsConfig — thin shim
 // ===========================================================================
-// TODO: Once Rust BtrfsFilesystem gains a `device_count` field and
-// `devices: Vec<BtrfsDeviceEntry { devid, size, used, path }>`, and
-// BtrfsSubvolume gains `parent` + `top_level`, replace this with a thin
-// shim mirroring `raidConfigParser` (with rawOutput.{filesystems,subvolumes}).
+// Rust now provides the parser. Keep a tiny compatibility projection so the
+// Leptos renderer can keep reading legacy fields while we finish UI cleanup.
 
 const btrfsConfigParser = {
     filePattern: /\/(btrfs\.txt|fs-btrfs\.txt|btrfs-filesystem-show\.txt|btrfs-subvolume-list\.txt)$/,
 
     parse: function(content, filename, _lines) {
-        storageDebugLog('[BTRFS parser] Analyzing:', filename);
-
-        const result = {
-            found: false,
-            filesystems: [],
-            subvolumes: [],
-            warnings: [],
-            rawOutput: {}
-        };
-
-        if (filename.includes('btrfs.txt')) {
-            const fsShowMatch = content.match(/(?:#==\[.*?\].*?\n)?# (?:\/usr)?\/sbin\/btrfs filesystem show[^\n]*\n([\s\S]*?)(?=\n#==\[|$)/);
-            if (fsShowMatch) this._parseFilesystems(fsShowMatch[1], result);
-
-            const subvolMatch = content.match(/(?:#==\[.*?\].*?\n)?# (?:\/usr)?\/sbin\/btrfs subvolume list[^\n]*\n([\s\S]*?)(?=\n#==\[|$)/);
-            if (subvolMatch) this._parseSubvolumes(subvolMatch[1], result);
-        } else if (filename.includes('filesystem-show')) {
-            this._parseFilesystems(content, result);
-        } else if (filename.includes('subvolume-list')) {
-            this._parseSubvolumes(content, result);
+        const result = _storageWasmCall('parseBtrfsConfig', content, filename, null);
+        if (!result) {
+            return { found: false, filesystems: [], subvolumes: [], warnings: [], rawOutput: {} };
         }
 
-        if (result.filesystems.length > 0 || result.subvolumes.length > 0) {
-            result.found = true;
+        if (!Array.isArray(result.filesystems)) result.filesystems = [];
+        if (!Array.isArray(result.subvolumes)) result.subvolumes = [];
+        if (!Array.isArray(result.warnings)) result.warnings = [];
+        if (!result.rawOutput || typeof result.rawOutput !== 'object') {
+            result.rawOutput = {};
         }
+
+        // Compatibility projection for legacy Leptos rendering.
+        for (const fs of result.filesystems) {
+            if (!Array.isArray(fs.devices)) fs.devices = [];
+            if (fs.deviceCount == null) fs.deviceCount = String(fs.devices.length);
+            fs.devices = fs.devices.map((dev, idx) => {
+                if (typeof dev === 'string') {
+                    return {
+                        devid: String(idx + 1),
+                        size: '-',
+                        used: '-',
+                        path: dev,
+                    };
+                }
+                return dev;
+            });
+        }
+
+        for (const subvol of result.subvolumes) {
+            if (subvol.parent == null) subvol.parent = '-';
+            if (subvol.topLevel == null) subvol.topLevel = '-';
+        }
+
+        const basename = (filename || '').split('/').pop() || '';
+        if (basename.includes('filesystem-show')) result.rawOutput.filesystems = content;
+        if (basename.includes('subvolume-list')) result.rawOutput.subvolumes = content;
+        if (basename === 'btrfs.txt') {
+            result.rawOutput.filesystems = result.rawOutput.filesystems || content;
+            result.rawOutput.subvolumes = result.rawOutput.subvolumes || content;
+        }
+
         return result;
-    },
-
-    _parseFilesystems: function(content, result) {
-        const cleanContent = content
-            .split('\n')
-            .filter(line => !line.trim().startsWith('#=='))
-            .join('\n');
-        result.rawOutput.filesystems = cleanContent;
-
-        const lines = cleanContent.split('\n');
-        let currentFs = null;
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-
-            const labelMatch = trimmed.match(/Label:\s*(?:'([^']+)'|(\w+))\s+uuid:\s+([0-9a-f\-]+)/i);
-            if (labelMatch) {
-                if (currentFs) result.filesystems.push(currentFs);
-                currentFs = {
-                    label: labelMatch[1] || labelMatch[2] || 'none',
-                    uuid: labelMatch[3],
-                    devices: [],
-                    totalSize: '-'
-                };
-                continue;
-            }
-
-            const totalMatch = trimmed.match(/Total devices\s+(\d+)\s+FS bytes used\s+([\d\.]+\w+)/i);
-            if (currentFs && totalMatch) {
-                currentFs.deviceCount = totalMatch[1];
-                currentFs.totalSize = totalMatch[2];
-                continue;
-            }
-
-            const deviceMatch = trimmed.match(/devid\s+(\d+)\s+size\s+([\d\.]+\w+)\s+used\s+([\d\.]+\w+)\s+path\s+(\/dev\/\S+)/i);
-            if (currentFs && deviceMatch) {
-                currentFs.devices.push({
-                    devid: deviceMatch[1],
-                    size: deviceMatch[2],
-                    used: deviceMatch[3],
-                    path: deviceMatch[4]
-                });
-            }
-        }
-        if (currentFs) result.filesystems.push(currentFs);
-    },
-
-    _parseSubvolumes: function(content, result) {
-        const cleanContent = content
-            .split('\n')
-            .filter(line => !line.trim().startsWith('#=='))
-            .join('\n');
-        result.rawOutput.subvolumes = cleanContent;
-
-        const lines = cleanContent.split('\n');
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-
-            const match = trimmed.match(/ID\s+(\d+)\s+gen\s+(\d+)(?:\s+parent\s+(\d+))?\s+top level\s+(\d+)\s+path\s+(.+)/);
-            if (match) {
-                result.subvolumes.push({
-                    id: match[1],
-                    gen: match[2],
-                    parent: match[3] || '-',
-                    topLevel: match[4],
-                    path: match[5]
-                });
-            }
-        }
     }
 };
 
 // ===========================================================================
-// blockDevices — LEGACY THICK JS (Rust port lacks the per-device deviceMap
-// that worker.correlateFstabWithBlockDevices() uses to look up uuid/fstype
-// for each fstab UUID= entry)
+// blockDevices — thin shim
 // ===========================================================================
-// TODO: Once Rust BlockDevicesResult exposes `device_map: BTreeMap<String,
-// BlockDeviceInfo>` (it already maintains one internally), replace this
-// with a thin shim like `lvmConfigParser` (with `mergeResults` for
-// multi-file accumulation).
 
 const blockDevicesParser = {
     filePattern: /\/sos_commands\/block\/(lsblk|lsblk_-f_-a_-l|blkid_-c_.dev.null)$|^results\.txt$/,
     multiFile: true,
 
     parse: function(content, filename, _lines) {
-        storageDebugLog('[blockDevices parser] Analyzing:', filename);
-
-        const result = {
-            found: false,
-            disks: [],
-            partitions: [],
-            uuidMap: {},
-            deviceMap: {},
-            mountPoints: {},
-            warnings: [],
-            rawOutput: {}
-        };
-
-        if (filename.includes('lsblk_-f_-a_-l')) {
-            this._parseLsblkFull(content, result);
-        } else if (filename.endsWith('/lsblk')) {
-            this._parseLsblkBasic(content, result);
-        } else if (filename.includes('blkid')) {
-            this._parseBlkid(content, result);
-        } else if (filename.endsWith('results.txt')) {
-            this._parseInspectDiskFilesystems(content, result);
+        const result = _storageWasmCall('parseBlockDevices', content, filename, null);
+        if (!result) {
+            return {
+                found: false,
+                disks: [],
+                partitions: [],
+                uuidMap: {},
+                deviceMap: {},
+                mountPoints: {},
+                warnings: [],
+                rawOutput: {},
+            };
         }
 
-        if (result.disks.length > 0 || result.partitions.length > 0
-            || Object.keys(result.uuidMap).length > 0) {
-            result.found = true;
+        if (!result.uuidMap || typeof result.uuidMap !== 'object') result.uuidMap = {};
+        if (!result.deviceMap || typeof result.deviceMap !== 'object') result.deviceMap = {};
+        if (!result.mountPoints || typeof result.mountPoints !== 'object') result.mountPoints = {};
+        if (!Array.isArray(result.disks)) result.disks = [];
+        if (!Array.isArray(result.partitions)) result.partitions = [];
+        if (!Array.isArray(result.warnings)) result.warnings = [];
+        if (!result.rawOutput || typeof result.rawOutput !== 'object') result.rawOutput = {};
+
+        // Preserve raw panes for troubleshooting/debug UI.
+        const basename = (filename || '').split('/').pop() || '';
+        if (basename === 'lsblk') result.rawOutput.lsblk = content;
+        else if (basename.includes('lsblk_-f_-a_-l')) result.rawOutput.lsblkFull = content;
+        else if (basename.includes('blkid')) result.rawOutput.blkid = content;
+        else if (basename === 'results.txt') result.rawOutput.inspectDisk = content;
+
+        return result;
+    }
+};
+
+const nvmeListParser = {
+    filePattern: /sos_commands\/nvme\/nvme_list$/,
+
+    parse: function(content, filename, _lines) {
+        const result = _storageWasmCall('parseNvmeList', content, filename, null);
+        if (!result) {
+            return {
+                found: false,
+                hasNVMe: false,
+                driveCount: 0,
+                content: null,
+                filename: filename,
+            };
+        }
+
+        // Rust emits snake_case; normalize keys expected by the UI.
+        if (typeof result.hasNVMe === 'undefined' && typeof result.hasNvme !== 'undefined') {
+            result.hasNVMe = result.hasNvme;
+        }
+        if (typeof result.driveCount !== 'number') {
+            result.driveCount = 0;
         }
         return result;
-    },
-
-    _parseLsblkBasic: function(content, result) {
-        result.rawOutput.lsblk = content;
-        for (const line of content.split('\n')) {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed.startsWith('NAME')) continue;
-            const cleanLine = trimmed.replace(/^[├└│`\-\s]+/, '');
-            const match = cleanLine.match(/^(\S+)\s+(\d+:\d+)\s+(\d+)\s+([\d\.]+\w?)\s+(\d+)\s+(disk|part|lvm|raid\d*|loop|rom|crypt)\s*(.*)?$/);
-            if (!match) continue;
-            const [, name, majMin, rm, size, ro, type, mountpoint] = match;
-            const deviceInfo = {
-                name, device: `/dev/${name}`, majMin,
-                removable: rm === '1', size, readOnly: ro === '1', type,
-                mountpoint: mountpoint?.trim() || null
-            };
-            if (type === 'disk') result.disks.push(deviceInfo);
-            else result.partitions.push(deviceInfo);
-            result.deviceMap[`/dev/${name}`] = deviceInfo;
-            if (deviceInfo.mountpoint) {
-                result.mountPoints[deviceInfo.mountpoint] = `/dev/${name}`;
-            }
-        }
-    },
-
-    _parseLsblkFull: function(content, result) {
-        result.rawOutput.lsblkFull = content;
-        for (const line of content.split('\n')) {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed.startsWith('NAME')) continue;
-            const parts = trimmed.split(/\s+/);
-            if (parts.length < 1) continue;
-            const name = parts[0];
-            if (name.startsWith('loop') && parts.length < 3) continue;
-            let fstype = null, uuid = null, mountpoint = null, fsavail = null, fsuse = null;
-            for (let i = 1; i < parts.length; i++) {
-                const part = parts[i];
-                if (part.match(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/) ||
-                    part.match(/^[0-9a-fA-F]{4}-[0-9a-fA-F]{4}$/)) {
-                    uuid = part;
-                } else if (part.match(/^(ext[234]|xfs|btrfs|vfat|ntfs|swap|iso9660|squashfs)$/i)) {
-                    fstype = part;
-                } else if (part.startsWith('/')) {
-                    mountpoint = part;
-                } else if (part.match(/^\d+(\.\d+)?[KMGTP]?$/i) && !fsavail) {
-                    fsavail = part;
-                } else if (part.match(/^\d+%$/)) {
-                    fsuse = part;
-                }
-            }
-            const devicePath = `/dev/${name}`;
-            if (!result.deviceMap[devicePath]) {
-                result.deviceMap[devicePath] = {
-                    name, device: devicePath,
-                    type: name.match(/^[a-z]+$/) ? 'disk' : 'part'
-                };
-                if (name.match(/^[a-z]+$/)) result.disks.push(result.deviceMap[devicePath]);
-                else if (!name.startsWith('loop')) result.partitions.push(result.deviceMap[devicePath]);
-            }
-            const deviceInfo = result.deviceMap[devicePath];
-            if (fstype) deviceInfo.fstype = fstype;
-            if (uuid) {
-                deviceInfo.uuid = uuid;
-                result.uuidMap[uuid] = devicePath;
-                result.uuidMap[uuid.toLowerCase()] = devicePath;
-                result.uuidMap[uuid.toUpperCase()] = devicePath;
-            }
-            if (mountpoint) {
-                deviceInfo.mountpoint = mountpoint;
-                result.mountPoints[mountpoint] = devicePath;
-            }
-            if (fsavail) deviceInfo.fsavail = fsavail;
-            if (fsuse) deviceInfo.fsuse = fsuse;
-        }
-    },
-
-    _parseBlkid: function(content, result) {
-        result.rawOutput.blkid = content;
-        for (const line of content.split('\n')) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
-            const deviceMatch = trimmed.match(/^(\/dev\/\S+):\s*(.*)/);
-            if (!deviceMatch) continue;
-            const device = deviceMatch[1];
-            const attrs = deviceMatch[2];
-            const uuid = attrs.match(/\bUUID="([^"]+)"/)?.[1];
-            const type = attrs.match(/\bTYPE="([^"]+)"/)?.[1];
-            const partuuid = attrs.match(/\bPARTUUID="([^"]+)"/)?.[1];
-            const label = attrs.match(/\bLABEL="([^"]+)"/)?.[1];
-            const blockSize = attrs.match(/\bBLOCK_SIZE="([^"]+)"/)?.[1];
-            if (!result.deviceMap[device]) {
-                result.deviceMap[device] = {
-                    name: device.replace('/dev/', ''),
-                    device, type: 'part'
-                };
-                result.partitions.push(result.deviceMap[device]);
-            }
-            const deviceInfo = result.deviceMap[device];
-            if (uuid) {
-                deviceInfo.uuid = uuid;
-                result.uuidMap[uuid] = device;
-                result.uuidMap[uuid.toLowerCase()] = device;
-                result.uuidMap[uuid.toUpperCase()] = device;
-            }
-            if (type) deviceInfo.fstype = type;
-            if (partuuid) deviceInfo.partuuid = partuuid;
-            if (label) deviceInfo.label = label;
-            if (blockSize) deviceInfo.blockSize = blockSize;
-        }
-    },
-
-    _parseInspectDiskFilesystems: function(content, result) {
-        if (!content.includes('Filesystem Status:')) return;
-        result.rawOutput.inspectDisk = content;
-
-        const lines = content.split('\n');
-        let inSection = false;
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (trimmed === 'Filesystem Status:') {
-                inSection = true;
-                continue;
-            }
-            if (inSection && (
-                trimmed === ''
-                || trimmed.startsWith('Inspection')
-                || trimmed.startsWith('=====')
-                || /^\d{2}:\d{2}:\d{2}\s+Executing/.test(trimmed)
-            )) break;
-            if (!inSection) continue;
-
-            const fsMatch = trimmed.match(/^(\/dev\/\S+):\s+(\S+)\s+\[uuid=([^\]]*)\]/);
-            if (!fsMatch) continue;
-            const device = fsMatch[1];
-            const fstype = fsMatch[2];
-            const uuid = fsMatch[3] || null;
-            if (fstype === 'unknown' && !uuid) continue;
-            const isLvm = /^\/dev\/[^/]+\/[^/]+$/.test(device) && !device.match(/^\/dev\/sd[a-z]\d+$/);
-            const type = isLvm ? 'lvm' : 'part';
-            if (!result.deviceMap[device]) {
-                const deviceInfo = {
-                    name: device.replace('/dev/', ''),
-                    device, type, source: 'InspectIaaSDisk'
-                };
-                result.deviceMap[device] = deviceInfo;
-                result.partitions.push(deviceInfo);
-            }
-            const deviceInfo = result.deviceMap[device];
-            if (fstype && fstype !== 'unknown') deviceInfo.fstype = fstype;
-            if (uuid) {
-                deviceInfo.uuid = uuid;
-                result.uuidMap[uuid] = device;
-                result.uuidMap[uuid.toLowerCase()] = device;
-                result.uuidMap[uuid.toUpperCase()] = device;
-            }
-        }
     }
 };

@@ -21,15 +21,8 @@
  * @see {@link module:worker} for registration in SCC_RULES.
  */
 
-function debugLog(...args) {
-    if (typeof DEBUG_CONFIG !== 'undefined' && DEBUG_CONFIG.unix) {
-        console.log('[unix.js]', ...args);
-    }
-}
-
 function _wasmCall(fnName, content, filename, fallback) {
     if (typeof WASM_BRIDGE === 'undefined' || !WASM_BRIDGE.isReady()) {
-        debugLog('WASM not ready -- returning empty result for', fnName, filename);
         return fallback;
     }
     try {
@@ -197,7 +190,6 @@ const kernelTuningParser = {
         // Recompute FIPS detection from merged parameters
         accumulated.fipsEnabled = parameters['crypto.fips_enabled'] === '1';
 
-        debugLog('[kernelTuning] merged: parameters:', Object.keys(accumulated.parameters).length, 'warnings:', warnings.length, 'fipsEnabled:', accumulated.fipsEnabled);
     }
 };
 

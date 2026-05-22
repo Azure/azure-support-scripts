@@ -248,6 +248,16 @@ pub struct MtabAnalysisResult {
     pub source_path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct NvmeListResult {
+    pub found: bool,
+    pub has_nvme: bool,
+    pub drive_count: usize,
+    pub content: Option<String>,
+    pub filename: Option<String>,
+    pub source_path: String,
+}
+
 // ---------------------------------------------------------------------------
 // LVM
 // ---------------------------------------------------------------------------
@@ -1061,6 +1071,28 @@ pub fn parse_mtab_analysis(content: &str, source_path: &str) -> MtabAnalysisResu
     }
 }
 
+pub fn parse_nvme_list(content: &str, source_path: &str) -> NvmeListResult {
+    let non_empty_count = content.lines().filter(|l| !l.trim().is_empty()).count();
+    let has_nvme = non_empty_count > 2;
+
+    NvmeListResult {
+        found: has_nvme,
+        has_nvme,
+        drive_count: non_empty_count.saturating_sub(2),
+        content: if has_nvme {
+            Some(content.to_string())
+        } else {
+            None
+        },
+        filename: if source_path.is_empty() {
+            None
+        } else {
+            Some(source_path.to_string())
+        },
+        source_path: source_path.to_string(),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // JSON wrappers
 // ---------------------------------------------------------------------------
@@ -1097,6 +1129,11 @@ pub fn parse_df_output_json(content: &str, source_path: &str) -> String {
 
 pub fn parse_mtab_analysis_json(content: &str, source_path: &str) -> String {
     serde_json::to_string(&parse_mtab_analysis(content, source_path))
+        .unwrap_or_else(|_| "{}".to_string())
+}
+
+pub fn parse_nvme_list_json(content: &str, source_path: &str) -> String {
+    serde_json::to_string(&parse_nvme_list(content, source_path))
         .unwrap_or_else(|_| "{}".to_string())
 }
 
@@ -1242,6 +1279,31 @@ mod tests {
             assert!(d.source_line.is_some());
         }
         assert!(!blk.partitions.is_empty() || !blk.disks.is_empty());
+    }
+
+    // ---- NVMe list ---------------------------------------------------------
+
+    #[test]
+    fn parses_nvme_list_header_only() {
+        let input = "Node             SN                   Model\n-----------------------------------------------\n";
+        let result = parse_nvme_list(input, "sos_commands/nvme/nvme_list");
+        assert!(!result.found);
+        assert!(!result.has_nvme);
+        assert_eq!(result.drive_count, 0);
+    }
+
+    #[test]
+    fn parses_nvme_list_with_devices() {
+        let input = concat!(
+            "Node             SN                   Model\n",
+            "-----------------------------------------------\n",
+            "/dev/nvme0n1     deadbeef123         NVMeDisk\n",
+            "/dev/nvme1n1     cafe1234abcd         NVMeDisk\n"
+        );
+        let result = parse_nvme_list(input, "sos_commands/nvme/nvme_list");
+        assert!(result.found);
+        assert!(result.has_nvme);
+        assert_eq!(result.drive_count, 2);
     }
 
     // ---- fstab --------------------------------------------------------------

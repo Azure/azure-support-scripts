@@ -1,7 +1,7 @@
 /**
  * @module parsers/services
  * @description WASM-shim parsers for distro/cluster service detection.
- * All 13 parsers delegate to `supportfile_core::parsers::services`.
+ * All parsers delegate to `supportfile_core::parsers::services`.
  *
  * Per-parser field aliases bring the WASM result back in line with the
  * legacy schema the Leptos sections consume:
@@ -15,14 +15,19 @@
  * the raw content with that line number.
  */
 
-function debugLog() {
-    if (typeof DEBUG_CONFIG !== 'undefined' && DEBUG_CONFIG.services) {
-        console.log.apply(console, ['[services.js]'].concat(Array.from(arguments)));
-    }
-}
-
 function emptyEvents() { return { found: false, count: 0, events: [] }; }
 function emptyDetect() { return { found: false }; }
+
+function callServicesWasm(fnName, content, filename, fallback) {
+    if (typeof WASM_BRIDGE === 'undefined' || !WASM_BRIDGE.isReady()) return fallback;
+    try {
+        const result = WASM_BRIDGE.parseJson(fnName, content, filename || '');
+        return result == null ? fallback : result;
+    } catch (err) {
+        console.error('[services.js]', fnName, err);
+        return fallback;
+    }
+}
 
 function lineSnippet(content, lineNo) {
     if (!content || !lineNo || typeof lineNo !== 'number') return null;
@@ -32,13 +37,7 @@ function lineSnippet(content, lineNo) {
 }
 
 function callServiceEvents(fnName, content, filename) {
-    if (typeof WASM_BRIDGE === 'undefined' || !WASM_BRIDGE.isReady()) return emptyEvents();
-    let r;
-    try { r = WASM_BRIDGE.parseJson(fnName, content, filename || ''); }
-    catch (err) { console.error('[services.js]', fnName, err); return emptyEvents(); }
-    if (r == null) return emptyEvents();
-    WASM_BRIDGE.aliasKeys(r, { sourcePath: 'sourceFile' });
-    return r;
+    return callServicesWasm(fnName, content, filename, emptyEvents());
 }
 
 /**
@@ -64,29 +63,18 @@ function decorateDetection(rawResult, content, filename, opts) {
 }
 
 function callDetection(fnName, content, filename, opts) {
-    if (typeof WASM_BRIDGE === 'undefined' || !WASM_BRIDGE.isReady()) return emptyDetect();
-    let r;
-    try { r = WASM_BRIDGE.parseJson(fnName, content, filename || ''); }
-    catch (err) { console.error('[services.js]', fnName, err); return emptyDetect(); }
+    const r = callServicesWasm(fnName, content, filename, emptyDetect());
     return decorateDetection(r, content, filename, opts);
 }
 
 function callSecurityDetection(fnName, content) {
-    if (typeof WASM_BRIDGE === 'undefined' || !WASM_BRIDGE.isReady()) return emptyDetect();
-    let r;
-    try { r = WASM_BRIDGE.parseJson(fnName, content, ''); }
-    catch (err) { console.error('[services.js]', fnName, err); return emptyDetect(); }
+    const r = callServicesWasm(fnName, content, '', emptyDetect());
     if (!r || !r.found) return { found: false };
     return { found: true, message: r.message };
 }
 
 function callConfigCheck(fnName, content) {
-    if (typeof WASM_BRIDGE === 'undefined' || !WASM_BRIDGE.isReady()) return emptyDetect();
-    let r;
-    try { r = WASM_BRIDGE.parseJson(fnName, content, ''); }
-    catch (err) { console.error('[services.js]', fnName, err); return emptyDetect(); }
-    if (!r) return emptyDetect();
-    return r;
+    return callServicesWasm(fnName, content, '', emptyDetect());
 }
 
 const sshServiceParser = {
@@ -115,6 +103,20 @@ const guardicoreAgentParser = {
     filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
     parse: function(content, filename, _lines) {
         return callDetection('parseGuardicoreAgent', content, filename);
+    }
+};
+
+const puppetAgentParser = {
+    filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
+    parse: function(content, filename, _lines) {
+        return callDetection('parsePuppetAgent', content, filename);
+    }
+};
+
+const chefClientParser = {
+    filePattern: /(?:sos_commands\/systemd\/systemctl_list-unit-files|systemd-status\.txt)$/,
+    parse: function(content, filename, _lines) {
+        return callDetection('parseChefClient', content, filename);
     }
 };
 
@@ -163,10 +165,7 @@ const msDefenderConfigParser = {
 const involfltVersionParser = {
     filePattern: /modules\.txt$/,
     parse: function(content, filename, _lines) {
-        if (typeof WASM_BRIDGE === 'undefined' || !WASM_BRIDGE.isReady()) return { found: false };
-        let r;
-        try { r = WASM_BRIDGE.parseJson('parseInvolfltVersion', content, filename || ''); }
-        catch (err) { console.error('[services.js] parseInvolfltVersion', err); return { found: false }; }
+        const r = callServicesWasm('parseInvolfltVersion', content, filename, emptyDetect());
         if (!r || !r.found) return { found: false };
         return r;
     }
@@ -175,13 +174,8 @@ const involfltVersionParser = {
 const involfltKernelVersionParser = {
     filePattern: /\/(messages|boot)(?:[.-]\d+)?(?:\.txt)?$/,
     parse: function(content, filename, _lines) {
-        if (typeof WASM_BRIDGE === 'undefined' || !WASM_BRIDGE.isReady()) return null;
-        let r;
-        try { r = WASM_BRIDGE.parseJson('parseInvolfltKernelVersion', content, filename || ''); }
-        catch (err) { console.error('[services.js] parseInvolfltKernelVersion', err); return null; }
+        const r = callServicesWasm('parseInvolfltKernelVersion', content, filename, null);
         if (!r || !r.found) return null;
-        // Legacy field name
-        if (!r.detectionFile) r.detectionFile = filename;
         return r;
     }
 };
@@ -189,12 +183,8 @@ const involfltKernelVersionParser = {
 const azureExtensionsParser = {
     filePattern: /var\/lib\/waagent\/[^\/]+\/config\/HandlerStatus$/,
     parse: function(content, filename, _lines) {
-        if (typeof WASM_BRIDGE === 'undefined' || !WASM_BRIDGE.isReady()) return null;
-        let r;
-        try { r = WASM_BRIDGE.parseJson('parseAzureExtensions', content, filename || ''); }
-        catch (err) { console.error('[services.js] parseAzureExtensions', err); return null; }
+        const r = callServicesWasm('parseAzureExtensions', content, filename, null);
         if (!r || !r.found) return null;
-        WASM_BRIDGE.aliasKeys(r, { sourcePath: 'sourceFile' });
         return r;
     }
 };

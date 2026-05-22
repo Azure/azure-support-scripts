@@ -21,15 +21,8 @@
  *      suseCloudRegister, waagentConfig, waagentLog).
  */
 
-function debugLog(...args) {
-    if (typeof DEBUG_CONFIG !== 'undefined' && DEBUG_CONFIG.azure) {
-        console.log('[azure.js]', ...args);
-    }
-}
-
 function _wasmCall(fnName, content, filename, fallback) {
     if (typeof WASM_BRIDGE === 'undefined' || !WASM_BRIDGE.isReady()) {
-        debugLog('WASM not ready -- returning empty result for', fnName, filename);
         return fallback;
     }
     try {
@@ -60,7 +53,6 @@ const azureVMPropertiesParser = {
                 }
             }
         }
-        debugLog('azureVMProperties result for', filename, '-> found =', result && result.found);
         return result;
     }
 };
@@ -78,7 +70,6 @@ const suseCloudRegisterParser = {
 
     parse: function(content, filename, _lines) {
         const result = _wasmCall('parseSuseCloudRegister', content, filename, { found: false });
-        debugLog('suseCloudRegister result for', filename, '-> found =', result && result.found);
         return result;
     }
 };
@@ -111,8 +102,6 @@ const waagentConfigParser = {
                 }
             }
         }
-        debugLog('waagentConfig result for', filename, '-> found =', result && result.found,
-            'warnings =', (result && result.warnings && result.warnings.length) || 0);
         return result;
     }
 };
@@ -130,8 +119,6 @@ const waagentLogParser = {
 
     parse: function(content, filename, _lines) {
         const result = _wasmCall('parseWaagentLog', content, filename, { found: false });
-        debugLog('waagentLog result for', filename, '-> found =', result && result.found,
-            'errors =', (result && result.totalErrors) || 0);
         return result;
     }
 };

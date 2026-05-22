@@ -8,22 +8,13 @@
  * file content).  This shim invokes the Rust parser once per matching
  * file and exposes a `mergeResults` helper for the worker to fold
  * results across many files (see worker.js's `networkInterfaces`
- * branch).  The legacy field name `iface_type` (Rust) becomes
- * `ifaceType` after snake→camel; we alias it to `type` to keep
- * existing consumers happy.
+ * branch).  The merge helper tolerates both legacy `type` and
+ * Rust-native camelCase `ifaceType`.
  */
-
-function netIfDebugLog() {
-    if (typeof DEBUG_CONFIG !== 'undefined' && DEBUG_CONFIG.networkInterfaces) {
-        console.log.apply(console, ['[network-interfaces.js]'].concat(Array.from(arguments)));
-    }
-}
 
 function emptyNetIfResult() {
     return { found: false, interfaces: {}, raw: {} };
 }
-
-const NETIF_ALIASES = { ifaceType: 'type' };
 
 const networkInterfacesParser = {
     filePattern: /(?:network\.txt$|sos_commands\/networking\/ip_-o_addr$|sos_commands\/networking\/ip_-s_-d_link$|sos_commands\/networking\/ethtool_-i_\w+|sos_commands\/networkmanager\/nmcli_con_show_id_|etc\/sysconfig\/network-scripts\/ifcfg-|etc\/sysconfig\/network\/(?:network\/)?ifcfg-|etc\/netplan\/|var\/log\/cloud-init-output\.log$|(?:^|\/)messages$)/,
@@ -41,9 +32,7 @@ const networkInterfacesParser = {
             return emptyNetIfResult();
         }
         if (result == null) return emptyNetIfResult();
-        WASM_BRIDGE.aliasKeys(result, NETIF_ALIASES);
         if (!result.raw) result.raw = {};
-        netIfDebugLog('Parsed', filename, '→ interfaces:', Object.keys(result.interfaces || {}).length);
         return result;
     },
 
@@ -83,7 +72,8 @@ const networkInterfacesParser = {
             if (iface.accelNet) e.accelNet = true;
             if (iface.bootproto && !e.bootproto) e.bootproto = iface.bootproto;
             if (iface.master && !e.master) e.master = iface.master;
-            if (iface.type && !e.type) e.type = iface.type;
+            const ifaceType = iface.type || iface.ifaceType;
+            if (ifaceType && !e.type) e.type = ifaceType;
             if (iface.firmwareVersion && !e.firmwareVersion) e.firmwareVersion = iface.firmwareVersion;
             if (iface.busInfo && !e.busInfo) e.busInfo = iface.busInfo;
             if (Array.isArray(iface.ipv4)) {
