@@ -61,6 +61,10 @@ jobs:
       run: ./build.sh
       working-directory: rca-tool/web-leptos
 
+    - name: Verify no standalone parser/helper JS assets
+      run: ./check_no_standalone_js_assets.sh
+      working-directory: rca-tool/web-leptos
+
     - name: Prepare deployment directory
       run: |
         cd rca-tool/
