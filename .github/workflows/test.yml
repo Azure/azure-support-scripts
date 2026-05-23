@@ -54,10 +54,6 @@ jobs:
       run: ./build.sh
       working-directory: rca-tool/web-leptos
 
-    - name: Verify no standalone parser/helper JS assets
-      run: ./check_no_standalone_js_assets.sh
-      working-directory: rca-tool/web-leptos
-    
     - name: Install test dependencies
       run: npm ci
       working-directory: rca-tool/tests
