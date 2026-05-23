@@ -37,13 +37,21 @@ if grep -q '^let wasm_bindgen =' "${LZMA_STREAM_WASM_PKG}/lzma_stream_wasm.js"; 
     sed -i 's/^let wasm_bindgen =/let lzma_bindgen =/' "${LZMA_STREAM_WASM_PKG}/lzma_stream_wasm.js"
 fi
 
-echo "==> Copying JS assets…"
-mkdir -p assets/parsers assets/lzma-stream-wasm assets/supportfile-wasm
-cp ../src/worker.js assets/liblzma-streaming-worker.js
-cp ../src/parsers/*.js        assets/parsers/
-cp ../src/utils.js            assets/
-cp ../src/performance.js      assets/
-cp ../src/wasm-bridge.js      assets/
+echo "==> Building bundled worker asset…"
+mkdir -p assets/lzma-stream-wasm assets/supportfile-wasm
+cat \
+    ../src/wasm-bridge.js \
+    ../src/parsers/unix.js \
+    ../src/parsers/services.js \
+    ../src/parsers/events.js \
+    ../src/parsers/azure.js \
+    ../src/parsers/cluster.js \
+    ../src/parsers/storage.js \
+    ../src/parsers/networking.js \
+    ../src/parsers/network-interfaces.js \
+    ../src/parsers/vmcore.js \
+    ../src/parsers/debugfs.js \
+    ../src/worker.js > assets/liblzma-streaming-worker.js
 
 cp "${LZMA_STREAM_WASM_PKG}/lzma_stream_wasm.js"      assets/lzma-stream-wasm/
 cp "${LZMA_STREAM_WASM_PKG}/lzma_stream_wasm_bg.wasm" assets/lzma-stream-wasm/
