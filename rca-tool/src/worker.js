@@ -579,6 +579,9 @@ if (typeof waagentConfigParser !== 'undefined') {
 if (typeof waagentLogParser !== 'undefined') {
     SCC_RULES.waagentLog = waagentLogParser;
 }
+if (typeof secureBootParser !== 'undefined') {
+    SCC_RULES.secureBoot = secureBootParser;
+}
 
 // From parsers/cluster.js
 // Initialize cluster parsers
@@ -2925,6 +2928,7 @@ class IncrementalTARParser {
             vmcore: this.analysisResults.vmcore || null,
             waagentConfig: this.analysisResults.waagentConfig || null,
             waagentLog: this.analysisResults.waagentLog || null,
+            secureBoot: this.analysisResults.secureBoot || null,
             hvBalloon: this.analysisResults.hvBalloon || null,
             extfrag: this.analysisResults.extfrag || null,
             usedPaxFormat: this.usedPaxFormat || false,  // Flag if PAX format was detected

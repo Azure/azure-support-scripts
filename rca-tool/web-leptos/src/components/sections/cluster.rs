@@ -986,9 +986,9 @@ fn render_cluster_events(events: &Value) -> Option<AnyView> {
                                         let action = json_text(&migration, "action");
                                         let from_node = json_text(&migration, "fromNode");
                                         let to_node = json_text(&migration, "toNode");
-                                        let source_file = json_text(&migration, "sourceFile");
+                                        let source_file = first_non_empty_text(&migration, &["sourcePath", "sourceFile"]);
                                         let source_line = json_text(&migration, "sourceLine");
-                                        let log_line = json_text(&migration, "logLine");
+                                        let log_line = first_non_empty_text(&migration, &["rawLine", "logLine"]);
                                         let description = if action == "migration" && !from_node.is_empty() && !to_node.is_empty() {
                                             format!("migrated from {} to {}", from_node, to_node)
                                         } else if action == "start" && !to_node.is_empty() {
@@ -1072,9 +1072,9 @@ fn render_cluster_events(events: &Value) -> Option<AnyView> {
                                         let target_node = json_text(&event, "targetNode");
                                         let action = json_text(&event, "action");
                                         let agent = json_text(&event, "agent");
-                                        let source_file = json_text(&event, "sourceFile");
+                                        let source_file = first_non_empty_text(&event, &["sourcePath", "sourceFile"]);
                                         let source_line = json_text(&event, "sourceLine");
-                                        let log_line = json_text(&event, "logLine");
+                                        let log_line = first_non_empty_text(&event, &["rawLine", "logLine"]);
                                         let status_class = match status.as_str() {
                                             "success" => "text-success",
                                             "failed" => "text-danger",
@@ -1373,6 +1373,16 @@ fn resource_spec(resource: &Value) -> String {
 
 fn json_text(value: &Value, key: &str) -> String {
     value.get(key).and_then(value_as_text).unwrap_or_default()
+}
+
+fn first_non_empty_text(value: &Value, keys: &[&str]) -> String {
+    for key in keys {
+        let text = json_text(value, key);
+        if !text.is_empty() {
+            return text;
+        }
+    }
+    String::new()
 }
 
 fn value_as_text(value: &Value) -> Option<String> {

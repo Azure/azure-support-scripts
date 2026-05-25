@@ -3827,6 +3827,34 @@ EOF
 
 create_fixture "test-fips-inconsistent"
 
+# ============================================================================
+# SecureBoot fixtures (sosreport-only: sos_commands/boot/mokutil_--sb-state)
+# ============================================================================
+
+echo ""
+echo "=== Creating test-secureboot-disabled.tar.xz ==="
+mkdir -p test-data/sos_commands/boot
+cat > test-data/sos_commands/boot/mokutil_--sb-state << 'EOF'
+SecureBoot disabled
+EOF
+create_fixture "test-secureboot-disabled"
+
+echo ""
+echo "=== Creating test-secureboot-enabled.tar.xz ==="
+mkdir -p test-data/sos_commands/boot
+cat > test-data/sos_commands/boot/mokutil_--sb-state << 'EOF'
+SecureBoot enabled
+EOF
+create_fixture "test-secureboot-enabled"
+
+echo ""
+echo "=== Creating test-secureboot-unsupported.tar.xz ==="
+mkdir -p test-data/sos_commands/boot
+cat > test-data/sos_commands/boot/mokutil_--sb-state << 'EOF'
+EFI variables are not supported on this system
+EOF
+create_fixture "test-secureboot-unsupported"
+
 echo ""
 echo "========================================="
 echo "All test fixtures created successfully!"

@@ -122,3 +122,20 @@ const waagentLogParser = {
         return result;
     }
 };
+
+// ---------------------------------------------------------------------------
+// secureBoot
+// ---------------------------------------------------------------------------
+//
+// Only available in sosreport archives (file:
+// `sos_commands/boot/mokutil_--sb-state`). supportconfig has no equivalent.
+// No alias patching needed — all fields map cleanly via snake→camel.
+
+const secureBootParser = {
+    filePattern: /sos_commands\/boot\/mokutil_--sb-state$/,
+
+    parse: function(content, filename, _lines) {
+        const result = _wasmCall('parseSecureBoot', content, filename, { found: false });
+        return result;
+    }
+};

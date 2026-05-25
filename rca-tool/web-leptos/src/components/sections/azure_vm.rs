@@ -819,3 +819,71 @@ fn disk_badge_class(raw: &str) -> &'static str {
         _ => "badge",
     }
 }
+
+/// SecureBoot status section. Only available from sosreport archives
+/// (`sos_commands/boot/mokutil_--sb-state`). Renders a single info/warning
+/// block depending on enabled/disabled/unsupported state.
+#[component]
+pub fn SecureBootSection(data: Value) -> impl IntoView {
+    let sb = data.get("secureBoot").cloned().unwrap_or(Value::Null);
+    if !json_bool(&sb, "found") {
+        return view! {}.into_any();
+    }
+
+    let supported = sb
+        .get("supported")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let enabled = sb.get("enabled").and_then(|v| v.as_bool());
+    let state_text = json_str(&sb, "stateText");
+    let source_path = json_str(&sb, "sourcePath");
+
+    let (block_class, badge_class, status_label, summary_text) = if !supported {
+        (
+            "warning-block",
+            "badge badge-warning",
+            "Not supported".to_string(),
+            "SecureBoot: Not supported (no EFI variables)".to_string(),
+        )
+    } else {
+        match enabled {
+            Some(true) => (
+                "info-block",
+                "badge badge-success",
+                "Enabled".to_string(),
+                "SecureBoot: Enabled".to_string(),
+            ),
+            Some(false) => (
+                "warning-block",
+                "badge badge-warning",
+                "Disabled".to_string(),
+                "SecureBoot: Disabled".to_string(),
+            ),
+            None => (
+                "info-block",
+                "badge",
+                "Unknown".to_string(),
+                "SecureBoot: Unknown".to_string(),
+            ),
+        }
+    };
+
+    view! {
+        <details class=block_class open=true>
+            <summary>{summary_text}</summary>
+            <div class="section-body">
+                <p>
+                    "Status: "
+                    <span class=badge_class>{status_label}</span>
+                </p>
+                {(!state_text.is_empty()).then(|| view! {
+                    <p>"Raw state: " <code>{state_text}</code></p>
+                })}
+                {(!source_path.is_empty()).then(|| view! {
+                    <p class="text-muted"><small>"Source: " <code>{source_path}</code></small></p>
+                })}
+            </div>
+        </details>
+    }
+    .into_any()
+}

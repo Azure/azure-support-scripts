@@ -384,6 +384,11 @@ pub fn parse_ssh_service_issues_json(content: &str, source_path: &str) -> String
     sf::parse_ssh_service_issues_json(content, source_path)
 }
 
+#[wasm_bindgen(js_name = parseSecureBoot)]
+pub fn parse_secure_boot_json(content: &str, source_path: &str) -> String {
+    sf::parse_secure_boot_json(content, source_path)
+}
+
 #[wasm_bindgen(js_name = parseSuseCloudRegister)]
 pub fn parse_suse_cloud_register_json(content: &str, source_path: &str) -> String {
     sf::parse_suse_cloud_register_json(content, source_path)

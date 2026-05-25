@@ -237,4 +237,22 @@ test.describe('Azure Parser', () => {
     expect(content).not.toContain('firewall (wire-server access control) is disabled');
     expect(content).not.toContain('Swap is enabled on the resource');
   });
+
+  test('detects SecureBoot disabled from sosreport mokutil --sb-state', async ({ page }) => {
+    const result = await uploadAndWaitForAnalysis(page, 'scc_test-secureboot-disabled.tar.xz');
+    expect(result).toContain('SecureBoot');
+    expect(result).toContain('Disabled');
+  });
+
+  test('detects SecureBoot enabled from sosreport mokutil --sb-state', async ({ page }) => {
+    const result = await uploadAndWaitForAnalysis(page, 'scc_test-secureboot-enabled.tar.xz');
+    expect(result).toContain('SecureBoot');
+    expect(result).toContain('Enabled');
+  });
+
+  test('detects SecureBoot unsupported from sosreport mokutil --sb-state', async ({ page }) => {
+    const result = await uploadAndWaitForAnalysis(page, 'scc_test-secureboot-unsupported.tar.xz');
+    expect(result).toContain('SecureBoot');
+    expect(result).toContain('Not supported');
+  });
 });

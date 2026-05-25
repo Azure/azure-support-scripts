@@ -3,7 +3,9 @@ use leptos::prelude::*;
 use crate::worker_bridge::WorkerResult;
 
 use super::sections::archive::ArchiveSection;
-use super::sections::azure_vm::{AzureExtensionsSection, AzureVmSection, WaagentLogSection};
+use super::sections::azure_vm::{
+    AzureExtensionsSection, AzureVmSection, SecureBootSection, WaagentLogSection,
+};
 use super::sections::cluster::{ApplicationsSection, ClusterSection, SapInstanceSection};
 use super::sections::distribution::DistributionSection;
 use super::sections::events::EventsSection;
@@ -77,6 +79,7 @@ pub fn AnalysisView(result: ReadSignal<WorkerResult>) -> impl IntoView {
 
                     // Sections in the same order as the original HTML
                     <AzureVmSection data=json.clone()/>
+                    <SecureBootSection data=json.clone()/>
                     <WaagentLogSection data=json.clone()/>
                     <InspectDiskSection data=json.clone()/>
                     <ClusterSection data=json.clone()/>

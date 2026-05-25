@@ -130,6 +130,16 @@ pub struct WaagentLogResult {
     pub source_path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SecureBootResult {
+    pub found: bool,
+    pub enabled: Option<bool>,
+    pub supported: bool,
+    pub state_text: String,
+    pub source_path: String,
+    pub source_line: Option<usize>,
+}
+
 fn norm_bool(val: Option<&String>) -> Option<bool> {
     let value = val?.trim().to_ascii_lowercase();
     match value.as_str() {
@@ -756,6 +766,82 @@ pub fn parse_waagent_log_json(content: &str, source_path: &str) -> String {
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
+/// Parse the output of `mokutil --sb-state` as captured by sosreport at
+/// `sos_commands/boot/mokutil_--sb-state`.
+///
+/// Recognized states:
+///   - "SecureBoot enabled"  -> enabled = Some(true),  supported = true
+///   - "SecureBoot disabled" -> enabled = Some(false), supported = true
+///   - "EFI variables are not supported on this system" (or similar)
+///     -> enabled = None, supported = false
+///
+/// This information is only present in sosreport archives; supportconfig
+/// does not capture an equivalent file.
+pub fn parse_secure_boot(content: &str, source_path: &str) -> SecureBootResult {
+    let truncated = if content.len() > 16 * 1024 {
+        &content[..16 * 1024]
+    } else {
+        content
+    };
+
+    let mut found = false;
+    let mut enabled: Option<bool> = None;
+    let mut supported = true;
+    let mut state_text = String::new();
+    let mut source_line: Option<usize> = None;
+
+    for (line_idx, line) in truncated.lines().enumerate().take(50) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        if lower.contains("secureboot enabled") || lower == "secureboot: enabled" {
+            found = true;
+            enabled = Some(true);
+            supported = true;
+            state_text = trimmed.to_string();
+            source_line = Some(line_idx + 1);
+            break;
+        }
+        if lower.contains("secureboot disabled") || lower == "secureboot: disabled" {
+            found = true;
+            enabled = Some(false);
+            supported = true;
+            state_text = trimmed.to_string();
+            source_line = Some(line_idx + 1);
+            break;
+        }
+        if lower.contains("efi variables are not supported")
+            || lower.contains("efi variables not supported")
+            || lower.contains("this system doesn't support secure boot")
+        {
+            found = true;
+            enabled = None;
+            supported = false;
+            state_text = trimmed.to_string();
+            source_line = Some(line_idx + 1);
+            break;
+        }
+    }
+
+    SecureBootResult {
+        found,
+        enabled,
+        supported,
+        state_text,
+        source_path: source_path.to_string(),
+        source_line,
+    }
+}
+
+pub fn parse_secure_boot_json(content: &str, source_path: &str) -> String {
+    let mut value = serde_json::to_value(parse_secure_boot(content, source_path))
+        .unwrap_or(serde_json::Value::Null);
+    crate::parsers::fill_source_path(&mut value, source_path);
+    serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -852,5 +938,47 @@ mod tests {
         assert_eq!(result.goal_state_errors.len(), 1);
         assert_eq!(result.extension_errors.len(), 1);
         assert_eq!(result.imds_errors.len(), 1);
+    }
+
+    #[test]
+    fn secure_boot_detects_disabled() {
+        let result = parse_secure_boot(
+            "SecureBoot disabled\n",
+            "sos_commands/boot/mokutil_--sb-state",
+        );
+        assert!(result.found);
+        assert_eq!(result.enabled, Some(false));
+        assert!(result.supported);
+        assert_eq!(result.state_text, "SecureBoot disabled");
+        assert_eq!(result.source_line, Some(1));
+    }
+
+    #[test]
+    fn secure_boot_detects_enabled() {
+        let result = parse_secure_boot(
+            "SecureBoot enabled\n",
+            "sos_commands/boot/mokutil_--sb-state",
+        );
+        assert!(result.found);
+        assert_eq!(result.enabled, Some(true));
+        assert!(result.supported);
+    }
+
+    #[test]
+    fn secure_boot_detects_unsupported() {
+        let result = parse_secure_boot(
+            "EFI variables are not supported on this system\n",
+            "sos_commands/boot/mokutil_--sb-state",
+        );
+        assert!(result.found);
+        assert_eq!(result.enabled, None);
+        assert!(!result.supported);
+    }
+
+    #[test]
+    fn secure_boot_empty_returns_not_found() {
+        let result = parse_secure_boot("", "sos_commands/boot/mokutil_--sb-state");
+        assert!(!result.found);
+        assert_eq!(result.enabled, None);
     }
 }

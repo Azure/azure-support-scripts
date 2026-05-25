@@ -22,7 +22,8 @@ use supportfile_core::{
     parse_os_release_json, parse_pacemaker_high_cpu_json, parse_ptp_clock_source_json,
     parse_ptp_device_json, parse_raid_config_json, parse_package_distro_mismatch_json,
     parse_rhel_rhui_check_json,
-    parse_rhui_config_json, parse_rhui_errors_json, parse_ssh_service_issues_json,
+    parse_rhui_config_json, parse_rhui_errors_json, parse_secure_boot_json,
+    parse_ssh_service_issues_json,
     parse_suse_cloud_register_json, parse_time_sync_json, parse_time_sync_service_json,
     parse_timedatectl_json, parse_trend_micro_json, parse_vmcore_dmesg_json,
     parse_vmcore_summary_json, parse_waagent_config_json, parse_waagent_log_json,
@@ -217,6 +218,22 @@ fn parse_azure_vm_generation(content: &str, source_path: &str) -> PyResult<Strin
 #[pyo3(signature = (content, source_path=""))]
 fn parse_suse_cloud_register(content: &str, source_path: &str) -> PyResult<String> {
     Ok(parse_suse_cloud_register_json(content, source_path))
+}
+
+/// Detect UEFI Secure Boot state from the sosreport ``mokutil --sb-state``
+/// capture (``sos_commands/boot/mokutil_--sb-state``).
+///
+/// Args:
+///     content (str): Output of ``mokutil --sb-state``.
+///     source_path (str): Optional source path for provenance.
+///
+/// Returns:
+///     str: JSON-encoded object ``{"found", "enabled", "supported",
+///     "stateText", "sourcePath", "sourceLine"}``.
+#[pyfunction]
+#[pyo3(signature = (content, source_path=""))]
+fn parse_secure_boot(content: &str, source_path: &str) -> PyResult<String> {
+    Ok(parse_secure_boot_json(content, source_path))
 }
 
 /// Parse the Azure Linux Agent (waagent) configuration file.
@@ -1365,6 +1382,7 @@ fn supportfile(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_azure_vm_properties, m)?)?;
     m.add_function(wrap_pyfunction!(parse_azure_vm_generation, m)?)?;
     m.add_function(wrap_pyfunction!(parse_suse_cloud_register, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_secure_boot, m)?)?;
     m.add_function(wrap_pyfunction!(parse_waagent_config, m)?)?;
     m.add_function(wrap_pyfunction!(parse_waagent_log, m)?)?;
     m.add_function(wrap_pyfunction!(parse_hv_balloon, m)?)?;
