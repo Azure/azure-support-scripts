@@ -123,12 +123,18 @@ jobs:
         with:
           workspaces: ${{ env.PY_PKG_DIR }} -> target
 
-      - name: Install maturin
-        run: python -m pip install --upgrade pip maturin
-
-      - name: Build wheel
-        working-directory: ${{ env.PY_PKG_DIR }}
-        run: maturin build --release --out dist --target ${{ matrix.maturin_target }}-unknown-linux-gnu --compatibility linux
+      # Use PyO3/maturin-action which runs maturin inside a manylinux2014
+      # Docker container. This produces wheels with a `manylinux_2_17_*`
+      # (a.k.a. manylinux2014) platform tag, which PyPI accepts. Building
+      # maturin directly on ubuntu-24.04 produces plain `linux_*` wheels
+      # that PyPI rejects with HTTP 400 "unsupported platform tag".
+      - name: Build wheel (manylinux)
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.maturin_target }}
+          manylinux: '2014'
+          working-directory: ${{ env.PY_PKG_DIR }}
+          args: --release --out dist --strip
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v7
