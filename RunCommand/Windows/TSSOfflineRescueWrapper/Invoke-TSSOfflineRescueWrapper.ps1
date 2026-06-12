@@ -131,6 +131,11 @@ Write-Host "[tss] Completed TSS collection." -ForegroundColor Green
 $resolvedWindowsRoot = Resolve-OfflineWindowsRoot -RequestedPath $OfflineWindowsRoot
 $offlineRoot = Split-Path -Parent $resolvedWindowsRoot
 $timeStamp = Get-Date -Format "yyyyMMdd-HHmmss"
+
+if (-not (Test-Path -LiteralPath $OutputRoot)) {
+    New-Item -Path $OutputRoot -ItemType Directory -Force | Out-Null
+}
+
 $outputFolder = Join-Path $OutputRoot "offline-tss-wrapper-$timeStamp"
 
 if ((Test-Path -LiteralPath $outputFolder) -and -not $Force) {
