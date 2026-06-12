@@ -99,8 +99,13 @@ function Copy-IfPresent {
         New-Item -Path $destParent -ItemType Directory -Force | Out-Null
     }
 
-    Copy-Item -LiteralPath $Source -Destination $Destination -Recurse -Force
-    Write-Host "[copy] $Source -> $Destination" -ForegroundColor DarkCyan
+    try {
+        Copy-Item -LiteralPath $Source -Destination $Destination -Recurse -Force -ErrorAction Stop
+        Write-Host "[copy] $Source -> $Destination" -ForegroundColor DarkCyan
+    }
+    catch {
+        Write-Warning "[skip] Failed to copy $Source. Reason: $($_.Exception.Message)"
+    }
 }
 
 function Run-OptionalTss {
