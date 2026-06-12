@@ -135,6 +135,7 @@ Write-Host "[tss] Completed TSS collection." -ForegroundColor Green
 
 $resolvedWindowsRoot = Resolve-OfflineWindowsRoot -RequestedPath $OfflineWindowsRoot
 $offlineRoot = Split-Path -Parent $resolvedWindowsRoot
+$offlineRoot = if ([string]::IsNullOrWhiteSpace($offlineRoot)) { Split-Path -Qualifier $resolvedWindowsRoot } else { $offlineRoot }
 $timeStamp = Get-Date -Format "yyyyMMdd-HHmmss"
 
 if (-not (Test-Path -LiteralPath $OutputRoot)) {
