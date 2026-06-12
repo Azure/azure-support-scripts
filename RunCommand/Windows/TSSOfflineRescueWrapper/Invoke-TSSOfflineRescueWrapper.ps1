@@ -51,28 +51,33 @@ function Resolve-OfflineWindowsRoot {
         return $normalized
     }
 
-    $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -match "^[A-Z]:\\$" }
-    $candidates = New-Object System.Collections.Generic.List[string]
+$drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Root -match "^[A-Z]:\\$" }
+$candidates = New-Object System.Collections.Generic.List[string]
+$localWindows = (Resolve-Path -LiteralPath $env:windir).Path
 
-    foreach ($drive in $drives) {
-        $candidate = Join-Path $drive.Root "Windows"
-        $systemHive = Join-Path $candidate "System32\config\SYSTEM"
-        if (Test-Path -LiteralPath $systemHive) {
-            $candidates.Add($candidate) | Out-Null
-        }
+foreach ($drive in $drives) {
+    $candidate = Join-Path $drive.Root "Windows"
+    if ($candidate -ieq $localWindows) {
+        continue
     }
 
-    if ($candidates.Count -eq 0) {
-        throw "No offline Windows installation was auto-detected. Provide -OfflineWindowsRoot explicitly."
+    $systemHive = Join-Path $candidate "System32\config\SYSTEM"
+    if (Test-Path -LiteralPath $systemHive) {
+        $candidates.Add($candidate) | Out-Null
     }
+}
 
-    if ($candidates.Count -gt 1) {
-        $first = $candidates[0]
-        Write-Warning "Multiple Windows roots detected: $($candidates -join ', '). Using: $first"
-        return $first
-    }
+if ($candidates.Count -eq 0) {
+    throw "No offline Windows installation was auto-detected (local Windows is ignored). Provide -OfflineWindowsRoot explicitly."
+}
 
-    return $candidates[0]
+if ($candidates.Count -gt 1) {
+    $first = $candidates[0]
+    Write-Warning "Multiple offline Windows roots detected: $($candidates -join ', '). Using: $first"
+    return $first
+}
+
+return $candidates[0]
 }
 
 function Copy-IfPresent {
