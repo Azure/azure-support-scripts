@@ -122,9 +122,10 @@ function Run-OptionalTss {
         $invokeArgs.Add("-AcceptEula") | Out-Null
     }
 
-    Write-Host ("[tss] Starting TSS: {0} {1}" -f $Path, ($invokeArgs -join " ")) -ForegroundColor Yellow
-    & $Path @invokeArgs
-    Write-Host "[tss] Completed TSS collection." -ForegroundColor Green
+$invokeArgsArray = $invokeArgs.ToArray()
+Write-Host ("[tss] Starting TSS: {0} {1}" -f $Path, ($invokeArgsArray -join " ")) -ForegroundColor Yellow
+& $Path @invokeArgsArray
+Write-Host "[tss] Completed TSS collection." -ForegroundColor Green
 }
 
 $resolvedWindowsRoot = Resolve-OfflineWindowsRoot -RequestedPath $OfflineWindowsRoot
