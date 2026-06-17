@@ -1,4 +1,4 @@
-[CmdletBinding()]
+[CmdletBinding(SupportsShouldProcess)]
 param(
     [Parameter(Mandatory = $false)]
     [string]$OfflineWindowsRoot,
@@ -7,13 +7,7 @@ param(
     [string]$Disk,
 
     [Parameter(Mandatory = $false)]
-    [string]$TssPath,
-
-    [Parameter(Mandatory = $false)]
-    [string]$TssCollectLog,
-
-    [Parameter(Mandatory = $false)]
-    [string[]]$TssArguments,
+    [string]$OutputPath,
 
     [Parameter(Mandatory = $false)]
     [switch]$IncludeRegistryHives,
@@ -22,10 +16,10 @@ param(
     [switch]$IncludeCredentialHives,
 
     [Parameter(Mandatory = $false)]
-    [switch]$ZipOutput,
+    [switch]$IncludeMemoryDump,
 
     [Parameter(Mandatory = $false)]
-    [switch]$NoAcceptEula,
+    [switch]$ZipOutput,
 
     [Parameter(Mandatory = $false)]
     [switch]$Force
@@ -33,8 +27,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$msDataRoot = "C:\MS_DATA"
-$outputRoot = Join-Path $msDataRoot "TSS_PERF_OFFLINE"
+if ([string]::IsNullOrWhiteSpace($OutputPath)) {
+    $msDataRoot = "C:\MS_DATA"
+    $outputRoot = Join-Path $msDataRoot "TSS_PERF_OFFLINE"
+}
+else {
+    $outputRoot = $OutputPath
+}
 
 function Ensure-DiskReady {
     param(
@@ -204,12 +203,40 @@ function Copy-IfPresent {
         [string]$Source,
 
         [Parameter(Mandatory = $true)]
-        [string]$Destination
+        [string]$Destination,
+
+        [Parameter(Mandatory = $false)]
+        [string]$Activity = "Collecting offline files",
+
+        [Parameter(Mandatory = $false)]
+        [int]$ProgressId = 1
     )
 
     if (-not (Test-Path -LiteralPath $Source)) {
         Write-Host "[skip] Missing: $Source" -ForegroundColor DarkYellow
+        $script:manifestEntries += @{
+            Source = $Source
+            Destination = $Destination
+            Status = "Missing"
+            SizeBytes = 0
+            SHA256 = "N/A"
+        }
         return
+    }
+
+    # Calculate size for progress reporting
+    $sourceItem = Get-Item -LiteralPath $Source -ErrorAction SilentlyContinue
+    $sizeBytes = 0
+    $sizeMB = 0
+
+    if ($sourceItem) {
+        if ($sourceItem.PSIsContainer) {
+            $sizeBytes = (Get-ChildItem -LiteralPath $Source -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+        }
+        else {
+            $sizeBytes = $sourceItem.Length
+        }
+        $sizeMB = [math]::Round($sizeBytes / 1MB, 2)
     }
 
     $destParent = Split-Path -Parent $Destination
@@ -217,68 +244,89 @@ function Copy-IfPresent {
         New-Item -Path $destParent -ItemType Directory -Force | Out-Null
     }
 
-    try {
-        Copy-Item -LiteralPath $Source -Destination $Destination -Recurse -Force -ErrorAction Stop
-        Write-Host "[copy] $Source -> $Destination" -ForegroundColor DarkCyan
+    $sourceName = Split-Path -Leaf $Source
+    $status = if ($sizeMB -gt 0) { "Copying $sourceName ($sizeMB MB)" } else { "Copying $sourceName" }
+
+    Write-Progress -Id $ProgressId -Activity $Activity -Status $status -PercentComplete -1
+
+    if ($PSCmdlet.ShouldProcess($Source, "Copy to $Destination")) {
+        try {
+            Copy-Item -LiteralPath $Source -Destination $Destination -Recurse -Force -ErrorAction Stop -WhatIf:$WhatIfPreference
+            Write-Host "[copy] $Source -> $Destination ($sizeMB MB)" -ForegroundColor DarkCyan
+
+            $hash = Get-FileHashSafe -Path $Destination
+            $script:manifestEntries += @{
+                Source = $Source
+                Destination = $Destination
+                Status = "Copied"
+                SizeBytes = $sizeBytes
+                SHA256 = $hash
+            }
+        }
+        catch {
+            Write-Warning "[skip] Failed to copy $Source. Reason: $($_.Exception.Message)"
+            $script:manifestEntries += @{
+                Source = $Source
+                Destination = $Destination
+                Status = "Failed: $($_.Exception.Message)"
+                SizeBytes = $sizeBytes
+                SHA256 = "N/A"
+            }
+        }
+        finally {
+            Write-Progress -Id $ProgressId -Activity $Activity -Completed
+        }
     }
-    catch {
-        Write-Warning "[skip] Failed to copy $Source. Reason: $($_.Exception.Message)"
+    else {
+        Write-Host "[whatif] Would copy: $Source -> $Destination ($sizeMB MB)" -ForegroundColor Yellow
+        $script:manifestEntries += @{
+            Source = $Source
+            Destination = $Destination
+            Status = "WhatIf"
+            SizeBytes = $sizeBytes
+            SHA256 = "N/A"
+        }
+        Write-Progress -Id $ProgressId -Activity $Activity -Completed
     }
 }
 
-function Run-OptionalTss {
+function Test-FreeSpace {
     param(
         [string]$Path,
-        [string[]]$Arguments,
-        [switch]$AutoAcceptEula
+        [long]$RequiredBytes
     )
 
-    if (-not (Test-Path -LiteralPath $Path)) {
-        throw "TSS script not found: $Path"
+    $volume = Get-Volume -FilePath $Path -ErrorAction SilentlyContinue
+    if (-not $volume) {
+        Write-Warning "Could not determine free space for $Path"
+        return $true  # Proceed anyway if we can't check
     }
 
-    $tokens = @()
-    if ($Arguments) {
-        foreach ($arg in $Arguments) {
-            if (-not [string]::IsNullOrWhiteSpace($arg)) {
-                $tokens += $arg.Trim()
-            }
-        }
+    $freeBytes = $volume.SizeRemaining
+    if ($freeBytes -lt $RequiredBytes) {
+        $requiredGB = [math]::Round($RequiredBytes / 1GB, 2)
+        $freeGB = [math]::Round($freeBytes / 1GB, 2)
+        throw "Insufficient disk space. Required: ${requiredGB} GB, Available: ${freeGB} GB on $($volume.DriveLetter):"
     }
 
-    if ($AutoAcceptEula -and -not ($tokens -contains "-AcceptEula")) {
-        $tokens += "-AcceptEula"
-    }
-
-    # Parse the flat token list into a parameter hashtable so TSS is invoked by
-    # named parameters. Array splatting (& $Path @array) does NOT reliably
-    # resolve TSS's parameter sets and raises AmbiguousParameterSet; hashtable
-    # splatting binds parameters by name exactly like an interactive command
-    # line and resolves the parameter set correctly.
-    $tssParams = [ordered]@{}
-    $i = 0
-    while ($i -lt $tokens.Count) {
-        $tok = $tokens[$i]
-        if ($tok -like "-*") {
-            $name = $tok.TrimStart("-")
-            if (($i + 1) -lt $tokens.Count -and ($tokens[$i + 1] -notlike "-*")) {
-                $tssParams[$name] = $tokens[$i + 1]
-                $i += 2
-            }
-            else {
-                $tssParams[$name] = $true
-                $i += 1
-            }
-        }
-        else {
-            $i += 1
-        }
-    }
-
-    Write-Host ("[tss] Starting TSS: {0} {1}" -f $Path, ($tokens -join " ")) -ForegroundColor Yellow
-    & $Path @tssParams
-    Write-Host "[tss] Completed TSS collection." -ForegroundColor Green
+    return $true
 }
+
+function Get-FileHashSafe {
+    param(
+        [string]$Path
+    )
+
+    try {
+        $hash = Get-FileHash -LiteralPath $Path -Algorithm SHA256 -ErrorAction Stop
+        return $hash.Hash
+    }
+    catch {
+        return "ERROR: $($_.Exception.Message)"
+    }
+}
+
+$script:manifestEntries = @()
 
 $resolvedWindowsRoot = Resolve-OfflineWindowsRoot -RequestedPath $OfflineWindowsRoot -DiskSpecifier $Disk
 $offlineRoot = Split-Path -Parent $resolvedWindowsRoot
@@ -301,90 +349,111 @@ if ((Test-Path -LiteralPath $outputFolder) -and -not $Force) {
 
 New-Item -Path $outputFolder -ItemType Directory -Force | Out-Null
 
+# Start transcript for this run
+$transcriptPath = Join-Path $outputFolder "wrapper-transcript.log"
+Start-Transcript -LiteralPath $transcriptPath -Force | Out-Null
+
 Write-Host "Offline Windows root : $resolvedWindowsRoot" -ForegroundColor Green
 Write-Host "Offline disk root    : $offlineRoot" -ForegroundColor Green
-Write-Host "MS_DATA root         : $msDataRoot" -ForegroundColor Green
 Write-Host "Output root          : $outputRoot" -ForegroundColor Green
 Write-Host "Output folder        : $outputFolder" -ForegroundColor Green
+Write-Host "Transcript           : $transcriptPath" -ForegroundColor Green
 
 # Collect a practical offline bundle aligned with Windows Update / DnD troubleshooting.
 $pathsToCollect = @(
-    @{ Rel = "Windows\System32\winevt\Logs"; Dest = "offline\winevt\Logs" },
-    @{ Rel = "Windows\Logs\CBS"; Dest = "offline\Windows\Logs\CBS" },
-    @{ Rel = "Windows\Logs\DISM"; Dest = "offline\Windows\Logs\DISM" },
-    @{ Rel = "Windows\Panther"; Dest = "offline\Windows\Panther" },
-    @{ Rel = "Windows\INF\setupapi.dev.log"; Dest = "offline\Windows\INF\setupapi.dev.log" },
-    @{ Rel = "Windows\INF\setupapi.setup.log"; Dest = "offline\Windows\INF\setupapi.setup.log" },
-    @{ Rel = "Windows\SoftwareDistribution\ReportingEvents.log"; Dest = "offline\Windows\SoftwareDistribution\ReportingEvents.log" },
-    @{ Rel = "Windows\System32\catroot2"; Dest = "offline\Windows\System32\catroot2" },
-    @{ Rel = "Windows\Minidump"; Dest = "offline\Windows\Minidump" },
-    @{ Rel = "Windows\MEMORY.DMP"; Dest = "offline\Windows\MEMORY.DMP" },
-    @{ Rel = "ProgramData\USOShared\Logs"; Dest = "offline\ProgramData\USOShared\Logs" }
+    @{ Rel = "Windows\System32\winevt\Logs"; Dest = "offline\winevt\Logs"; Activity = "Event logs" },
+    @{ Rel = "Windows\Logs\CBS"; Dest = "offline\Windows\Logs\CBS"; Activity = "CBS logs" },
+    @{ Rel = "Windows\Logs\DISM"; Dest = "offline\Windows\Logs\DISM"; Activity = "DISM logs" },
+    @{ Rel = "Windows\Panther"; Dest = "offline\Windows\Panther"; Activity = "Panther setup logs" },
+    @{ Rel = "Windows\INF\setupapi.dev.log"; Dest = "offline\Windows\INF\setupapi.dev.log"; Activity = "Setupapi device log" },
+    @{ Rel = "Windows\INF\setupapi.setup.log"; Dest = "offline\Windows\INF\setupapi.setup.log"; Activity = "Setupapi setup log" },
+    @{ Rel = "Windows\SoftwareDistribution\ReportingEvents.log"; Dest = "offline\Windows\SoftwareDistribution\ReportingEvents.log"; Activity = "Windows Update reporting" },
+    @{ Rel = "Windows\System32\catroot2"; Dest = "offline\Windows\System32\catroot2"; Activity = "Catroot2 catalog" },
+    @{ Rel = "Windows\Minidump"; Dest = "offline\Windows\Minidump"; Activity = "Minidumps" },
+    @{ Rel = "ProgramData\USOShared\Logs"; Dest = "offline\ProgramData\USOShared\Logs"; Activity = "USO shared logs" }
 )
 
+$itemCount = 0
+$totalItems = $pathsToCollect.Count
+
 foreach ($item in $pathsToCollect) {
+    $itemCount++
     $sourcePath = Join-Path $offlineRoot $item.Rel
     $destPath = Join-Path $outputFolder $item.Dest
-    Copy-IfPresent -Source $sourcePath -Destination $destPath
+    $activity = if ($item.Activity) { $item.Activity } else { "Offline files" }
+
+    Write-Progress -Id 0 -Activity "Collecting offline diagnostics" -Status "($itemCount of $totalItems) $activity" -PercentComplete (($itemCount / $totalItems) * 100)
+    Copy-IfPresent -Source $sourcePath -Destination $destPath -Activity $activity -ProgressId 1
+}
+
+Write-Progress -Id 0 -Activity "Collecting offline diagnostics" -Completed
+
+# MEMORY.DMP — opt-in only (large + may contain in-memory secrets)
+if ($IncludeMemoryDump) {
+    $dumpPath = Join-Path $offlineRoot "Windows\MEMORY.DMP"
+    if (Test-Path -LiteralPath $dumpPath) {
+        $dumpItem = Get-Item -LiteralPath $dumpPath
+        $dumpSizeGB = [math]::Round($dumpItem.Length / 1GB, 2)
+
+        Write-Warning "⚠️  MEMORY DUMP: Collecting MEMORY.DMP ($dumpSizeGB GB)"
+        Write-Warning "    This file is large and may contain in-memory secrets (credentials, encryption keys)."
+        Write-Warning "    Only include if explicitly required for crash analysis."
+
+        $destPath = Join-Path $outputFolder "offline\Windows\MEMORY.DMP"
+        Copy-IfPresent -Source $dumpPath -Destination $destPath -Activity "Memory dump ($dumpSizeGB GB)" -ProgressId 1
+    }
+    else {
+        Write-Host "[skip] MEMORY.DMP not found (expected if no crash occurred)" -ForegroundColor DarkYellow
+    }
 }
 
 if ($IncludeRegistryHives) {
     $hiveFolder = Join-Path $resolvedWindowsRoot "System32\config"
-    
+
     # Core diagnostic hives (safe for support bundles)
     $safeHives = @("SYSTEM", "SOFTWARE", "COMPONENTS")
-    
+
     foreach ($hive in $safeHives) {
         $sourceHive = Join-Path $hiveFolder $hive
         $destHive = Join-Path $outputFolder ("offline\registry\{0}" -f $hive)
-        Copy-IfPresent -Source $sourceHive -Destination $destHive
+        Copy-IfPresent -Source $sourceHive -Destination $destHive -Activity "Registry hive: $hive" -ProgressId 1
     }
-    
+
     # Credential-bearing hives (requires explicit consent)
     if ($IncludeCredentialHives) {
         Write-Warning "⚠️  CREDENTIAL HIVES: Collecting SAM, SECURITY, and DEFAULT registry hives."
         Write-Warning "    These hives contain sensitive credential material (password hashes, LSA secrets, DPAPI data)."
         Write-Warning "    Only collect these if explicitly required for your troubleshooting scenario."
-        
+
         $credentialHives = @("SAM", "SECURITY", "DEFAULT")
         foreach ($hive in $credentialHives) {
             $sourceHive = Join-Path $hiveFolder $hive
             $destHive = Join-Path $outputFolder ("offline\registry\{0}" -f $hive)
-            Copy-IfPresent -Source $sourceHive -Destination $destHive
+            Copy-IfPresent -Source $sourceHive -Destination $destHive -Activity "Credential hive: $hive" -ProgressId 1
         }
     }
 }
 
-if ([string]::IsNullOrWhiteSpace($TssPath)) {
-    $candidate = Join-Path $PSScriptRoot "TSS\TSS.ps1"
-    Write-Host "[tss] -TssPath not provided. Checking default path: $candidate" -ForegroundColor Yellow
-
-    if (Test-Path -LiteralPath $candidate) {
-        $TssPath = (Resolve-Path $candidate).Path
-        Write-Host "[tss] Found default TSS script: $TssPath" -ForegroundColor Green
+# Generate manifest
+Write-Host "[manifest] Generating collection manifest..." -ForegroundColor Cyan
+$manifestPath = Join-Path $outputFolder "manifest.json"
+$manifest = @{
+    CollectionTime = (Get-Date).ToUniversalTime().ToString("o")
+    OfflineWindowsRoot = $resolvedWindowsRoot
+    OfflineDiskRoot = $offlineRoot
+    OutputFolder = $outputFolder
+    Parameters = @{
+        IncludeRegistryHives = $IncludeRegistryHives.IsPresent
+        IncludeCredentialHives = $IncludeCredentialHives.IsPresent
+        IncludeMemoryDump = $IncludeMemoryDump.IsPresent
     }
-    else {
-        Write-Host "[tss] Default TSS script was not found: $candidate" -ForegroundColor Red
-        Write-Host "[tss] Expected layout:" -ForegroundColor Yellow
-        Write-Host "       $PSScriptRoot" -ForegroundColor Yellow
-        Write-Host "       $PSScriptRoot\TSS\TSS.ps1" -ForegroundColor Yellow
-        Write-Host "[tss] Action: unzip the TSS folder in the same directory as this wrapper, or provide -TssPath explicitly." -ForegroundColor Yellow
-        throw "-TssPath was not provided and wrapper-local default was not found: $candidate"
-    }
+    Files = $script:manifestEntries
 }
+$manifest | ConvertTo-Json -Depth 10 | Out-File -LiteralPath $manifestPath -Encoding UTF8 -Force
+Write-Host "[manifest] Manifest saved: $manifestPath" -ForegroundColor Green
 
-$effectiveTssArgs = @()
-if ($TssArguments -and $TssArguments.Count -gt 0) {
-    $effectiveTssArgs = $TssArguments
-}
-elseif (-not [string]::IsNullOrWhiteSpace($TssCollectLog)) {
-    $effectiveTssArgs = @("-CollectLog", $TssCollectLog)
-}
-else {
-    $effectiveTssArgs = @("-SDP", "Setup")
-}
-
-Run-OptionalTss -Path $TssPath -Arguments $effectiveTssArgs -AutoAcceptEula:(-not $NoAcceptEula)
+# Stop transcript before zip/final output
+Stop-Transcript | Out-Null
 
 if ($ZipOutput) {
     $zipPath = "$outputFolder.zip"
@@ -396,6 +465,14 @@ if ($ZipOutput) {
     Write-Host "Zip created: $zipPath" -ForegroundColor Green
 }
 
-Write-Host "Offline rescue collection complete." -ForegroundColor Green
-Write-Host "Data location: $outputRoot" -ForegroundColor Green
-Write-Host "Bundle path: $outputFolder" -ForegroundColor Green
+# Collection summary
+$copiedCount = ($script:manifestEntries | Where-Object { $_.Status -eq "Copied" }).Count
+$skippedCount = ($script:manifestEntries | Where-Object { $_.Status -match "^(Missing|Failed)" }).Count
+$totalSize = ($script:manifestEntries | Where-Object { $_.Status -eq "Copied" } | Measure-Object -Property SizeBytes -Sum).Sum
+$totalSizeGB = [math]::Round($totalSize / 1GB, 2)
+
+Write-Host "`nOffline collection complete." -ForegroundColor Green
+Write-Host "  Copied  : $copiedCount items ($totalSizeGB GB)" -ForegroundColor Green
+Write-Host "  Skipped : $skippedCount items" -ForegroundColor Yellow
+Write-Host "  Bundle  : $outputFolder" -ForegroundColor Cyan
+Write-Host "  Manifest: $manifestPath" -ForegroundColor Cyan

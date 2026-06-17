@@ -1,116 +1,105 @@
 # TSS Offline Log Collector
 
-This PowerShell script is for rescue-VM scenarios where the broken VM OS disk is attached offline to a working rescue VM. It collects offline Windows troubleshooting logs from the attached disk and then runs TSS in the rescue VM context.
+PowerShell script for rescue-VM scenarios that collects Windows troubleshooting logs from an offline (broken) VM OS disk attached to a working rescue VM.
 
-## What It Does
+## Design
 
-1. **Offline Log Collection**
-   - Copies offline Windows troubleshooting logs from the attached disk (event logs, CBS, DISM, Panther, setupapi, Software Distribution, catroot2, USO logs, and optional registry hives).
+**Pure offline static file collection** — this script collects diagnostic files from the attached broken disk only. It does NOT run TSS.ps1 or execute any live diagnostics. This is intentional: TSS.ps1 requires a running OS and cannot operate on offline disks.
 
-2. **TSS Execution**
-   - Always runs TSS on the rescue VM context.
-   - Uses default TSS mode `-SDP Setup` when no explicit TSS arguments are provided.
-   - Supports explicit `-TssCollectLog` or full pass-through `-TssArguments`.
+## What It Collects
 
-3. **Output Packaging**
-   - Writes to fixed output root `C:\MS_DATA\TSS_PERF_OFFLINE`.
-   - Optionally creates a zip of the run folder.
+- Event logs (`winevt\Logs`)
+- Windows Update / servicing logs (CBS, DISM, setupapi, WindowsUpdate.log, ReportingEvents.log)
+- Setup logs (Panther)
+- Certificate catalog (catroot2)
+- USO (Update Session Orchestrator) logs
+- Crash dumps (minidumps, optionally MEMORY.DMP with `-IncludeMemoryDump`)
+- Registry hives (optional with `-IncludeRegistryHives`):
+  - Safe diagnostic hives by default: SYSTEM, SOFTWARE, COMPONENTS
+  - Credential-bearing hives with explicit consent (`-IncludeCredentialHives`): SAM, SECURITY, DEFAULT
+
+## Output
+
+- **Chain-of-custody manifest** (`manifest.json`) — lists all collected/skipped files with size and SHA-256 hash
+- **Self-transcript** (`wrapper-transcript.log`) — complete log of the wrapper's execution
+- Optional zip bundle (`-ZipOutput`)
 
 ## Prerequisites
 
-- PowerShell 5.1 or higher.
-- **Run from an elevated (Run as administrator) PowerShell console.**
-- **Must run in the standard PowerShell console host (`ConsoleHost`), not PowerShell ISE.**
-- The broken VM OS disk must already be attached to the rescue VM.
-
-## TSS Folder Expectation (Default)
-
-If `-TssPath` is not provided, the script expects:
-
-```text
-<wrapper-folder>\TSS\TSS.ps1
-```
-
-Example:
-
-```text
-RunCommand\Windows\TSSOfflineRescueWrapper\Invoke-TSSOfflineRescueWrapper.ps1
-RunCommand\Windows\TSSOfflineRescueWrapper\TSS\TSS.ps1
-```
-
-If not present, the script prints screen guidance and stops.
-
-Disk selection note: `-Disk 2` in examples is sample syntax. Replace `2` with the disk number that contains the offline OS.
+- PowerShell 5.1 or higher
+- **Run from an elevated (Run as administrator) PowerShell console**
+- The broken VM OS disk must already be attached to the rescue VM
 
 ## Usage
 
-From an elevated PowerShell console, in the directory that contains the script:
+From an elevated PowerShell console:
 
 ```powershell
 Set-ExecutionPolicy Bypass -Force
 ```
 
-## Quick Start
-
-### Default is Setup/Perf Report
+### Basic collection (disk 2 has the offline OS)
 ```powershell
-.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -TssPath C:\Tools\TSS\TSS.ps1 -ZipOutput
-```
-
-### DND setup report
-```powershell
-.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -TssPath C:\Tools\TSS\TSS.ps1 -TssCollectLog DND_SetupReport -ZipOutput
-```
-
-### UEX Report
-```powershell
-.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -TssPath C:\Tools\TSS\TSS.ps1 -TssArguments @('-UEX_RDSsrv') -ZipOutput
-```
-
-### Directory Services (DS) report
-```powershell
-.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -TssPath C:\Tools\TSS\TSS.ps1 -TssArguments @('-SDP','Dom') -ZipOutput
+.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2
 ```
 
 ### With registry hives (safe diagnostic hives only)
 ```powershell
-.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -TssPath C:\Tools\TSS\TSS.ps1 -IncludeRegistryHives -ZipOutput
+.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -IncludeRegistryHives -ZipOutput
+```
+
+### With MEMORY.DMP (if crash analysis is required)
+```powershell
+.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -IncludeMemoryDump -ZipOutput
 ```
 
 ### ⚠️ With credential-bearing registry hives (use with caution)
 ```powershell
 # Only use when explicitly required for troubleshooting
-.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -TssPath C:\Tools\TSS\TSS.ps1 -IncludeRegistryHives -IncludeCredentialHives -ZipOutput
+.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -IncludeRegistryHives -IncludeCredentialHives -ZipOutput
+```
+
+### Custom output path
+```powershell
+.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -OutputPath "D:\DiagnosticCollections" -ZipOutput
+```
+
+### Dry-run preview (no actual copy)
+```powershell
+.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -WhatIf
 ```
 
 ## Parameters
 
 - `-OfflineWindowsRoot <path>`: Offline Windows directory (example `F:\Windows`).
 - `-Disk <number|drive>`: Disk selector, supports disk number (`2`) or drive (`E`, `E:`, `E:\`).
-- `-TssPath <path>`: Optional explicit path to `TSS.ps1`. If omitted, wrapper-local default is used.
-- `-TssCollectLog <name>`: Optional override to run `-CollectLog <name>`.
-- `-TssArguments <string[]>`: Any TSS args passed as-is.
+- `-OutputPath <path>`: Override default output root (`C:\MS_DATA\TSS_PERF_OFFLINE`).
 - `-IncludeRegistryHives`: Include safe diagnostic registry hives (SYSTEM, SOFTWARE, COMPONENTS).
 - `-IncludeCredentialHives`: **⚠️ SECURITY SENSITIVE** — Include credential-bearing hives (SAM, SECURITY, DEFAULT). Requires `-IncludeRegistryHives`. These hives contain password hashes, LSA secrets, and DPAPI material. Only use when explicitly required for troubleshooting.
-- `-NoAcceptEula`: Prevent automatic `-AcceptEula` append.
+- `-IncludeMemoryDump`: **⚠️ LARGE + SENSITIVE** — Include MEMORY.DMP (may be several GB and contain in-memory secrets). Only use when explicitly required for crash analysis.
 - `-ZipOutput`: Create zip after collection.
 - `-Force`: Allow overwrite when output folder already exists.
+- `-WhatIf`: Preview what would be collected without actually copying files.
 
 ## Output
 
-- Root: `C:\MS_DATA\TSS_PERF_OFFLINE`
-- Run folder: `offline-tss-wrapper-<timestamp>`
-- Optional zip: `offline-tss-wrapper-<timestamp>.zip`
+- **Default root**: `C:\MS_DATA\TSS_PERF_OFFLINE` (override with `-OutputPath`)
+- **Run folder**: `offline-tss-wrapper-<timestamp>`
+- **Manifest**: `manifest.json` (lists all collected/skipped files with size and SHA-256)
+- **Transcript**: `wrapper-transcript.log` (complete execution log)
+- **Optional zip**: `offline-tss-wrapper-<timestamp>.zip` (with `-ZipOutput`)
 
 ## Notes
 
-- If neither `-TssArguments` nor `-TssCollectLog` is provided, wrapper defaults to `-SDP Setup`.
-- `-SDP Perf` is deprecated in current TSS; use `-SDP Setup`.
-- DS (Directory Services) SDP key is `Dom` in TSS (`-SDP Dom`).
+- This wrapper collects **static files only** from the offline disk. It does not run TSS.ps1 or any live diagnostics.
+- MEMORY.DMP is opt-in (`-IncludeMemoryDump`) because it can be several GB and may contain in-memory secrets.
+- Credential-bearing registry hives (SAM/SECURITY/DEFAULT) require explicit consent (`-IncludeCredentialHives`) to prevent accidental exposure of password hashes and LSA secrets.
+- Use `-WhatIf` to preview what would be collected without actually copying files.
+- The manifest (`manifest.json`) provides chain-of-custody documentation for all collected artifacts.
 
 ## Known Issues
 
-- TSS SDP collection must run in the standard PowerShell console host. Running directly inside PowerShell ISE fails because the SDP module depends on console-host-only properties. Use a standard elevated PowerShell console, or invoke with `powershell -ExecutionPolicy Bypass -File <script>` which launches a fresh console host.
+None currently.
 
 ## Liability
 
