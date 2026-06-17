@@ -48,28 +48,28 @@ Set-ExecutionPolicy Bypass -Force
 
 ### Basic collection (disk 2 has the offline OS)
 ```powershell
-.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -ZipOutput
+.\tssofflinelogcollector.ps1 -Disk 2 -ZipOutput
 ```
 
 ### With MEMORY.DMP (if crash analysis is required)
 ```powershell
-.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -IncludeMemoryDump -ZipOutput
+.\tssofflinelogcollector.ps1 -Disk 2 -IncludeMemoryDump -ZipOutput
 ```
 
 ### ⚠️ With credential-bearing registry hives (use with caution)
 ```powershell
 # Only use when explicitly required for troubleshooting
-.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -IncludeCredentialHives -ZipOutput
+.\tssofflinelogcollector.ps1 -Disk 2 -IncludeCredentialHives -ZipOutput
 ```
 
 ### Custom output path
 ```powershell
-.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -OutputPath "D:\DiagnosticCollections" -ZipOutput
+.\tssofflinelogcollector.ps1 -Disk 2 -OutputPath "D:\DiagnosticCollections" -ZipOutput
 ```
 
 ### Dry-run preview (no actual copy)
 ```powershell
-.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -WhatIf
+.\tssofflinelogcollector.ps1 -Disk 2 -WhatIf
 ```
 
 ## Parameters
