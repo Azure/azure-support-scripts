@@ -330,10 +330,14 @@ $offlineRoot = Split-Path -Parent $resolvedWindowsRoot
 $offlineRoot = if ([string]::IsNullOrWhiteSpace($offlineRoot)) { Split-Path -Qualifier $resolvedWindowsRoot } else { $offlineRoot }
 $timeStamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
 
-if (-not (Test-Path -LiteralPath $msDataRoot)) {
-    New-Item -Path $msDataRoot -ItemType Directory -Force | Out-Null
+# Create MS_DATA root folder (if using default path)
+if ([string]::IsNullOrWhiteSpace($OutputPath)) {
+    if (-not (Test-Path -LiteralPath $msDataRoot)) {
+        New-Item -Path $msDataRoot -ItemType Directory -Force | Out-Null
+    }
 }
 
+# Create output root folder (default C:\MS_DATA\TSS_PERF_OFFLINE or custom path)
 if (-not (Test-Path -LiteralPath $outputRoot)) {
     New-Item -Path $outputRoot -ItemType Directory -Force | Out-Null
 }
