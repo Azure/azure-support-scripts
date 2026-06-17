@@ -357,17 +357,62 @@ Write-Host "Output folder        : $outputFolder" -ForegroundColor Green
 Write-Host "Transcript           : $transcriptPath" -ForegroundColor Green
 
 # Collect a practical offline bundle aligned with Windows Update / DnD troubleshooting.
+# Comprehensive offline collection aligned with TSS.ps1 DND_SetupReport / SDP Setup
 $pathsToCollect = @(
+    # Event logs
     @{ Rel = "Windows\System32\winevt\Logs"; Dest = "offline\winevt\Logs"; Activity = "Event logs" },
+    
+    # Windows Update and servicing logs
     @{ Rel = "Windows\Logs\CBS"; Dest = "offline\Windows\Logs\CBS"; Activity = "CBS logs" },
     @{ Rel = "Windows\Logs\DISM"; Dest = "offline\Windows\Logs\DISM"; Activity = "DISM logs" },
+    @{ Rel = "Windows\Logs\WindowsUpdate"; Dest = "offline\Windows\Logs\WindowsUpdate"; Activity = "Windows Update logs" },
+    @{ Rel = "Windows\SoftwareDistribution"; Dest = "offline\Windows\SoftwareDistribution"; Activity = "SoftwareDistribution" },
+    @{ Rel = "Windows\WinSxS\pending.xml"; Dest = "offline\Windows\WinSxS\pending.xml"; Activity = "WinSxS pending" },
+    @{ Rel = "Windows\WinSxS\poqexec.log"; Dest = "offline\Windows\WinSxS\poqexec.log"; Activity = "WinSxS poqexec" },
+    @{ Rel = "Windows\servicing\Sessions"; Dest = "offline\Windows\servicing\Sessions"; Activity = "Servicing sessions" },
+    @{ Rel = "ProgramData\USOShared\Logs"; Dest = "offline\ProgramData\USOShared\Logs"; Activity = "USO shared logs" },
+    @{ Rel = "ProgramData\USOPrivate\UpdateStore"; Dest = "offline\ProgramData\USOPrivate\UpdateStore"; Activity = "USO private store" },
+    
+    # Setup and upgrade logs
     @{ Rel = "Windows\Panther"; Dest = "offline\Windows\Panther"; Activity = "Panther setup logs" },
-    @{ Rel = "Windows\INF\setupapi.dev.log"; Dest = "offline\Windows\INF\setupapi.dev.log"; Activity = "Setupapi device log" },
-    @{ Rel = "Windows\INF\setupapi.setup.log"; Dest = "offline\Windows\INF\setupapi.setup.log"; Activity = "Setupapi setup log" },
-    @{ Rel = "Windows\SoftwareDistribution\ReportingEvents.log"; Dest = "offline\Windows\SoftwareDistribution\ReportingEvents.log"; Activity = "Windows Update reporting" },
+    @{ Rel = "$Windows.~BT\Sources\Panther"; Dest = "offline\Windows.~BT\Sources\Panther"; Activity = "Setup source Panther" },
+    @{ Rel = "Windows\System32\Sysprep\Panther"; Dest = "offline\Windows\System32\Sysprep\Panther"; Activity = "Sysprep Panther" },
+    
+    # INF and driver installation logs
+    @{ Rel = "Windows\INF"; Dest = "offline\Windows\INF"; Activity = "INF and setupapi logs" },
+    @{ Rel = "Windows\System32\DriverStore\FileRepository"; Dest = "offline\Windows\System32\DriverStore\FileRepository"; Activity = "Driver store repository" },
+    
+    # Certificate and crypto
     @{ Rel = "Windows\System32\catroot2"; Dest = "offline\Windows\System32\catroot2"; Activity = "Catroot2 catalog" },
+    
+    # Windows Error Reporting
+    @{ Rel = "ProgramData\Microsoft\Windows\WER"; Dest = "offline\ProgramData\Microsoft\Windows\WER"; Activity = "Windows Error Reporting" },
+    
+    # Crash dumps
     @{ Rel = "Windows\Minidump"; Dest = "offline\Windows\Minidump"; Activity = "Minidumps" },
-    @{ Rel = "ProgramData\USOShared\Logs"; Dest = "offline\ProgramData\USOShared\Logs"; Activity = "USO shared logs" }
+    @{ Rel = "Windows\LiveKernelReports"; Dest = "offline\Windows\LiveKernelReports"; Activity = "Live kernel reports" },
+    
+    # System logs and diagnostics
+    @{ Rel = "Windows\System32\LogFiles"; Dest = "offline\Windows\System32\LogFiles"; Activity = "System32 LogFiles" },
+    @{ Rel = "Windows\Performance\WinSAT"; Dest = "offline\Windows\Performance\WinSAT"; Activity = "WinSAT performance" },
+    @{ Rel = "Windows\Temp"; Dest = "offline\Windows\Temp"; Activity = "Windows Temp" },
+    
+    # Activation and licensing
+    @{ Rel = "Windows\System32\spp\store"; Dest = "offline\Windows\System32\spp\store"; Activity = "Software Protection Platform" },
+    
+    # Windows Defender (if present)
+    @{ Rel = "ProgramData\Microsoft\Windows Defender\Support"; Dest = "offline\ProgramData\Microsoft\Windows Defender\Support"; Activity = "Windows Defender logs" },
+    
+    # Task Scheduler logs
+    @{ Rel = "Windows\System32\Tasks"; Dest = "offline\Windows\System32\Tasks"; Activity = "Scheduled tasks" },
+    @{ Rel = "Windows\Tasks"; Dest = "offline\Windows\Tasks"; Activity = "Legacy tasks" },
+    
+    # Network and firewall (static config)
+    @{ Rel = "Windows\System32\LogFiles\Firewall"; Dest = "offline\Windows\System32\LogFiles\Firewall"; Activity = "Firewall logs" },
+    
+    # Additional servicing and component store
+    @{ Rel = "Windows\Logs\MoSetup"; Dest = "offline\Windows\Logs\MoSetup"; Activity = "Modern Setup logs" },
+    @{ Rel = "Windows\Logs\DPX"; Dest = "offline\Windows\Logs\DPX"; Activity = "Device setup logs" }
 )
 
 $itemCount = 0

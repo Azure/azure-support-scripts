@@ -8,12 +8,19 @@ PowerShell script for rescue-VM scenarios that collects Windows troubleshooting 
 
 ## What It Collects
 
-- Event logs (`winevt\Logs`)
-- Windows Update / servicing logs (CBS, DISM, setupapi, WindowsUpdate.log, ReportingEvents.log)
-- Setup logs (Panther)
-- Certificate catalog (catroot2)
-- USO (Update Session Orchestrator) logs
-- Crash dumps (minidumps, optionally MEMORY.DMP with `-IncludeMemoryDump`)
+**Comprehensive offline diagnostic collection** (aligned with TSS.ps1 DND_SetupReport / SDP Setup):
+
+- **Event logs** — All event logs from `winevt\Logs`
+- **Windows Update & Servicing** — CBS, DISM, WindowsUpdate logs, SoftwareDistribution, WinSxS pending/servicing, USO logs
+- **Setup & Upgrade** — Panther logs (Windows, $Windows.~BT, Sysprep), Modern Setup (MoSetup)
+- **Drivers** — Complete INF folder (setupapi logs), DriverStore repository, DPX device setup logs
+- **Certificates** — catroot2 certificate catalog
+- **Error Reporting** — Windows Error Reporting (WER) logs and reports
+- **Crash Analysis** — Minidumps, LiveKernelReports, optionally MEMORY.DMP with `-IncludeMemoryDump`
+- **System Diagnostics** — System32\LogFiles, WinSAT performance, Windows Temp
+- **Activation & Licensing** — Software Protection Platform (SPP) store
+- **Security** — Windows Defender logs (if present), Firewall logs
+- **Task Scheduler** — Scheduled tasks configuration and logs
 - **Registry hives** (always collected):
   - Safe diagnostic hives: SYSTEM, SOFTWARE, COMPONENTS
   - Credential-bearing hives with explicit consent (`-IncludeCredentialHives`): SAM, SECURITY, DEFAULT
@@ -86,11 +93,13 @@ Set-ExecutionPolicy Bypass -Force
 ## Notes
 
 - This wrapper collects **static files only** from the offline disk. It does not run TSS.ps1 or any live diagnostics.
+- **Comprehensive collection** — collects all diagnostic files TSS.ps1 DND_SetupReport/SDP Setup would gather (event logs, servicing logs, driver store, WER, etc.)
+- **Collection size** — expect several hundred MB to several GB depending on system state (more if DriverStore/WER contain many files). Use `-WhatIf` to preview before collecting.
 - **Registry hives are always collected** (SYSTEM, SOFTWARE, COMPONENTS) — these are essential for proper troubleshooting.
 - MEMORY.DMP is opt-in (`-IncludeMemoryDump`) because it can be several GB and may contain in-memory secrets.
 - Credential-bearing registry hives (SAM/SECURITY/DEFAULT) require explicit consent (`-IncludeCredentialHives`) to prevent accidental exposure of password hashes and LSA secrets.
 - Use `-WhatIf` to preview what would be collected without actually copying files.
-- The manifest (`manifest.json`) provides chain-of-custody documentation for all collected artifacts.
+- The manifest (`manifest.json`) provides chain-of-custody documentation for all collected artifacts with SHA-256 hashes.
 
 ## Known Issues
 
