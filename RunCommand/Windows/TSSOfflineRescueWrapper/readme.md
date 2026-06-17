@@ -72,6 +72,17 @@ Set-ExecutionPolicy Bypass -Force
 .\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -TssPath C:\Tools\TSS\TSS.ps1 -TssArguments @('-SDP','Dom') -ZipOutput
 ```
 
+### With registry hives (safe diagnostic hives only)
+```powershell
+.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -TssPath C:\Tools\TSS\TSS.ps1 -IncludeRegistryHives -ZipOutput
+```
+
+### ⚠️ With credential-bearing registry hives (use with caution)
+```powershell
+# Only use when explicitly required for troubleshooting
+.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -TssPath C:\Tools\TSS\TSS.ps1 -IncludeRegistryHives -IncludeCredentialHives -ZipOutput
+```
+
 ## Parameters
 
 - `-OfflineWindowsRoot <path>`: Offline Windows directory (example `F:\Windows`).
@@ -79,7 +90,8 @@ Set-ExecutionPolicy Bypass -Force
 - `-TssPath <path>`: Optional explicit path to `TSS.ps1`. If omitted, wrapper-local default is used.
 - `-TssCollectLog <name>`: Optional override to run `-CollectLog <name>`.
 - `-TssArguments <string[]>`: Any TSS args passed as-is.
-- `-IncludeRegistryHives`: Include SYSTEM/SOFTWARE/SAM/SECURITY/DEFAULT/COMPONENTS hives.
+- `-IncludeRegistryHives`: Include safe diagnostic registry hives (SYSTEM, SOFTWARE, COMPONENTS).
+- `-IncludeCredentialHives`: **⚠️ SECURITY SENSITIVE** — Include credential-bearing hives (SAM, SECURITY, DEFAULT). Requires `-IncludeRegistryHives`. These hives contain password hashes, LSA secrets, and DPAPI material. Only use when explicitly required for troubleshooting.
 - `-NoAcceptEula`: Prevent automatic `-AcceptEula` append.
 - `-ZipOutput`: Create zip after collection.
 - `-Force`: Allow overwrite when output folder already exists.

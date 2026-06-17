@@ -19,6 +19,9 @@ param(
     [switch]$IncludeRegistryHives,
 
     [Parameter(Mandatory = $false)]
+    [switch]$IncludeCredentialHives,
+
+    [Parameter(Mandatory = $false)]
     [switch]$ZipOutput,
 
     [Parameter(Mandatory = $false)]
@@ -327,11 +330,28 @@ foreach ($item in $pathsToCollect) {
 
 if ($IncludeRegistryHives) {
     $hiveFolder = Join-Path $resolvedWindowsRoot "System32\config"
-    $hives = @("SYSTEM", "SOFTWARE", "SAM", "SECURITY", "DEFAULT", "COMPONENTS")
-    foreach ($hive in $hives) {
+    
+    # Core diagnostic hives (safe for support bundles)
+    $safeHives = @("SYSTEM", "SOFTWARE", "COMPONENTS")
+    
+    foreach ($hive in $safeHives) {
         $sourceHive = Join-Path $hiveFolder $hive
         $destHive = Join-Path $outputFolder ("offline\registry\{0}" -f $hive)
         Copy-IfPresent -Source $sourceHive -Destination $destHive
+    }
+    
+    # Credential-bearing hives (requires explicit consent)
+    if ($IncludeCredentialHives) {
+        Write-Warning "⚠️  CREDENTIAL HIVES: Collecting SAM, SECURITY, and DEFAULT registry hives."
+        Write-Warning "    These hives contain sensitive credential material (password hashes, LSA secrets, DPAPI data)."
+        Write-Warning "    Only collect these if explicitly required for your troubleshooting scenario."
+        
+        $credentialHives = @("SAM", "SECURITY", "DEFAULT")
+        foreach ($hive in $credentialHives) {
+            $sourceHive = Join-Path $hiveFolder $hive
+            $destHive = Join-Path $outputFolder ("offline\registry\{0}" -f $hive)
+            Copy-IfPresent -Source $sourceHive -Destination $destHive
+        }
     }
 }
 
