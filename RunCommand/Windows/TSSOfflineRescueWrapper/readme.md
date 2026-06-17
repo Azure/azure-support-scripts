@@ -14,8 +14,8 @@ PowerShell script for rescue-VM scenarios that collects Windows troubleshooting 
 - Certificate catalog (catroot2)
 - USO (Update Session Orchestrator) logs
 - Crash dumps (minidumps, optionally MEMORY.DMP with `-IncludeMemoryDump`)
-- Registry hives (optional with `-IncludeRegistryHives`):
-  - Safe diagnostic hives by default: SYSTEM, SOFTWARE, COMPONENTS
+- **Registry hives** (always collected):
+  - Safe diagnostic hives: SYSTEM, SOFTWARE, COMPONENTS
   - Credential-bearing hives with explicit consent (`-IncludeCredentialHives`): SAM, SECURITY, DEFAULT
 
 ## Output
@@ -40,12 +40,7 @@ Set-ExecutionPolicy Bypass -Force
 
 ### Basic collection (disk 2 has the offline OS)
 ```powershell
-.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2
-```
-
-### With registry hives (safe diagnostic hives only)
-```powershell
-.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -IncludeRegistryHives -ZipOutput
+.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -ZipOutput
 ```
 
 ### With MEMORY.DMP (if crash analysis is required)
@@ -56,7 +51,7 @@ Set-ExecutionPolicy Bypass -Force
 ### ⚠️ With credential-bearing registry hives (use with caution)
 ```powershell
 # Only use when explicitly required for troubleshooting
-.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -IncludeRegistryHives -IncludeCredentialHives -ZipOutput
+.\Invoke-TSSOfflineRescueWrapper.ps1 -Disk 2 -IncludeCredentialHives -ZipOutput
 ```
 
 ### Custom output path
@@ -74,8 +69,7 @@ Set-ExecutionPolicy Bypass -Force
 - `-OfflineWindowsRoot <path>`: Offline Windows directory (example `F:\Windows`).
 - `-Disk <number|drive>`: Disk selector, supports disk number (`2`) or drive (`E`, `E:`, `E:\`).
 - `-OutputPath <path>`: Override default output root (`C:\MS_DATA\TSS_PERF_OFFLINE`).
-- `-IncludeRegistryHives`: Include safe diagnostic registry hives (SYSTEM, SOFTWARE, COMPONENTS).
-- `-IncludeCredentialHives`: **⚠️ SECURITY SENSITIVE** — Include credential-bearing hives (SAM, SECURITY, DEFAULT). Requires `-IncludeRegistryHives`. These hives contain password hashes, LSA secrets, and DPAPI material. Only use when explicitly required for troubleshooting.
+- `-IncludeCredentialHives`: **⚠️ SECURITY SENSITIVE** — Include credential-bearing hives (SAM, SECURITY, DEFAULT) in addition to the always-collected safe hives (SYSTEM, SOFTWARE, COMPONENTS). These hives contain password hashes, LSA secrets, and DPAPI material. Only use when explicitly required for troubleshooting.
 - `-IncludeMemoryDump`: **⚠️ LARGE + SENSITIVE** — Include MEMORY.DMP (may be several GB and contain in-memory secrets). Only use when explicitly required for crash analysis.
 - `-ZipOutput`: Create zip after collection.
 - `-Force`: Allow overwrite when output folder already exists.
@@ -92,6 +86,7 @@ Set-ExecutionPolicy Bypass -Force
 ## Notes
 
 - This wrapper collects **static files only** from the offline disk. It does not run TSS.ps1 or any live diagnostics.
+- **Registry hives are always collected** (SYSTEM, SOFTWARE, COMPONENTS) — these are essential for proper troubleshooting.
 - MEMORY.DMP is opt-in (`-IncludeMemoryDump`) because it can be several GB and may contain in-memory secrets.
 - Credential-bearing registry hives (SAM/SECURITY/DEFAULT) require explicit consent (`-IncludeCredentialHives`) to prevent accidental exposure of password hashes and LSA secrets.
 - Use `-WhatIf` to preview what would be collected without actually copying files.

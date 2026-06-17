@@ -10,9 +10,6 @@ param(
     [string]$OutputPath,
 
     [Parameter(Mandatory = $false)]
-    [switch]$IncludeRegistryHives,
-
-    [Parameter(Mandatory = $false)]
     [switch]$IncludeCredentialHives,
 
     [Parameter(Mandatory = $false)]
@@ -407,30 +404,29 @@ if ($IncludeMemoryDump) {
     }
 }
 
-if ($IncludeRegistryHives) {
-    $hiveFolder = Join-Path $resolvedWindowsRoot "System32\config"
+# Registry hive collection (always included - required for proper troubleshooting)
+$hiveFolder = Join-Path $resolvedWindowsRoot "System32\config"
 
-    # Core diagnostic hives (safe for support bundles)
-    $safeHives = @("SYSTEM", "SOFTWARE", "COMPONENTS")
+# Core diagnostic hives (safe for support bundles)
+$safeHives = @("SYSTEM", "SOFTWARE", "COMPONENTS")
 
-    foreach ($hive in $safeHives) {
+foreach ($hive in $safeHives) {
+    $sourceHive = Join-Path $hiveFolder $hive
+    $destHive = Join-Path $outputFolder ("offline\registry\{0}" -f $hive)
+    Copy-IfPresent -Source $sourceHive -Destination $destHive -Activity "Registry hive: $hive" -ProgressId 1
+}
+
+# Credential-bearing hives (requires explicit consent)
+if ($IncludeCredentialHives) {
+    Write-Warning "⚠️  CREDENTIAL HIVES: Collecting SAM, SECURITY, and DEFAULT registry hives."
+    Write-Warning "    These hives contain sensitive credential material (password hashes, LSA secrets, DPAPI data)."
+    Write-Warning "    Only collect these if explicitly required for your troubleshooting scenario."
+
+    $credentialHives = @("SAM", "SECURITY", "DEFAULT")
+    foreach ($hive in $credentialHives) {
         $sourceHive = Join-Path $hiveFolder $hive
         $destHive = Join-Path $outputFolder ("offline\registry\{0}" -f $hive)
-        Copy-IfPresent -Source $sourceHive -Destination $destHive -Activity "Registry hive: $hive" -ProgressId 1
-    }
-
-    # Credential-bearing hives (requires explicit consent)
-    if ($IncludeCredentialHives) {
-        Write-Warning "⚠️  CREDENTIAL HIVES: Collecting SAM, SECURITY, and DEFAULT registry hives."
-        Write-Warning "    These hives contain sensitive credential material (password hashes, LSA secrets, DPAPI data)."
-        Write-Warning "    Only collect these if explicitly required for your troubleshooting scenario."
-
-        $credentialHives = @("SAM", "SECURITY", "DEFAULT")
-        foreach ($hive in $credentialHives) {
-            $sourceHive = Join-Path $hiveFolder $hive
-            $destHive = Join-Path $outputFolder ("offline\registry\{0}" -f $hive)
-            Copy-IfPresent -Source $sourceHive -Destination $destHive -Activity "Credential hive: $hive" -ProgressId 1
-        }
+        Copy-IfPresent -Source $sourceHive -Destination $destHive -Activity "Credential hive: $hive" -ProgressId 1
     }
 }
 
@@ -443,7 +439,6 @@ $manifest = @{
     OfflineDiskRoot = $offlineRoot
     OutputFolder = $outputFolder
     Parameters = @{
-        IncludeRegistryHives = $IncludeRegistryHives.IsPresent
         IncludeCredentialHives = $IncludeCredentialHives.IsPresent
         IncludeMemoryDump = $IncludeMemoryDump.IsPresent
     }
