@@ -11,7 +11,8 @@ PowerShell script for rescue-VM scenarios that collects Windows troubleshooting 
 **Comprehensive offline diagnostic collection** (aligned with TSS.ps1 DND_SetupReport / SDP Setup):
 
 - **Event logs** — All event logs from `winevt\Logs`
-- **Windows Update & Servicing** — CBS, DISM, WindowsUpdate logs, SoftwareDistribution, WinSxS pending/servicing, USO logs
+- **Windows Update & Servicing** — CBS, DISM, WindowsUpdate ETL trace files (Windows 10+) and WindowsUpdate.log (legacy OS), SoftwareDistribution, WinSxS pending/servicing, USO logs
+  - *Note: On Windows 10+, use `Get-WindowsUpdateLog` on a running system to generate human-readable log from collected ETL files*
 - **Setup & Upgrade** — Panther logs (Windows, $Windows.~BT, Sysprep), Modern Setup (MoSetup)
 - **Drivers** — Complete INF folder (setupapi logs), DriverStore repository, DPX device setup logs
 - **Certificates** — catroot2 certificate catalog
