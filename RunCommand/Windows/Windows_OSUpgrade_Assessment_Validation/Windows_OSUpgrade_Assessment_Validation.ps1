@@ -33,30 +33,6 @@ Disclaimer:
     PS> .\Windows_OSUpgrade_Assessment_Validation.ps1
 #>
 
-# ---- Legacy driver and GlobalFlag detection ----------------------------------
-function Get-LegacyDriverBlockers {
-    # Known legacy VMware / ghost hardware drivers that cause 0xC1900101-0x50016
-    $knownBlockers = @('vmmouse', 'vm3dmp', 'flpydisk', 'vmhgfs', 'vmrawdsk', 'vmusbmouse', 'vmvss', 'vmscsi', 'vmxnet')
-    $found = @()
-    foreach ($name in $knownBlockers) {
-        $svcPath = "HKLM:\SYSTEM\CurrentControlSet\Services\$name"
-        if (Test-Path $svcPath) {
-            $start = (Get-ItemProperty $svcPath -ErrorAction SilentlyContinue).Start
-            # Start values: 0=Boot, 1=System, 2=Auto, 3=Manual, 4=Disabled
-            if ($null -ne $start -and $start -le 3) {
-                $found += $name
-            }
-        }
-    }
-    return $found
-}
-
-function Get-GlobalFlagStatus {
-    $smPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager"
-    $gf = (Get-ItemProperty $smPath -Name GlobalFlag -ErrorAction SilentlyContinue).GlobalFlag
-    return ($null -ne $gf -and $gf -ne 0)
-}
-
 # ---- Safety checks -----------------------------------------------------------
 function Assert-Admin {
     $isAdmin = ([Security.Principal.WindowsPrincipal] `
@@ -226,10 +202,6 @@ if ($isServer) {
     }
 }
 
-# --- Run legacy driver and GlobalFlag checks (server IPU blocker detection) ---
-$legacyDriverBlockers = Get-LegacyDriverBlockers
-$globalFlagEnabled    = Get-GlobalFlagStatus
-
 # --- Checklist Output ---
 $checklist = @()
 $checklist += "Windows Version: $windowsProductName"
@@ -282,30 +254,6 @@ if ($isServer) {
             $checklist += "[Failed] TPM Enabled"
         }
     }
-}
-
-# Legacy Driver / Ghost Hardware Check (IPU blocker)
-if ($legacyDriverBlockers.Count -gt 0) {
-    $checklist += "[Failed] Legacy IPU-blocking drivers detected: $($legacyDriverBlockers -join ', ')"
-    $messages += ""
-    $messages += "FAILED: Legacy VMware/ghost hardware drivers are present and set to load. These will cause IPU to fail with error 0xC1900101-0x50016 (SafeOS boot crash)."
-    $messages += "  Drivers found: $($legacyDriverBlockers -join ', ')"
-    $messages += "  Action: In Device Manager, DISABLE (do not uninstall) each legacy device before retrying IPU."
-    $messages += "  Note: Uninstalling may allow PnP to reinstall the driver on next reboot. Disable ensures it stays dormant during upgrade."
-} else {
-    $checklist += "[Passed] No legacy IPU-blocking drivers detected"
-}
-
-# GlobalFlag (PageHeap/debug mode) Check
-if ($globalFlagEnabled) {
-    $checklist += "[Failed] GlobalFlag debug mode is enabled (causes throttled Setup and slow IPU rollback)"
-    $messages += ""
-    $messages += "FAILED: GlobalFlag is enabled in Session Manager. This forces Windows Setup to run in debug/PageHeap mode, causing severely throttled memory operations during IPU and a guaranteed rollback."
-    $messages += "  Action: Disable GlobalFlag before retrying IPU:"
-    $messages += '  reg delete "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v GlobalFlag /f'
-    $messages += "  Then reboot the VM before attempting the in-place upgrade."
-} else {
-    $checklist += "[Passed] GlobalFlag debug mode is not enabled"
 }
 
 # Output checklist first, then messages
