@@ -76,6 +76,13 @@ pub fn parse_vmcore_dmesg(content: &str, source_path: &str) -> VmcoreCrash {
         panic_line: None,
     };
 
+    // The crash date is encoded in the dump directory path, e.g.
+    // `var/crash/127.0.0.1-2026-01-20-15:30:00/vmcore-dmesg.txt`. Use the same
+    // pattern as the crash-listing parser so the two correlate by date.
+    crash.date = crate::cached_regex!(r"(\d{4}-\d{2}-\d{2}[:-]\d{2}[:-]\d{2}[:-]\d{2})")
+        .captures(source_path)
+        .and_then(|m| m.get(1).map(|x| x.as_str().to_string()));
+
     let mut in_call_trace = false;
     for (line_idx, line) in content.lines().enumerate() {
         let line_no = line_idx + 1;
@@ -291,6 +298,20 @@ mod tests {
         assert_eq!(crash.call_trace.len(), 2);
         assert_eq!(crash.source_path, "var/crash/vmcore-dmesg.txt");
         assert_eq!(crash.panic_line, Some(1));
+    }
+
+    #[test]
+    fn crash_date_is_derived_from_dump_directory_path() {
+        let input = "Kernel panic - not syncing: Fatal exception in interrupt\n";
+        let dated = parse_vmcore_dmesg(
+            input,
+            "var/crash/127.0.0.1-2026-01-20-15:30:00/vmcore-dmesg.txt",
+        );
+        assert_eq!(dated.date.as_deref(), Some("2026-01-20-15:30:00"));
+
+        // No date in the directory path leaves the field empty.
+        let undated = parse_vmcore_dmesg(input, "var/crash/nodate-crash/vmcore-dmesg.txt");
+        assert_eq!(undated.date, None);
     }
 
     #[test]
