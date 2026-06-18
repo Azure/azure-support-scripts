@@ -47,6 +47,7 @@ cat \
     ../src/parsers/azure.js \
     ../src/parsers/cluster.js \
     ../src/parsers/storage.js \
+    ../src/parsers/hana.js \
     ../src/parsers/networking.js \
     ../src/parsers/network-interfaces.js \
     ../src/parsers/vmcore.js \

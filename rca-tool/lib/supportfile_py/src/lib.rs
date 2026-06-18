@@ -12,18 +12,22 @@ use supportfile_core::{
     parse_emergency_mode_json, parse_eus_version_lock_json, parse_extfrag_json,
     parse_falcon_sensor_config_json, parse_falcon_sensor_json, parse_firewall_rules_json,
     parse_fips_mode_setup_json, parse_fstab_analysis_json, parse_fstab_json,
-    parse_guardicore_agent_json, parse_huge_pages_json, parse_hv_balloon_json,
+    parse_fstrim_json,
+    parse_guardicore_agent_json, parse_hana_deadlocks_json, parse_hana_merge_errors_json,
+    parse_hana_oom_json, parse_hana_savepoints_json, parse_huge_pages_json, parse_hv_balloon_json,
     parse_illumio_json, parse_inspect_disk_results_json, parse_involflt_kernel_version_json,
     parse_involflt_version_json, parse_kdump_conf_json,
     parse_kdump_status_json, parse_kernel_cmdline_json, parse_kernel_reboots_json,
     parse_kernel_tuning_json, parse_leapp_log_json, parse_leapp_report_json,
     parse_lvm_config_json, parse_ms_defender_config_json, parse_ms_defender_json,
-    parse_mtab_analysis_json, parse_network_interfaces_json, parse_oom_killer_json,
+    parse_mtab_analysis_json, parse_network_interfaces_json, parse_nfs_mounts_json,
+    parse_oom_killer_json,
     parse_os_release_json, parse_pacemaker_high_cpu_json, parse_ptp_clock_source_json,
     parse_ptp_device_json, parse_raid_config_json, parse_package_distro_mismatch_json,
     parse_rhel_rhui_check_json,
     parse_rhui_config_json, parse_rhui_errors_json, parse_secure_boot_json,
     parse_ssh_service_issues_json,
+    parse_selinux_json, parse_swap_space_json, parse_tuned_profile_json,
     parse_suse_cloud_register_json, parse_time_sync_json, parse_time_sync_service_json,
     parse_timedatectl_json, parse_trend_micro_json, parse_vmcore_dmesg_json,
     parse_vmcore_summary_json, parse_waagent_config_json, parse_waagent_log_json,
@@ -843,6 +847,60 @@ fn parse_mtab_analysis(content: &str, source_path: &str) -> PyResult<String> {
     Ok(parse_mtab_analysis_json(content, source_path))
 }
 
+/// Parse NFS mount entries from ``fstab`` or ``mount``/``mtab`` output and flag
+/// suboptimal mount options (soft mounts, small ``rsize``/``wsize``, outdated
+/// protocol versions, missing ``nconnect``).
+///
+/// Args:
+///     content (str): Raw text of an ``fstab`` file or ``mount`` output, or an
+///         SCC bundle that embeds either.
+///     source_path (str): Optional path of the source file used for provenance.
+///
+/// Returns:
+///     str: JSON-encoded object ``{"found", "mounts", "warnings",
+///     "source_path"}``.
+#[pyfunction]
+#[pyo3(signature = (content, source_path=""))]
+fn parse_nfs_mounts(content: &str, source_path: &str) -> PyResult<String> {
+    Ok(parse_nfs_mounts_json(content, source_path))
+}
+
+/// Detect SAP HANA savepoint activity in indexserver/nameserver trace files.
+///
+/// Args:
+///     content (str): Contents of a HANA ``*.trc`` trace file.
+///     source_path (str): Optional path of the source file used for provenance.
+///
+/// Returns:
+///     str: JSON-encoded object ``{"found", "count", "snapshot_count",
+///     "savepoints", "warnings", "source_path"}``.
+#[pyfunction]
+#[pyo3(signature = (content, source_path=""))]
+fn parse_hana_savepoints(content: &str, source_path: &str) -> PyResult<String> {
+    Ok(parse_hana_savepoints_json(content, source_path))
+}
+
+/// Detect SAP HANA deadlock cycles in indexserver/nameserver trace files.
+#[pyfunction]
+#[pyo3(signature = (content, source_path=""))]
+fn parse_hana_deadlocks(content: &str, source_path: &str) -> PyResult<String> {
+    Ok(parse_hana_deadlocks_json(content, source_path))
+}
+
+/// Detect SAP HANA out-of-memory events in indexserver/nameserver trace files.
+#[pyfunction]
+#[pyo3(signature = (content, source_path=""))]
+fn parse_hana_oom(content: &str, source_path: &str) -> PyResult<String> {
+    Ok(parse_hana_oom_json(content, source_path))
+}
+
+/// Detect SAP HANA delta-merge / optimize-compression failures.
+#[pyfunction]
+#[pyo3(signature = (content, source_path=""))]
+fn parse_hana_merge_errors(content: &str, source_path: &str) -> PyResult<String> {
+    Ok(parse_hana_merge_errors_json(content, source_path))
+}
+
 // ============================================================================
 // OS identity
 // ============================================================================
@@ -1164,6 +1222,65 @@ fn parse_fips_mode_setup(content: &str, source_path: &str) -> PyResult<String> {
     Ok(parse_fips_mode_setup_json(content, source_path))
 }
 
+/// Parse ``tuned-adm active`` output to report the active tuned profile.
+///
+/// Args:
+///     content (str): Contents of
+///         ``sos_commands/tuned/tuned-adm_active`` or similar.
+///
+/// Returns:
+///     str: JSON-encoded object ``{"found", "activeProfile", "warnings",
+///     "recommendations"}``.
+#[pyfunction]
+#[pyo3(signature = (content, source_path=""))]
+fn parse_tuned_profile(content: &str, source_path: &str) -> PyResult<String> {
+    Ok(parse_tuned_profile_json(content, source_path))
+}
+
+/// Parse SELinux mode from ``/etc/selinux/config`` or ``sestatus`` output.
+///
+/// Args:
+///     content (str): Contents of ``etc/selinux/config`` or
+///         ``sos_commands/selinux/sestatus``.
+///
+/// Returns:
+///     str: JSON-encoded object ``{"found", "configMode", "currentMode",
+///     "warnings", "recommendations"}``.
+#[pyfunction]
+#[pyo3(signature = (content, source_path=""))]
+fn parse_selinux(content: &str, source_path: &str) -> PyResult<String> {
+    Ok(parse_selinux_json(content, source_path))
+}
+
+/// Parse swap space totals from ``/proc/meminfo`` (or ``free`` output).
+///
+/// Args:
+///     content (str): Contents of ``proc/meminfo``.
+///
+/// Returns:
+///     str: JSON-encoded object ``{"found", "swapTotalKb", "swapFreeKb",
+///     "warnings"}``.
+#[pyfunction]
+#[pyo3(signature = (content, source_path=""))]
+fn parse_swap_space(content: &str, source_path: &str) -> PyResult<String> {
+    Ok(parse_swap_space_json(content, source_path))
+}
+
+/// Parse the state of the ``fstrim.timer`` systemd unit.
+///
+/// Args:
+///     content (str): Output of ``systemctl is-enabled fstrim.timer`` or a
+///         ``systemctl list-unit-files`` listing.
+///
+/// Returns:
+///     str: JSON-encoded object ``{"found", "timerEnabled", "timerState",
+///     "warnings"}``.
+#[pyfunction]
+#[pyo3(signature = (content, source_path=""))]
+fn parse_fstrim(content: &str, source_path: &str) -> PyResult<String> {
+    Ok(parse_fstrim_json(content, source_path))
+}
+
 /// Parse the kernel command line; detect ``fips=1`` and other notable params.
 ///
 /// Args:
@@ -1415,6 +1532,11 @@ fn supportfile(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_fstab_analysis, m)?)?;
     m.add_function(wrap_pyfunction!(parse_df_output, m)?)?;
     m.add_function(wrap_pyfunction!(parse_mtab_analysis, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_nfs_mounts, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_hana_savepoints, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_hana_deadlocks, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_hana_oom, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_hana_merge_errors, m)?)?;
     m.add_function(wrap_pyfunction!(parse_basic_environment, m)?)?;
     m.add_function(wrap_pyfunction!(parse_os_release, m)?)?;
     m.add_function(wrap_pyfunction!(parse_fstab, m)?)?;
@@ -1433,6 +1555,10 @@ fn supportfile(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_rhel_rhui_check, m)?)?;
     m.add_function(wrap_pyfunction!(parse_crypto_policies, m)?)?;
     m.add_function(wrap_pyfunction!(parse_fips_mode_setup, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_tuned_profile, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_selinux, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_swap_space, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_fstrim, m)?)?;
     m.add_function(wrap_pyfunction!(parse_kernel_cmdline, m)?)?;
     m.add_function(wrap_pyfunction!(parse_rhui_errors, m)?)?;
     m.add_function(wrap_pyfunction!(parse_leapp_report, m)?)?;

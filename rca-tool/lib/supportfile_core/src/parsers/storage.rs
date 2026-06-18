@@ -258,6 +258,36 @@ pub struct NvmeListResult {
     pub source_path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct NfsMount {
+    pub source: String,
+    pub mountpoint: String,
+    pub fstype: String,
+    pub options: String,
+    /// Negotiated/configured protocol version (e.g. "3", "4.1") when present.
+    pub vers: Option<String>,
+    /// Read/write block sizes in bytes when present in the option list.
+    pub rsize: Option<i64>,
+    pub wsize: Option<i64>,
+    /// Mount timeout in deciseconds (NFS `timeo` option) when present.
+    pub timeo: Option<i64>,
+    /// Number of TCP connections (`nconnect`) when present.
+    pub nconnect: Option<i64>,
+    pub has_hard: bool,
+    pub has_soft: bool,
+    pub source_path: String,
+    pub source_line: Option<usize>,
+    pub source_line_end: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct NfsMountsResult {
+    pub found: bool,
+    pub mounts: Vec<NfsMount>,
+    pub warnings: Vec<StorageWarning>,
+    pub source_path: String,
+}
+
 // ---------------------------------------------------------------------------
 // LVM
 // ---------------------------------------------------------------------------
@@ -1094,6 +1124,206 @@ pub fn parse_nvme_list(content: &str, source_path: &str) -> NvmeListResult {
 }
 
 // ---------------------------------------------------------------------------
+// NFS mount analysis
+// ---------------------------------------------------------------------------
+//
+// SAP-on-Azure workloads frequently place HANA data/log/shared and
+// /sapmnt/transport directories on NFS (Azure NetApp Files or Azure Files).
+// Misconfigured NFS mount options are a common, hard-to-spot root cause of
+// data-integrity issues and poor throughput. This detector identifies NFS
+// mounts in fstab or mount/mtab output and flags option problems against
+// Microsoft's published SAP-on-NFS guidance. Generic boot-resilience checks
+// (e.g. `nofail`) are handled by `parse_fstab_analysis`; this parser focuses
+// only on NFS-specific option quality.
+
+fn nfs_option_value(options: &str, key: &str) -> Option<String> {
+    options.split(',').find_map(|opt| {
+        let opt = opt.trim();
+        let (k, v) = opt.split_once('=')?;
+        if k.trim().eq_ignore_ascii_case(key) {
+            Some(v.trim().to_string())
+        } else {
+            None
+        }
+    })
+}
+
+fn nfs_has_flag(options: &str, flag: &str) -> bool {
+    options
+        .split(',')
+        .any(|opt| opt.trim().eq_ignore_ascii_case(flag))
+}
+
+/// Parse NFS mounts from either fstab (`src mnt nfs opts ...`) or mount /
+/// mtab output (`src on mnt type nfs (opts)`), then emit SAP-relevant
+/// option-quality warnings.
+pub fn parse_nfs_mounts(content: &str, source_path: &str) -> NfsMountsResult {
+    // Reuse the SCC fstab section if we were handed an aggregated file.
+    let extracted = extract_fstab_from_scc(content);
+    let effective: &str = extracted.as_deref().unwrap_or(content);
+
+    let mount_re = crate::cached_regex!(r"^(\S+)\s+on\s+(\S+)\s+type\s+(\S+)\s+\(([^)]*)\)");
+
+    let mut mounts: Vec<NfsMount> = Vec::new();
+    let mut warnings: Vec<StorageWarning> = Vec::new();
+
+    for (idx, raw_line) in effective.lines().enumerate() {
+        let line_no = idx + 1;
+        let trimmed = raw_line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        // Normalise the two supported formats into: source mountpoint fstype options
+        let (source, mountpoint, fstype, options) = if let Some(caps) = mount_re.captures(trimmed) {
+            (
+                caps[1].to_string(),
+                caps[2].to_string(),
+                caps[3].to_string(),
+                caps[4].to_string(),
+            )
+        } else {
+            let parts = trimmed.split_whitespace().collect::<Vec<_>>();
+            if parts.len() < 4 {
+                continue;
+            }
+            (
+                parts[0].to_string(),
+                parts[1].to_string(),
+                parts[2].to_string(),
+                parts[3].to_string(),
+            )
+        };
+
+        // Recognise NFS by filesystem type. `host:/export` sources are only
+        // treated as NFS when the fstype confirms it, to avoid misclassifying
+        // other network filesystems.
+        let fstype_l = fstype.to_ascii_lowercase();
+        let is_nfs = fstype_l == "nfs" || fstype_l == "nfs4" || fstype_l == "nfs3";
+        if !is_nfs {
+            continue;
+        }
+
+        let vers = nfs_option_value(&options, "vers")
+            .or_else(|| nfs_option_value(&options, "nfsvers"));
+        let rsize = nfs_option_value(&options, "rsize").and_then(|v| v.parse::<i64>().ok());
+        let wsize = nfs_option_value(&options, "wsize").and_then(|v| v.parse::<i64>().ok());
+        let timeo = nfs_option_value(&options, "timeo").and_then(|v| v.parse::<i64>().ok());
+        let nconnect = nfs_option_value(&options, "nconnect").and_then(|v| v.parse::<i64>().ok());
+        let has_soft = nfs_has_flag(&options, "soft");
+        let has_hard = nfs_has_flag(&options, "hard");
+
+        // 1) soft mounts risk silent data corruption for SAP workloads.
+        if has_soft {
+            warnings.push(StorageWarning {
+                r#type: "nfs_soft_mount".to_string(),
+                message: format!(
+                    "NFS mount '{}' uses the 'soft' option",
+                    mountpoint
+                ),
+                details: Some(
+                    "Soft NFS mounts can silently drop I/O on timeout, risking data corruption for SAP/HANA volumes".to_string(),
+                ),
+                severity: Some("error".to_string()),
+                recommendation: Some(
+                    "Use the 'hard' option for SAP NFS volumes so I/O retries instead of failing".to_string(),
+                ),
+                source_path: source_path.to_string(),
+                source_line: Some(line_no),
+                source_line_end: Some(line_no),
+            });
+        }
+
+        // 2) rsize/wsize below 262144 (256 KiB) reduce NFS throughput.
+        let small_rsize = rsize.map(|v| v < 262144).unwrap_or(false);
+        let small_wsize = wsize.map(|v| v < 262144).unwrap_or(false);
+        if small_rsize || small_wsize {
+            warnings.push(StorageWarning {
+                r#type: "nfs_small_rsize_wsize".to_string(),
+                message: format!(
+                    "NFS mount '{}' uses small read/write sizes (rsize={}, wsize={})",
+                    mountpoint,
+                    rsize.map(|v| v.to_string()).unwrap_or_else(|| "default".to_string()),
+                    wsize.map(|v| v.to_string()).unwrap_or_else(|| "default".to_string()),
+                ),
+                details: None,
+                severity: Some("warning".to_string()),
+                recommendation: Some(
+                    "Set rsize=262144 and wsize=262144 for SAP NFS volumes on Azure NetApp Files".to_string(),
+                ),
+                source_path: source_path.to_string(),
+                source_line: Some(line_no),
+                source_line_end: Some(line_no),
+            });
+        }
+
+        // 3) Outdated protocol versions (NFSv2 / NFSv4.0) are not recommended.
+        if let Some(v) = &vers {
+            if v == "2" || v == "4.0" {
+                warnings.push(StorageWarning {
+                    r#type: "nfs_outdated_version".to_string(),
+                    message: format!(
+                        "NFS mount '{}' uses protocol version {}",
+                        mountpoint, v
+                    ),
+                    details: None,
+                    severity: Some("warning".to_string()),
+                    recommendation: Some(
+                        "Use NFSv3 or NFSv4.1 for SAP workloads on Azure".to_string(),
+                    ),
+                    source_path: source_path.to_string(),
+                    source_line: Some(line_no),
+                    source_line_end: Some(line_no),
+                });
+            }
+        }
+
+        // 4) Missing nconnect leaves throughput on the table for ANF.
+        if nconnect.is_none() {
+            warnings.push(StorageWarning {
+                r#type: "nfs_no_nconnect".to_string(),
+                message: format!(
+                    "NFS mount '{}' does not set the 'nconnect' option",
+                    mountpoint
+                ),
+                details: None,
+                severity: Some("info".to_string()),
+                recommendation: Some(
+                    "Consider nconnect (e.g. nconnect=8) to improve NFS throughput on Azure NetApp Files".to_string(),
+                ),
+                source_path: source_path.to_string(),
+                source_line: Some(line_no),
+                source_line_end: Some(line_no),
+            });
+        }
+
+        mounts.push(NfsMount {
+            source,
+            mountpoint,
+            fstype,
+            options,
+            vers,
+            rsize,
+            wsize,
+            timeo,
+            nconnect,
+            has_hard,
+            has_soft,
+            source_path: source_path.to_string(),
+            source_line: Some(line_no),
+            source_line_end: Some(line_no),
+        });
+    }
+
+    NfsMountsResult {
+        found: !mounts.is_empty(),
+        mounts,
+        warnings,
+        source_path: source_path.to_string(),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // JSON wrappers
 // ---------------------------------------------------------------------------
 
@@ -1134,6 +1364,11 @@ pub fn parse_mtab_analysis_json(content: &str, source_path: &str) -> String {
 
 pub fn parse_nvme_list_json(content: &str, source_path: &str) -> String {
     serde_json::to_string(&parse_nvme_list(content, source_path))
+        .unwrap_or_else(|_| "{}".to_string())
+}
+
+pub fn parse_nfs_mounts_json(content: &str, source_path: &str) -> String {
+    serde_json::to_string(&parse_nfs_mounts(content, source_path))
         .unwrap_or_else(|_| "{}".to_string())
 }
 
@@ -1383,5 +1618,66 @@ mod tests {
         let json = parse_fstab_analysis_json("UUID=data-uuid /data xfs defaults 0 0\n", FSTAB_PATH);
         assert!(json.contains("\"source_path\":\"etc/fstab\""));
         assert!(json.contains("\"source_line\":1"));
+    }
+
+    // ---- NFS mounts --------------------------------------------------------
+
+    #[test]
+    fn nfs_flags_soft_small_size_and_missing_nconnect_from_fstab() {
+        let input = concat!(
+            "# /etc/fstab managed by admin\n",
+            "UUID=root-uuid / xfs defaults 0 0\n",
+            "10.0.0.4:/hana/data /hana/data nfs vers=4.1,soft,rsize=65536,wsize=65536,timeo=600 0 0\n",
+        );
+        let result = parse_nfs_mounts(input, FSTAB_PATH);
+        assert!(result.found);
+        assert_eq!(result.mounts.len(), 1);
+        let mount = &result.mounts[0];
+        assert_eq!(mount.mountpoint, "/hana/data");
+        assert_eq!(mount.fstype, "nfs");
+        assert_eq!(mount.vers.as_deref(), Some("4.1"));
+        assert_eq!(mount.rsize, Some(65536));
+        assert_eq!(mount.wsize, Some(65536));
+        assert_eq!(mount.timeo, Some(600));
+        assert!(mount.has_soft);
+        assert!(!mount.has_hard);
+        assert_eq!(mount.source_line, Some(3));
+
+        let types: Vec<&str> = result.warnings.iter().map(|w| w.r#type.as_str()).collect();
+        assert!(types.contains(&"nfs_soft_mount"));
+        assert!(types.contains(&"nfs_small_rsize_wsize"));
+        assert!(types.contains(&"nfs_no_nconnect"));
+        for w in &result.warnings {
+            assert_eq!(w.source_path, FSTAB_PATH);
+            assert_eq!(w.source_line, Some(3));
+        }
+    }
+
+    #[test]
+    fn nfs_parses_mount_output_and_keeps_good_mounts_clean() {
+        let input = concat!(
+            "/dev/sda1 on / type xfs (rw,relatime)\n",
+            "10.0.0.4:/sapmnt on /sapmnt type nfs4 (rw,hard,rsize=262144,wsize=262144,nconnect=8,vers=4.1)\n",
+        );
+        let result = parse_nfs_mounts(input, MTAB_PATH);
+        assert!(result.found);
+        assert_eq!(result.mounts.len(), 1);
+        let mount = &result.mounts[0];
+        assert_eq!(mount.mountpoint, "/sapmnt");
+        assert_eq!(mount.fstype, "nfs4");
+        assert!(mount.has_hard);
+        assert_eq!(mount.nconnect, Some(8));
+        assert!(result.warnings.is_empty());
+    }
+
+    #[test]
+    fn nfs_flags_outdated_version() {
+        let input =
+            "10.0.0.4:/export /export nfs vers=2,hard,rsize=262144,wsize=262144,nconnect=4 0 0\n";
+        let result = parse_nfs_mounts(input, FSTAB_PATH);
+        assert!(result.found);
+        let types: Vec<&str> = result.warnings.iter().map(|w| w.r#type.as_str()).collect();
+        assert!(types.contains(&"nfs_outdated_version"));
+        assert!(!types.contains(&"nfs_no_nconnect"));
     }
 }

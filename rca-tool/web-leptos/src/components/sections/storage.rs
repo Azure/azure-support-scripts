@@ -194,6 +194,7 @@ pub fn StorageSection(data: Value) -> impl IntoView {
     let df = data.get("dfOutput").cloned().unwrap_or(Value::Null);
     let mtab = data.get("mtabAnalysis").cloned().unwrap_or(Value::Null);
     let nvme = data.get("nvmeList").cloned().unwrap_or(Value::Null);
+    let nfs = data.get("nfsMounts").cloned().unwrap_or(Value::Null);
 
     let has_any = json_bool(&lvm, "found")
         || json_bool(&raid, "found")
@@ -203,6 +204,7 @@ pub fn StorageSection(data: Value) -> impl IntoView {
         || json_bool(&block, "found")
         || json_bool(&correlation, "found")
         || json_bool(&mtab, "found")
+        || json_bool(&nfs, "found")
         || json_bool(&nvme, "hasNVMe");
 
     if !has_any {
@@ -228,6 +230,7 @@ pub fn StorageSection(data: Value) -> impl IntoView {
             {render_storage_correlation(&correlation)}
             {render_fstab_section(&fstab, &fstab_analysis, &df)}
             {render_mtab_section(&mtab)}
+            {render_nfs_section(&nfs)}
             {render_nvme_section(&nvme)}
         </Section>
     }
@@ -1033,6 +1036,149 @@ fn render_mtab_section(mtab: &Value) -> Option<AnyView> {
                 })}
 
                 {render_raw_output_details("Show raw /etc/mtab", raw_content)}
+            </details>
+        }
+        .into_any(),
+    )
+}
+
+fn render_nfs_section(nfs: &Value) -> Option<AnyView> {
+    if !json_bool(nfs, "found") {
+        return None;
+    }
+
+    let mounts = json_array(nfs, "mounts");
+    let warnings = json_array(nfs, "warnings");
+
+    if mounts.is_empty() && warnings.is_empty() {
+        return None;
+    }
+
+    let opt_num = |mount: &Value, key: &str| -> String {
+        mount
+            .get(key)
+            .and_then(|v| v.as_i64())
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "—".to_string())
+    };
+
+    let has_warnings = !warnings.is_empty();
+    let block_class = if warnings
+        .iter()
+        .any(|w| json_str(w, "severity") == "error")
+    {
+        "danger-block"
+    } else if has_warnings {
+        "warning-block"
+    } else {
+        "content-details"
+    };
+
+    Some(
+        view! {
+            <details class=block_class open=has_warnings>
+                <summary>
+                    {format!(
+                        "NFS Mounts ({} mount{})",
+                        mounts.len(),
+                        if mounts.len() == 1 { "" } else { "s" },
+                    )}
+                    {has_warnings.then(|| view! {
+                        <span class="badge badge-warning">
+                            {format!(
+                                "{} issue{}",
+                                warnings.len(),
+                                if warnings.len() == 1 { "" } else { "s" },
+                            )}
+                        </span>
+                    })}
+                </summary>
+
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>"Mount Point"</th>
+                            <th>"Source"</th>
+                            <th>"Type"</th>
+                            <th>"Version"</th>
+                            <th>"rsize"</th>
+                            <th>"wsize"</th>
+                            <th>"hard/soft"</th>
+                            <th>"nconnect"</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {mounts
+                            .iter()
+                            .map(|mount| {
+                                let mountpoint = json_text(mount, "mountpoint");
+                                let source = json_text(mount, "source");
+                                let fstype = json_text(mount, "fstype");
+                                let vers = {
+                                    let v = json_text(mount, "vers");
+                                    if v.is_empty() { "—".to_string() } else { v }
+                                };
+                                let rsize = opt_num(mount, "rsize");
+                                let wsize = opt_num(mount, "wsize");
+                                let has_hard = json_bool(mount, "has_hard");
+                                let has_soft = json_bool(mount, "has_soft");
+                                let hardsoft = if has_soft {
+                                    "soft".to_string()
+                                } else if has_hard {
+                                    "hard".to_string()
+                                } else {
+                                    "default".to_string()
+                                };
+                                let nconnect = opt_num(mount, "nconnect");
+                                view! {
+                                    <tr>
+                                        <td><code>{mountpoint}</code></td>
+                                        <td><code>{source}</code></td>
+                                        <td>{fstype}</td>
+                                        <td>{vers}</td>
+                                        <td>{rsize}</td>
+                                        <td>{wsize}</td>
+                                        <td>{hardsoft}</td>
+                                        <td>{nconnect}</td>
+                                    </tr>
+                                }
+                            })
+                            .collect::<Vec<_>>()}
+                    </tbody>
+                </table>
+
+                {warnings
+                    .into_iter()
+                    .map(|warning| {
+                        let severity = json_str(&warning, "severity");
+                        let message = json_str(&warning, "message");
+                        let recommendation = json_str(&warning, "recommendation");
+                        let class = if severity == "error" {
+                            "danger-block"
+                        } else if severity == "warning" {
+                            "warning-block"
+                        } else {
+                            "info-block"
+                        };
+                        let heading = if severity == "error" {
+                            "Error"
+                        } else if severity == "warning" {
+                            "Warning"
+                        } else {
+                            "Info"
+                        };
+                        view! {
+                            <div class=class>
+                                <p>
+                                    <strong>{format!("{heading}:")}</strong>
+                                    " "
+                                    {message}
+                                </p>
+                                {(!recommendation.is_empty()).then(|| view! { <p>{recommendation}</p> })}
+                            </div>
+                        }
+                    })
+                    .collect::<Vec<_>>()}
             </details>
         }
         .into_any(),

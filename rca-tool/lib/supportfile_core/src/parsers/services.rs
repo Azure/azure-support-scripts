@@ -56,6 +56,15 @@ pub struct SecuritySoftwareResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FstrimResult {
+    pub found: bool,
+    pub timer_enabled: bool,
+    pub timer_state: Option<String>,
+    pub warnings: Vec<crate::parsers::unix::UnixWarning>,
+    pub source_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ConfigCheckResult {
     pub found: bool,
     pub has_exclusions: bool,
@@ -223,8 +232,30 @@ fn check_exclusions(
 pub fn parse_ssh_service_issues(content: &str, source_path: &str) -> ServiceEventsResult {
     let mut events = Vec::new();
     for (i, line) in content.lines().enumerate() {
-        if !(line.contains("OpenSSH") || line.contains("/var/empty/sshd")) {
+        if !(line.contains("OpenSSH")
+            || line.contains("/var/empty/sshd")
+            || line.contains("Missing privilege separation directory"))
+        {
             continue;
+        }
+        if let Some(caps) = crate::cached_regex!(
+            r"(?i)Missing privilege separation directory:\s*(\S+)"
+        )
+        .captures(line)
+        {
+            let dir = caps
+                .get(1)
+                .map(|m| m.as_str())
+                .unwrap_or("(unknown)");
+            events.push(ServiceEvent {
+                timestamp: extract_timestamp(line)
+                    .unwrap_or_else(|| "Date not detected".to_string()),
+                line_number: i + 1,
+                issue_type: "ssh_missing_privsep_dir".to_string(),
+                message: format!("Missing privilege separation directory: {dir}"),
+                raw_line: line.trim().to_string(),
+                source_path: source_path.to_string(),
+            });
         }
         if crate::cached_regex!(r"(?i)Failed to start OpenSSH server daemon").is_match(line) {
             events.push(ServiceEvent {
@@ -615,6 +646,64 @@ pub fn parse_azure_extensions_json(content: &str, source_path: &str) -> String {
     serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
 }
 
+/// Parse the state of the `fstrim.timer` systemd unit.
+///
+/// Accepts either the single-word output of `systemctl is-enabled fstrim.timer`
+/// (e.g. `enabled`, `disabled`, `masked`) or a `systemctl list-unit-files`
+/// listing containing a `fstrim.timer <state>` row.
+pub fn parse_fstrim(content: &str, source_path: &str) -> FstrimResult {
+    let mut timer_state: Option<String> = None;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(c) =
+            crate::cached_regex!(r"(?i)^fstrim\.timer\s+(\w+)").captures(trimmed)
+        {
+            timer_state = Some(c[1].to_ascii_lowercase());
+            break;
+        }
+    }
+    if timer_state.is_none() {
+        let single = content.trim();
+        if matches!(
+            single.to_ascii_lowercase().as_str(),
+            "enabled" | "disabled" | "masked" | "static" | "indirect"
+        ) {
+            timer_state = Some(single.to_ascii_lowercase());
+        }
+    }
+    let timer_enabled = timer_state.as_deref() == Some("enabled");
+    let mut warnings = Vec::new();
+    if timer_enabled {
+        warnings.push(crate::parsers::unix::UnixWarning {
+            r#type: "fstrim_timer_enabled".to_string(),
+            severity: "warning".to_string(),
+            message: "The periodic fstrim.timer is enabled.".to_string(),
+            recommendation: Some(
+                "SAP guidance recommends disabling periodic fstrim on SAP hosts to avoid I/O impact; run systemctl disable --now fstrim.timer."
+                    .to_string(),
+            ),
+            documentation_url: None,
+            source_path: String::new(),
+            source_line: None,
+            source_line_end: None,
+        });
+    }
+    FstrimResult {
+        found: timer_state.is_some(),
+        timer_enabled,
+        timer_state,
+        warnings,
+        source_path: source_path.to_string(),
+    }
+}
+
+pub fn parse_fstrim_json(content: &str, source_path: &str) -> String {
+    let mut value =
+        serde_json::to_value(parse_fstrim(content, source_path)).unwrap_or(serde_json::Value::Null);
+    crate::parsers::fill_source_path(&mut value, source_path);
+    serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -628,6 +717,20 @@ mod tests {
         let result = parse_ssh_service_issues(input, "");
         assert!(result.found);
         assert_eq!(result.count, 2);
+    }
+
+    #[test]
+    fn detects_ssh_missing_privsep_dir() {
+        let input =
+            "Jan 10 12:00:00 node1 sshd[634020]: fatal: Missing privilege separation directory: /run/sshd";
+        let result = parse_ssh_service_issues(input, "");
+        assert!(result.found);
+        assert_eq!(result.count, 1);
+        assert_eq!(result.events[0].issue_type, "ssh_missing_privsep_dir");
+        assert_eq!(
+            result.events[0].message,
+            "Missing privilege separation directory: /run/sshd"
+        );
     }
 
     #[test]
@@ -669,5 +772,21 @@ mod tests {
         assert!(result.found);
         assert_eq!(result.count, 1);
         assert!(result.events[0].healthy);
+    }
+
+    #[test]
+    fn parses_fstrim_timer_state() {
+        let enabled = parse_fstrim("fstrim.timer                               enabled\n", "");
+        assert!(enabled.found);
+        assert!(enabled.timer_enabled);
+        assert!(!enabled.warnings.is_empty());
+
+        let disabled = parse_fstrim("disabled\n", "");
+        assert!(disabled.found);
+        assert!(!disabled.timer_enabled);
+        assert!(disabled.warnings.is_empty());
+
+        let absent = parse_fstrim("some-other-unit.service enabled\n", "");
+        assert!(!absent.found);
     }
 }

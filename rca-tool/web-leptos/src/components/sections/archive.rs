@@ -15,7 +15,6 @@ pub fn ArchiveSection(data: Value) -> impl IntoView {
         .get("totalParsed")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
-    let file_types = data.get("fileTypes").cloned().unwrap_or(Value::Null);
     let nested_gzip_total_count = data
         .get("nestedGzipTotalCount")
         .and_then(|v| v.as_u64())
@@ -62,33 +61,6 @@ pub fn ArchiveSection(data: Value) -> impl IntoView {
                         <strong>"Nested Compression:"</strong>
                         {format!(" {}", summary)}
                     </p>
-                }
-            })}
-            {(!file_types.is_null()).then(|| {
-                let types = file_types
-                    .as_object()
-                    .map(|m| {
-                        m.iter()
-                            .map(|(k, v)| {
-                                let count = v.as_u64().unwrap_or(0);
-                                view! {
-                                    <tr>
-                                        <td>{k.clone()}</td>
-                                        <td>{count.to_string()}</td>
-                                    </tr>
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default();
-                view! {
-                    <h3>"File Types"</h3>
-                    <table class="data-table">
-                        <thead>
-                            <tr><th scope="col">"Type"</th><th scope="col">"Count"</th></tr>
-                        </thead>
-                        <tbody>{types}</tbody>
-                    </table>
                 }
             })}
         </Section>

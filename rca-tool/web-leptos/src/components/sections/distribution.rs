@@ -732,6 +732,11 @@ fn render_packages_section(distro_pkgs: &Value) -> AnyView {
                                     let actual = json_str(&warning, "actual");
                                     let message = json_str(&warning, "message");
                                     let docs = json_str(&warning, "documentationUrl");
+                                    let source_path = json_str(&warning, "sourcePath");
+                                    let source_line = warning
+                                        .get("sourceLine")
+                                        .and_then(|value| value.as_u64())
+                                        .unwrap_or(0);
                                     view! {
                                         <li class="text-warning">
                                             <strong>{package.clone()}</strong>
@@ -746,6 +751,12 @@ fn render_packages_section(distro_pkgs: &Value) -> AnyView {
                                                     if expected.is_empty() { "-".to_string() } else { expected.clone() },
                                                     if actual.is_empty() { "-".to_string() } else { actual.clone() },
                                                 )}</div>
+                                            })}
+                                            {(!source_path.is_empty()).then(|| view! {
+                                                <div class="text-muted">{format!("Source: {}", source_path)}</div>
+                                            })}
+                                            {(source_line > 0).then(|| view! {
+                                                <div class="text-muted">{format!("Line: {}", source_line)}</div>
                                             })}
                                             {(!docs.is_empty()).then(|| view! {
                                                 <div>

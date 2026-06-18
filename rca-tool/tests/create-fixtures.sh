@@ -3855,9 +3855,68 @@ EFI variables are not supported on this system
 EOF
 create_fixture "test-secureboot-unsupported"
 
+################################################################################
+# OS tuning and security (SAP-on-Azure QualityCheck ports):
+# tuned profile, SELinux mode, swap space, and the fstrim timer.
+# Designed to trigger one warning per detector plus a tuned recommendation.
+################################################################################
 echo ""
-echo "========================================="
-echo "All test fixtures created successfully!"
+echo "=== Creating test-os-tuning.tar.xz ==="
+mkdir -p test-data/sos_commands/tuned
+cat > test-data/sos_commands/tuned/tuned-adm_active << 'EOF'
+Current active profile: sap-hana
+EOF
+mkdir -p test-data/etc/selinux
+cat > test-data/etc/selinux/config << 'EOF'
+# This file controls the state of SELinux on the system.
+SELINUX=enforcing
+SELINUXTYPE=targeted
+EOF
+mkdir -p test-data/proc
+cat > test-data/proc/meminfo << 'EOF'
+MemTotal:       16307152 kB
+MemFree:         8123456 kB
+SwapTotal:             0 kB
+SwapFree:              0 kB
+EOF
+mkdir -p test-data/sos_commands/systemd
+cat > test-data/sos_commands/systemd/systemctl_list-unit-files << 'EOF'
+UNIT FILE                                     STATE
+chronyd.service                               enabled
+fstrim.timer                                  enabled
+getty@.service                                enabled
+EOF
+mkdir -p test-data/etc
+cat > test-data/etc/os-release << 'EOF'
+NAME="Red Hat Enterprise Linux"
+VERSION="8.6 (Ootpa)"
+ID="rhel"
+VERSION_ID="8.6"
+PRETTY_NAME="Red Hat Enterprise Linux 8.6 (Ootpa)"
+EOF
+create_fixture "test-os-tuning"
+
+echo ""
+echo "=== Creating test-nfs-mounts.tar.xz ==="
+mkdir -p test-data/etc
+cat > test-data/etc/fstab << 'EOF'
+# /etc/fstab
+UUID=00000000-0000-0000-0000-000000000001 /     xfs    defaults                                              0 0
+UUID=00000000-0000-0000-0000-000000000002 /boot xfs    defaults                                              0 0
+10.0.0.4:/hana/data  /hana/data  nfs  vers=4.0,soft,rsize=65536,wsize=65536,timeo=600  0 0
+10.0.0.4:/hana/log   /hana/log   nfs  vers=4.0,soft,rsize=65536,wsize=65536,timeo=600  0 0
+10.0.0.5:/sapmnt     /sapmnt     nfs  vers=4.1,hard,rsize=262144,wsize=262144,nconnect=8,timeo=600  0 0
+EOF
+cat > test-data/etc/os-release << 'EOF'
+NAME="SLES"
+VERSION="15-SP4"
+ID="sles"
+VERSION_ID="15.4"
+PRETTY_NAME="SUSE Linux Enterprise Server 15 SP4"
+EOF
+create_fixture "test-nfs-mounts"
+
+echo ""
 echo "========================================="
 echo ""
 echo "Fixtures created in: $FIXTURES_DIR"

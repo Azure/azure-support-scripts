@@ -3,6 +3,7 @@ pub mod azure;
 pub mod cluster;
 pub mod debugfs;
 pub mod events;
+pub mod hana;
 pub mod network_interfaces;
 pub mod networking;
 pub mod packages;

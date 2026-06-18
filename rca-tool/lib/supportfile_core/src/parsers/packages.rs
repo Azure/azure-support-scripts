@@ -234,6 +234,61 @@ fn validate_packages(
     (found, warnings)
 }
 
+fn detect_dnf_yum_excludes(content: &str, source_path: &str) -> (Vec<PackageWarning>, Option<String>) {
+    let lower = source_path.to_ascii_lowercase();
+    let is_config_file = lower.ends_with("dnf.conf")
+        || lower.ends_with("yum.conf")
+        || lower.contains("/dnf.repos.d/")
+        || lower.contains("/yum.repos.d/")
+        || lower.ends_with(".repo");
+
+    if !is_config_file {
+        return (Vec::new(), None);
+    }
+
+    let mut warnings = Vec::new();
+    let mut raw_lines = Vec::new();
+
+    for (idx, line) in content.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        if let Some(caps) = crate::cached_regex!(r"(?i)^exclude\s*=\s*(.+)$")
+            .captures(trimmed)
+        {
+            let value = caps.get(1).map(|m| m.as_str().trim()).unwrap_or_default();
+            if value.is_empty() {
+                continue;
+            }
+
+            raw_lines.push(format!("{}: {}", idx + 1, trimmed));
+            warnings.push(PackageWarning {
+                package: "dnf_exclude".to_string(),
+                expected: "No package exclusions".to_string(),
+                actual: value.to_string(),
+                severity: "warning".to_string(),
+                message: format!(
+                    "DNF/YUM customizes updates with '{}' (line {}). This can block a minor-version upgrade if the excluded package is required by the distribution or Azure tooling.",
+                    trimmed, idx + 1
+                ),
+                source_path: source_path.to_string(),
+                source_line: Some(idx + 1),
+                source_line_end: Some(idx + 1),
+            });
+        }
+    }
+
+    let raw_content = if raw_lines.is_empty() {
+        None
+    } else {
+        Some(raw_lines.join("\n"))
+    };
+
+    (warnings, raw_content)
+}
+
 fn collect_fips_packages(entries: &[PackageEntry], source_path: &str) -> Vec<FipsPackage> {
     let fips_prefixes = [
         "dracut-fips",
@@ -527,6 +582,25 @@ fn parse_dnf_yum_log(content: &str) -> (Vec<PackageEntry>, Vec<String>) {
 
 pub fn parse_distro_packages(content: &str, source_path: &str) -> DistroPackagesResult {
     let trimmed = content.trim();
+    let lower_path = source_path.to_lowercase();
+    let (config_warnings, config_raw) = detect_dnf_yum_excludes(trimmed, source_path);
+    if !config_warnings.is_empty() {
+        return DistroPackagesResult {
+            found: true,
+            is_dpkg: false,
+            is_rpm_raw: false,
+            is_zypper_history: false,
+            is_dnf_yum_log: false,
+            raw_content: config_raw.or(Some(trimmed.to_string())),
+            package_count: config_warnings.len(),
+            packages: BTreeMap::new(),
+            warnings: config_warnings,
+            fips_packages: Vec::new(),
+            has_dracut_fips: false,
+            source_path: source_path.to_string(),
+        };
+    }
+
     let empty = DistroPackagesResult {
         found: false,
         is_dpkg: false,
@@ -546,7 +620,6 @@ pub fn parse_distro_packages(content: &str, source_path: &str) -> DistroPackages
     }
 
     // Special-case file types by filename, mirroring the legacy JS parser.
-    let lower_path = source_path.to_lowercase();
     let is_yum_dnf_listing = lower_path.contains("dnf_list_installed")
         || lower_path.contains("dnf-list-installed")
         || lower_path.contains("dnf_list-installed")
@@ -824,6 +897,29 @@ mod tests {
         let result = parse_distro_packages(input, PATH);
         assert!(result.found);
         assert!(result.is_dpkg);
+    }
+
+    #[test]
+    fn detects_dnf_exclude_customizations_with_source_lines() {
+        let input = concat!(
+            "[main]\n",
+            "gpgcheck=1\n",
+            "exclude=openssl* openssl-libs*\n",
+            "installonly_limit=3\n",
+        );
+
+        let result = parse_distro_packages(input, "etc/dnf/dnf.conf");
+
+        assert!(result.found);
+        assert!(result.warnings.iter().any(|w| w.package == "dnf_exclude"));
+        let warning = result
+            .warnings
+            .iter()
+            .find(|w| w.package == "dnf_exclude")
+            .expect("exclude customization warning");
+        assert_eq!(warning.source_line, Some(3));
+        assert!(warning.message.contains("exclude=openssl* openssl-libs*"));
+        assert!(result.raw_content.as_deref().unwrap_or_default().contains("exclude=openssl* openssl-libs*"));
     }
 
     #[test]

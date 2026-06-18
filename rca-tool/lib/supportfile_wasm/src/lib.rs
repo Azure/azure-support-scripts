@@ -214,6 +214,11 @@ pub fn parse_firewall_rules_json(content: &str, source_path: &str) -> String {
     sf::parse_firewall_rules_json(content, source_path)
 }
 
+#[wasm_bindgen(js_name = parseFstrim)]
+pub fn parse_fstrim_json(content: &str, source_path: &str) -> String {
+    sf::parse_fstrim_json(content, source_path)
+}
+
 #[wasm_bindgen(js_name = parsePacketLoss)]
 pub fn parse_packet_loss_json(content: &str, source_path: &str) -> String {
     sf::parse_packet_loss_json(content, source_path)
@@ -227,6 +232,31 @@ pub fn parse_ring_buffer_json(content: &str, source_path: &str) -> String {
 #[wasm_bindgen(js_name = parseNetworkSysctl)]
 pub fn parse_network_sysctl_json(content: &str, source_path: &str) -> String {
     sf::parse_network_sysctl_json(content, source_path)
+}
+
+#[wasm_bindgen(js_name = parseNfsMounts)]
+pub fn parse_nfs_mounts_json(content: &str, source_path: &str) -> String {
+    sf::parse_nfs_mounts_json(content, source_path)
+}
+
+#[wasm_bindgen(js_name = parseHanaSavepoints)]
+pub fn parse_hana_savepoints_json(content: &str, source_path: &str) -> String {
+    sf::parse_hana_savepoints_json(content, source_path)
+}
+
+#[wasm_bindgen(js_name = parseHanaDeadlocks)]
+pub fn parse_hana_deadlocks_json(content: &str, source_path: &str) -> String {
+    sf::parse_hana_deadlocks_json(content, source_path)
+}
+
+#[wasm_bindgen(js_name = parseHanaOom)]
+pub fn parse_hana_oom_json(content: &str, source_path: &str) -> String {
+    sf::parse_hana_oom_json(content, source_path)
+}
+
+#[wasm_bindgen(js_name = parseHanaMergeErrors)]
+pub fn parse_hana_merge_errors_json(content: &str, source_path: &str) -> String {
+    sf::parse_hana_merge_errors_json(content, source_path)
 }
 
 #[wasm_bindgen(js_name = parseFstabAnalysis)]
@@ -394,6 +424,16 @@ pub fn parse_suse_cloud_register_json(content: &str, source_path: &str) -> Strin
     sf::parse_suse_cloud_register_json(content, source_path)
 }
 
+#[wasm_bindgen(js_name = parseSelinux)]
+pub fn parse_selinux_json(content: &str, source_path: &str) -> String {
+    sf::parse_selinux_json(content, source_path)
+}
+
+#[wasm_bindgen(js_name = parseSwapSpace)]
+pub fn parse_swap_space_json(content: &str, source_path: &str) -> String {
+    sf::parse_swap_space_json(content, source_path)
+}
+
 #[wasm_bindgen(js_name = parseTimeSync)]
 pub fn parse_time_sync_json(content: &str, source_path: &str) -> String {
     sf::parse_time_sync_json(content, source_path)
@@ -407,6 +447,11 @@ pub fn parse_time_sync_service_json(content: &str, source_path: &str) -> String 
 #[wasm_bindgen(js_name = parseTimedatectl)]
 pub fn parse_timedatectl_json(content: &str, source_path: &str) -> String {
     sf::parse_timedatectl_json(content, source_path)
+}
+
+#[wasm_bindgen(js_name = parseTunedProfile)]
+pub fn parse_tuned_profile_json(content: &str, source_path: &str) -> String {
+    sf::parse_tuned_profile_json(content, source_path)
 }
 
 #[wasm_bindgen(js_name = parseTrendMicro)]

@@ -1,5 +1,12 @@
 pub mod parsers;
 
+/// In-process supportconfig/sosreport analysis engine (parser registry,
+/// archive walk, parallel dispatch, result merging). Feature-gated because it
+/// pulls in the archive and parallelism crates that lean library / WASM /
+/// PyO3 builds do not need.
+#[cfg(feature = "cli")]
+pub mod engine;
+
 /// Cache a compiled `Regex` at the call site so it's only built once per
 /// process. Returns `&'static Regex`. Each call-site location gets its own
 /// `OnceLock`. Use this in place of `Regex::new(LITERAL).unwrap()` in any
@@ -18,6 +25,7 @@ pub use parsers::azure::*;
 pub use parsers::cluster::*;
 pub use parsers::debugfs::*;
 pub use parsers::events::*;
+pub use parsers::hana::*;
 pub use parsers::network_interfaces::*;
 pub use parsers::networking::*;
 pub use parsers::packages::*;

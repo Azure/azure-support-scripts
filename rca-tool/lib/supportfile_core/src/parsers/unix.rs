@@ -295,6 +295,36 @@ pub struct FipsModeSetupResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TunedProfileResult {
+    pub found: bool,
+    pub active_profile: Option<String>,
+    pub warnings: Vec<UnixWarning>,
+    pub recommendations: Vec<UnixWarning>,
+    pub source_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SelinuxResult {
+    pub found: bool,
+    /// Mode declared in /etc/selinux/config (SELINUX=...).
+    pub config_mode: Option<String>,
+    /// Mode currently in effect, as reported by sestatus.
+    pub current_mode: Option<String>,
+    pub warnings: Vec<UnixWarning>,
+    pub recommendations: Vec<UnixWarning>,
+    pub source_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SwapSpaceResult {
+    pub found: bool,
+    pub swap_total_kb: i64,
+    pub swap_free_kb: i64,
+    pub warnings: Vec<UnixWarning>,
+    pub source_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct KernelCmdlineResult {
     pub found: bool,
     pub fips_enabled: bool,
@@ -1724,6 +1754,152 @@ pub fn parse_fips_mode_setup(content: &str, source_path: &str) -> FipsModeSetupR
     }
 }
 
+pub fn parse_tuned_profile(content: &str, source_path: &str) -> TunedProfileResult {
+    let mut active_profile = None;
+    for line in content.lines() {
+        if let Some(c) =
+            crate::cached_regex!(r"(?i)Current active profile:\s*(.+?)\s*$").captures(line.trim())
+        {
+            let prof = c[1].trim().to_string();
+            if !prof.is_empty() {
+                active_profile = Some(prof);
+            }
+        }
+    }
+    let no_profile = crate::cached_regex!(r"(?i)No current active profile").is_match(content);
+    let found = active_profile.is_some() || no_profile;
+    let mut warnings = Vec::new();
+    let mut recommendations = Vec::new();
+    if found && active_profile.is_none() {
+        warnings.push(UnixWarning {
+            r#type: "tuned_no_active_profile".to_string(),
+            severity: "warning".to_string(),
+            message: "No tuned profile is currently active.".to_string(),
+            recommendation: Some(
+                "Activate a tuned profile (for SAP HANA on RHEL use 'sap-hana') with tuned-adm profile <name>."
+                    .to_string(),
+            ),
+            documentation_url: Some(
+                "https://launchpad.support.sap.com/#/notes/2777782".to_string(),
+            ),
+            source_path: String::new(),
+            source_line: None,
+            source_line_end: None,
+        });
+    } else if let Some(p) = &active_profile {
+        recommendations.push(UnixWarning {
+            r#type: "tuned_active_profile".to_string(),
+            severity: "info".to_string(),
+            message: format!("Active tuned profile is '{}'.", p),
+            recommendation: Some(
+                "For SAP HANA on RHEL the recommended tuned profile is 'sap-hana'.".to_string(),
+            ),
+            documentation_url: Some(
+                "https://launchpad.support.sap.com/#/notes/2777782".to_string(),
+            ),
+            source_path: String::new(),
+            source_line: None,
+            source_line_end: None,
+        });
+    }
+    TunedProfileResult {
+        found,
+        active_profile,
+        warnings,
+        recommendations,
+        source_path: source_path.to_string(),
+    }
+}
+
+pub fn parse_selinux(content: &str, source_path: &str) -> SelinuxResult {
+    let mut config_mode = None;
+    let mut current_mode = None;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(c) = crate::cached_regex!(r"(?i)^\s*SELINUX=(\w+)").captures(trimmed) {
+            config_mode = Some(c[1].to_ascii_lowercase());
+        }
+        if let Some(c) = crate::cached_regex!(r"(?i)^Current mode:\s*(\w+)").captures(trimmed) {
+            current_mode = Some(c[1].to_ascii_lowercase());
+        }
+        if config_mode.is_none() {
+            if let Some(c) =
+                crate::cached_regex!(r"(?i)^Mode from config file:\s*(\w+)").captures(trimmed)
+            {
+                config_mode = Some(c[1].to_ascii_lowercase());
+            }
+        }
+    }
+    let found = config_mode.is_some() || current_mode.is_some();
+    let effective = current_mode.clone().or_else(|| config_mode.clone());
+    let mut warnings = Vec::new();
+    if effective.as_deref() == Some("enforcing") {
+        warnings.push(UnixWarning {
+            r#type: "selinux_enforcing".to_string(),
+            severity: "warning".to_string(),
+            message: "SELinux is in enforcing mode.".to_string(),
+            recommendation: Some(
+                "SAP recommends SELinux in Permissive mode on database hosts (SAP Note 2936683)."
+                    .to_string(),
+            ),
+            documentation_url: Some(
+                "https://launchpad.support.sap.com/#/notes/2936683".to_string(),
+            ),
+            source_path: String::new(),
+            source_line: None,
+            source_line_end: None,
+        });
+    }
+    SelinuxResult {
+        found,
+        config_mode,
+        current_mode,
+        warnings,
+        recommendations: Vec::new(),
+        source_path: source_path.to_string(),
+    }
+}
+
+pub fn parse_swap_space(content: &str, source_path: &str) -> SwapSpaceResult {
+    let mut swap_total_kb = -1i64;
+    let mut swap_free_kb = -1i64;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(c) = crate::cached_regex!(r"^SwapTotal:\s+(\d+)\s+kB").captures(trimmed) {
+            swap_total_kb = c[1].parse::<i64>().unwrap_or(0);
+        }
+        if let Some(c) = crate::cached_regex!(r"^SwapFree:\s+(\d+)\s+kB").captures(trimmed) {
+            swap_free_kb = c[1].parse::<i64>().unwrap_or(0);
+        }
+    }
+    let found = swap_total_kb >= 0;
+    let mut warnings = Vec::new();
+    if found && swap_total_kb == 0 {
+        warnings.push(UnixWarning {
+            r#type: "no_swap_configured".to_string(),
+            severity: "warning".to_string(),
+            message: "No swap space is configured (SwapTotal is 0).".to_string(),
+            recommendation: Some(
+                "Configure swap space per SAP guidance (SAP Note 1999997 recommends at least 2 GB for SAP hosts)."
+                    .to_string(),
+            ),
+            documentation_url: Some(
+                "https://launchpad.support.sap.com/#/notes/1999997".to_string(),
+            ),
+            source_path: String::new(),
+            source_line: None,
+            source_line_end: None,
+        });
+    }
+    SwapSpaceResult {
+        found,
+        swap_total_kb,
+        swap_free_kb,
+        warnings,
+        source_path: source_path.to_string(),
+    }
+}
+
 pub fn parse_kernel_cmdline(content: &str, source_path: &str) -> KernelCmdlineResult {
     let cmdline = content.trim().lines().next().unwrap_or("").to_string();
     let mut result = KernelCmdlineResult {
@@ -2172,6 +2348,9 @@ json_wrap!(parse_eus_version_lock_json, parse_eus_version_lock);
 json_wrap!(parse_rhel_rhui_check_json, parse_rhel_rhui_check);
 json_wrap!(parse_crypto_policies_json, parse_crypto_policies);
 json_wrap!(parse_fips_mode_setup_json, parse_fips_mode_setup);
+json_wrap!(parse_tuned_profile_json, parse_tuned_profile);
+json_wrap!(parse_selinux_json, parse_selinux);
+json_wrap!(parse_swap_space_json, parse_swap_space);
 json_wrap!(parse_kernel_cmdline_json, parse_kernel_cmdline);
 json_wrap!(parse_rhui_errors_json, parse_rhui_errors);
 json_wrap!(parse_leapp_report_json, parse_leapp_report);
@@ -2203,8 +2382,50 @@ mod tests {
     }
 
     #[test]
-    fn parses_timedatectl_and_chrony() {
-        let timed = parse_timedatectl(
+    fn parses_tuned_profile() {
+        let active = parse_tuned_profile("Current active profile: sap-hana\n", "");
+        assert!(active.found);
+        assert_eq!(active.active_profile.as_deref(), Some("sap-hana"));
+        assert!(active.warnings.is_empty());
+        assert!(!active.recommendations.is_empty());
+
+        let none = parse_tuned_profile("No current active profile.\n", "");
+        assert!(none.found);
+        assert!(none.active_profile.is_none());
+        assert!(!none.warnings.is_empty());
+    }
+
+    #[test]
+    fn parses_selinux_modes() {
+        let enforcing = parse_selinux("SELINUX=enforcing\nSELINUXTYPE=targeted\n", "");
+        assert!(enforcing.found);
+        assert_eq!(enforcing.config_mode.as_deref(), Some("enforcing"));
+        assert!(!enforcing.warnings.is_empty());
+
+        let sestatus = parse_selinux(
+            "SELinux status: enabled\nCurrent mode: permissive\nMode from config file: enforcing\n",
+            "",
+        );
+        assert_eq!(sestatus.current_mode.as_deref(), Some("permissive"));
+        // Effective (current) mode is permissive, so no warning.
+        assert!(sestatus.warnings.is_empty());
+    }
+
+    #[test]
+    fn parses_swap_space() {
+        let with_swap = parse_swap_space("MemTotal:       16evil\nSwapTotal:       2097152 kB\nSwapFree:        2097152 kB\n", "");
+        assert!(with_swap.found);
+        assert_eq!(with_swap.swap_total_kb, 2097152);
+        assert!(with_swap.warnings.is_empty());
+
+        let no_swap = parse_swap_space("SwapTotal:             0 kB\nSwapFree:              0 kB\n", "");
+        assert!(no_swap.found);
+        assert_eq!(no_swap.swap_total_kb, 0);
+        assert!(!no_swap.warnings.is_empty());
+    }
+
+    #[test]
+    fn parses_timedatectl_and_chrony() {        let timed = parse_timedatectl(
             "System clock synchronized: yes\nNTP service: active\nTime zone: UTC\n",
             "",
         );

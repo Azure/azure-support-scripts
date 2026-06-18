@@ -1,10 +1,15 @@
 pub mod archive;
 pub mod azure_vm;
 pub mod cluster;
+pub mod deadlocks;
 pub mod distribution;
 pub mod events;
+pub mod hana;
 pub mod helpers;
 pub mod kernel;
+pub mod merge_errors;
 pub mod networking;
+pub mod oom;
+pub mod os_tuning;
 pub mod services;
 pub mod storage;

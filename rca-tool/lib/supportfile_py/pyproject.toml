@@ -4,7 +4,11 @@ build-backend = "maturin"
 
 [project]
 name = "supportfile"
-version = "0.1.1"
+# Version is sourced dynamically from Cargo.toml (see [tool.maturin] below).
+# In CI, the version in Cargo.toml is overwritten from the pushed git tag by
+# .github/scripts/set-crate-version-from-tag.sh, so the wheel always matches
+# the tag.
+dynamic = ["version"]
 description = "Supportfile library for support file analysis"
 readme = "README.md"
 license = { text = "MIT" }

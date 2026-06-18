@@ -17,6 +17,7 @@ permissions:
 
 env:
   RUST_CORE_DIR: rca-tool/lib/supportfile_core
+  RUST_MCP_DIR: rca-tool/lib/supportfile_mcp
   PY_PKG_DIR: rca-tool/lib/supportfile_py
 
 jobs:
@@ -52,6 +53,7 @@ jobs:
         with:
           workspaces: |
             ${{ env.RUST_CORE_DIR }} -> target
+            ${{ env.RUST_MCP_DIR }} -> target
             ${{ env.PY_PKG_DIR }} -> target
 
       - name: Build Rust crate
@@ -70,6 +72,18 @@ jobs:
         working-directory: ${{ env.RUST_CORE_DIR }}
         run: cargo package --locked --allow-dirty
 
+      - name: Build MCP server
+        working-directory: ${{ env.RUST_MCP_DIR }}
+        run: cargo build --locked --release --target "${{ matrix.rust_target }}"
+
+      - name: Test MCP server
+        working-directory: ${{ env.RUST_MCP_DIR }}
+        run: cargo test --locked --target "${{ matrix.rust_target }}"
+
+      - name: Verify MCP crate can be packaged
+        working-directory: ${{ env.RUST_MCP_DIR }}
+        run: cargo package --locked --allow-dirty
+
       - name: Upload Rust crate artifact
         uses: actions/upload-artifact@v7
         with:
@@ -78,11 +92,27 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Upload MCP crate artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: rust-mcp-crate-${{ matrix.arch }}
+          path: ${{ env.RUST_MCP_DIR }}/target/package/*.crate
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload rca_cli binary artifact
         uses: actions/upload-artifact@v7
         with:
           name: rca_cli-${{ matrix.arch }}
           path: ${{ env.RUST_CORE_DIR }}/target/${{ matrix.rust_target }}/release/rca_cli
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload supportfile_mcp binary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: supportfile_mcp-${{ matrix.arch }}
+          path: ${{ env.RUST_MCP_DIR }}/target/${{ matrix.rust_target }}/release/supportfile_mcp
           if-no-files-found: error
           retention-days: 14
 
@@ -169,6 +199,12 @@ jobs:
 
       - name: Publish crate
         working-directory: ${{ env.RUST_CORE_DIR }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --locked --allow-dirty --token "$CARGO_REGISTRY_TOKEN"
+
+      - name: Publish MCP crate
+        working-directory: ${{ env.RUST_MCP_DIR }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: cargo publish --locked --allow-dirty --token "$CARGO_REGISTRY_TOKEN"
