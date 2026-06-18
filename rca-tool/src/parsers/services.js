@@ -188,3 +188,12 @@ const azureExtensionsParser = {
         return r;
     }
 };
+
+const fstrimParser = {
+    filePattern: /sos_commands\/systemd\/systemctl_list-unit-files$|\/systemd-status\.txt$|sos_commands\/.*fstrim.*$/,
+    parse: function(content, filename, _lines) {
+        const r = callServicesWasm('parseFstrim', content, filename, null);
+        if (!r || !r.found) return null;
+        return r;
+    }
+};

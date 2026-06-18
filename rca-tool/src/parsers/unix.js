@@ -303,6 +303,31 @@ const fipsModeSetupParser = {
     }
 };
 
+// ---------------------------------------------------------------------------
+// OS tuning (SAP-on-Azure QualityCheck ports)
+// ---------------------------------------------------------------------------
+
+const tunedProfileParser = {
+    filePattern: /sos_commands\/tuned\/tuned-adm_active$|\/tuned-adm.*\.txt$/,
+    parse: function(content, filename, _lines) {
+        return _wasmCall('parseTunedProfile', content, filename, { found: false });
+    }
+};
+
+const selinuxParser = {
+    filePattern: /\/etc\/selinux\/config$|sos_commands\/selinux\/sestatus$|\/selinux\.txt$/,
+    parse: function(content, filename, _lines) {
+        return _wasmCall('parseSelinux', content, filename, { found: false });
+    }
+};
+
+const swapSpaceParser = {
+    filePattern: /\/proc\/meminfo$/,
+    parse: function(content, filename, _lines) {
+        return _wasmCall('parseSwapSpace', content, filename, { found: false });
+    }
+};
+
 const kernelCmdlineParser = {
     filePattern: /\/proc\/cmdline$|\/boot\.txt$/,
     parse: function(content, filename, _lines) {

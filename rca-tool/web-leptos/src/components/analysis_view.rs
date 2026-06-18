@@ -7,10 +7,15 @@ use super::sections::azure_vm::{
     AzureExtensionsSection, AzureVmSection, SecureBootSection, WaagentLogSection,
 };
 use super::sections::cluster::{ApplicationsSection, ClusterSection, SapInstanceSection};
+use super::sections::deadlocks::DeadlocksSection;
 use super::sections::distribution::DistributionSection;
 use super::sections::events::EventsSection;
+use super::sections::hana::HanaSection;
 use super::sections::kernel::{KernelCrashSection, KernelSection};
+use super::sections::merge_errors::MergeErrorsSection;
 use super::sections::networking::NetworkingSection;
+use super::sections::oom::OomSection;
+use super::sections::os_tuning::OsTuningSection;
 use super::sections::services::ServicesAntivirusSection;
 use super::sections::storage::{InspectDiskSection, StorageSection};
 
@@ -92,7 +97,12 @@ pub fn AnalysisView(result: ReadSignal<WorkerResult>) -> impl IntoView {
                     <ServicesAntivirusSection data=json.clone()/>
                     <AzureExtensionsSection data=json.clone()/>
                     <KernelSection data=json.clone()/>
+                    <OsTuningSection data=json.clone()/>
                     <StorageSection data=json.clone()/>
+                    <HanaSection data=json.clone()/>
+                    <DeadlocksSection data=json.clone()/>
+                    <OomSection data=json.clone()/>
+                    <MergeErrorsSection data=json.clone()/>
                     <ArchiveSection data=json.clone()/>
                 </div>
             }

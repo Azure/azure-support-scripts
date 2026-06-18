@@ -403,3 +403,76 @@ const nvmeListParser = {
         return result;
     }
 };
+
+// ===========================================================================
+// nfsMounts — thin shim (NFS mount-option quality analysis)
+// ===========================================================================
+//
+// Recognises NFS mounts in `/etc/fstab`, `/etc/mtab`, `/proc/mounts`, the
+// `mount` command output, and SCC's `fs-diskio.txt` (which embeds both an
+// fstab and a mount section).  The Rust `parseNfsMounts` understands both the
+// fstab columnar format and the `src on mp type fs (opts)` mount format, so we
+// just feed it the relevant text.  Multi-file: the worker accumulates mounts
+// from fstab + mount sources and `mergeResults` de-duplicates by mountpoint.
+
+const nfsMountsParser = {
+    filePattern: /\/etc\/fstab$|\/etc\/mtab$|\/proc\/mounts$|\/proc\/self\/mounts$|\/fs-diskio\.txt$|\/mount_-l$|\/mount$/,
+
+    parse: function(content, filename, _lines) {
+        let nfsContent = content;
+        if ((filename || '').includes('fs-diskio.txt')) {
+            const sections = [];
+            const fstabSection = _extractFstabFromSCC(content);
+            if (fstabSection) sections.push(fstabSection);
+            const mountSection = _extractMountFromSCC(content);
+            if (mountSection) sections.push(mountSection);
+            if (sections.length === 0) {
+                return { found: false, mounts: [], warnings: [] };
+            }
+            nfsContent = sections.join('\n');
+        }
+
+        const result = _storageWasmCall('parseNfsMounts', nfsContent, filename, null);
+        if (!result) {
+            return { found: false, mounts: [], warnings: [] };
+        }
+        return result;
+    },
+
+    // De-duplicate NFS mounts and warnings across fstab/mtab/mount sources so a
+    // mount listed in both fstab and the live mount table is only reported once.
+    mergeResults: function(existing, newResult) {
+        if (!existing || !existing.found) return newResult;
+        if (!newResult || !newResult.found) return existing;
+
+        const mountKey = (m) => `${(m && m.source) || ''}|${(m && m.mountpoint) || ''}`;
+        const warnKey = (w) => `${(w && w.type) || ''}|${(w && w.mountpoint) || ''}|${(w && w.message) || ''}`;
+
+        const seenMounts = new Set((existing.mounts || []).map(mountKey));
+        const mergedMounts = (existing.mounts || []).slice();
+        for (const m of newResult.mounts || []) {
+            const key = mountKey(m);
+            if (!seenMounts.has(key)) {
+                seenMounts.add(key);
+                mergedMounts.push(m);
+            }
+        }
+
+        const seenWarnings = new Set((existing.warnings || []).map(warnKey));
+        const mergedWarnings = (existing.warnings || []).slice();
+        for (const w of newResult.warnings || []) {
+            const key = warnKey(w);
+            if (!seenWarnings.has(key)) {
+                seenWarnings.add(key);
+                mergedWarnings.push(w);
+            }
+        }
+
+        return {
+            found: true,
+            mounts: mergedMounts,
+            warnings: mergedWarnings,
+            source_path: existing.source_path || newResult.source_path,
+        };
+    },
+};

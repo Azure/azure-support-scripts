@@ -30,6 +30,44 @@ jobs:
           rca-tool/web-leptos -> target
           rca-tool/lib/lzma_stream_wasm -> target
           rca-tool/lib/supportfile_core -> target
+          rca-tool/lib/supportfile_mcp -> target
+
+    # sccache speeds up compilation on regular pushes/PRs. It is skipped on
+    # release tag builds.
+    - name: Restore sccache files
+      id: restore-sccache
+      if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ github.workspace }}/.sccache
+        key: tests-${{ runner.os }}-${{ runner.arch }}-sccache-
+        restore-keys: tests-${{ runner.os }}-${{ runner.arch }}-sccache-
+
+    - name: Install sccache
+      if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      uses: taiki-e/install-action@v2
+      with:
+        tool: sccache
+
+    - name: Configure sccache
+      if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      run: |
+        set -euo pipefail
+        SCCACHE_PATH="$(command -v sccache)"
+        SCCACHE_DIR="${GITHUB_WORKSPACE}/.sccache"
+        mkdir -p "$SCCACHE_DIR"
+
+        echo "Cache restore matched key: ${{ steps.restore-sccache.outputs.cache-matched-key }}"
+        du -sh "$SCCACHE_DIR" 2>/dev/null || true
+
+        echo "SCCACHE_DIR=$SCCACHE_DIR" | tee -a "$GITHUB_ENV"
+        echo "SCCACHE_CACHE_SIZE=2G" | tee -a "$GITHUB_ENV"
+        echo "CARGO_INCREMENTAL=0" | tee -a "$GITHUB_ENV"
+        echo "RUSTC_WRAPPER=$SCCACHE_PATH" | tee -a "$GITHUB_ENV"
+
+        SCCACHE_DIR="$SCCACHE_DIR" SCCACHE_CACHE_SIZE=2G "$SCCACHE_PATH" --start-server
+        "$SCCACHE_PATH" --zero-stats || true
+        "$SCCACHE_PATH" --show-stats || true
 
     - name: Install Trunk
       uses: taiki-e/install-action@v2
@@ -49,6 +87,10 @@ jobs:
     - name: Build Rust CLI
       run: cargo build --locked --release --features cli --bin rca_cli
       working-directory: rca-tool/lib/supportfile_core
+
+    - name: Build MCP server
+      run: cargo build --locked --release
+      working-directory: rca-tool/lib/supportfile_mcp
         
     - name: Build Leptos UI
       run: ./build.sh
@@ -131,3 +173,19 @@ jobs:
         name: coverage-report
         path: rca-tool/tests/coverage-report*/
         retention-days: 30
+
+    - name: Show sccache stats
+      if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
+      run: sccache --show-stats || true
+
+    - name: Prepare sccache files for saving
+      id: prepare-save-sccache
+      if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
+      run: echo "SCCACHE_TIMESTAMP=$(date -u +%F-%T)" | tee -a "$GITHUB_OUTPUT"
+
+    - name: Save sccache files
+      if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
+      uses: actions/cache/save@v4
+      with:
+        key: ${{ steps.restore-sccache.outputs.cache-primary-key }}${{ steps.prepare-save-sccache.outputs.SCCACHE_TIMESTAMP }}
+        path: ${{ github.workspace }}/.sccache

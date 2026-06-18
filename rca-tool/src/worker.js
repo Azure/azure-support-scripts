@@ -323,6 +323,7 @@ if (typeof importScripts === 'function') {
         importScripts(versionedAsset('parsers/azure.js'));
         importScripts(versionedAsset('parsers/cluster.js'));
         importScripts(versionedAsset('parsers/storage.js'));
+        importScripts(versionedAsset('parsers/hana.js'));
         importScripts(versionedAsset('parsers/networking.js'));
         importScripts(versionedAsset('parsers/network-interfaces.js'));
         importScripts(versionedAsset('parsers/vmcore.js'));
@@ -352,7 +353,7 @@ function emptyAutomationResult() {
 
 // Inlined distro packages parser.
 const distroPackagesParser = {
-    filePattern: /\/(rpm\.txt|installed-rpms|package-data|dpkg_-l|dnf[_-]list[_-]installed|yum[_-]list[_-]installed|var\/log\/zypp\/history|var\/log\/(?:dnf|yum)\.log)$/,
+    filePattern: /\/(rpm\.txt|installed-rpms|package-data|dpkg_-l|dnf[_-]list[_-]installed|yum[_-]list[_-]installed|var\/log\/zypp\/history|var\/log\/(?:dnf|yum)\.log|etc\/dnf\/dnf\.conf|etc\/yum\.conf|etc\/dnf\.repo|etc\/yum\.repos\.d\/.*\.repo|etc\/dnf\/repos\.d\/.*\.repo|dnf\.conf|yum\.conf|.*\.repo)$/,
 
     parse: function(content, filename, _lines) {
         if (typeof WASM_BRIDGE === 'undefined' || !WASM_BRIDGE.isReady()) {
@@ -404,6 +405,14 @@ const SCC_RULES = {
         // Check if filename matches any report pattern
         isSCCReport: function(filename) {
             return this.filenamePatterns.some(pattern => pattern.test(filename));
+        },
+
+        // HANA trace files (indexserver_*.trc / nameserver_*.trc) can be
+        // collected on their own (e.g. a HANA log ZIP) outside any SCC /
+        // sosreport bundle. Detect them so their parsers still run.
+        hanaTracePattern: /\/(indexserver|nameserver)[^/]*\.trc$/,
+        isHanaLog: function(filename) {
+            return this.hanaTracePattern.test('/' + filename);
         }
     },
     
@@ -551,6 +560,9 @@ if (typeof involfltKernelVersionParser !== 'undefined') {
 if (typeof azureExtensionsParser !== 'undefined') {
     SCC_RULES.azureExtensions = azureExtensionsParser;
 }
+if (typeof fstrimParser !== 'undefined') {
+    SCC_RULES.fstrim = fstrimParser;
+}
 
 // From parsers/events.js  
 if (typeof emergencyModeParser !== 'undefined') {
@@ -631,6 +643,23 @@ if (typeof mtabAnalysisParser !== 'undefined') {
 if (typeof nvmeListParser !== 'undefined') {
     SCC_RULES.nvmeList = nvmeListParser;
 }
+if (typeof nfsMountsParser !== 'undefined') {
+    SCC_RULES.nfsMounts = nfsMountsParser;
+}
+
+// From parsers/hana.js
+if (typeof hanaSavepointsParser !== 'undefined') {
+    SCC_RULES.hanaSavepoints = hanaSavepointsParser;
+}
+if (typeof hanaDeadlocksParser !== 'undefined') {
+    SCC_RULES.hanaDeadlocks = hanaDeadlocksParser;
+}
+if (typeof hanaOomParser !== 'undefined') {
+    SCC_RULES.hanaOom = hanaOomParser;
+}
+if (typeof hanaMergeErrorsParser !== 'undefined') {
+    SCC_RULES.hanaMergeErrors = hanaMergeErrorsParser;
+}
 
 // From parsers/unix.js - RHUI/EUS parsers
 if (typeof rhuiConfigParser !== 'undefined') {
@@ -647,6 +676,15 @@ if (typeof cryptoPoliciesParser !== 'undefined') {
 }
 if (typeof fipsModeSetupParser !== 'undefined') {
     SCC_RULES.fipsModeSetup = fipsModeSetupParser;
+}
+if (typeof tunedProfileParser !== 'undefined') {
+    SCC_RULES.tunedProfile = tunedProfileParser;
+}
+if (typeof selinuxParser !== 'undefined') {
+    SCC_RULES.selinux = selinuxParser;
+}
+if (typeof swapSpaceParser !== 'undefined') {
+    SCC_RULES.swapSpace = swapSpaceParser;
 }
 if (typeof kernelCmdlineParser !== 'undefined') {
     SCC_RULES.kernelCmdline = kernelCmdlineParser;
@@ -786,6 +824,7 @@ class IncrementalTARParser {
         
         // SCC report analysis state
         this.isSCCReport = false;
+        this.isHanaLog = false;
         this.sccReportName = null;
         this.analysisResults = {}; // Stores parsed results by rule name (no raw file content)
         this.perfTracker = null; // Lazy-init when performance debug is enabled
@@ -1058,6 +1097,11 @@ class IncrementalTARParser {
             return true;
         }
 
+        // HANA trace files may appear in a standalone (non-SCC) log archive.
+        if (SCC_RULES.detection.isHanaLog(filename)) {
+            return true;
+        }
+
         // Files outside an SCC report are inventoried but never parsed.
         if (!this.isSCCReport) return false;
 
@@ -1242,8 +1286,14 @@ class IncrementalTARParser {
             debugLog('[TAR Parser] Detected SCC report:', this.sccReportName);
         }
 
+        // Detect standalone HANA log archive (no SCC wrapper).
+        if (!this.isHanaLog && SCC_RULES.detection.isHanaLog(filename)) {
+            this.isHanaLog = true;
+            debugLog('[TAR Parser] Detected HANA trace file:', filename);
+        }
+
         // Process SCC rules if this is an SCC report
-        if (this.isSCCReport && size > 0) {
+        if ((this.isSCCReport || this.isHanaLog) && size > 0) {
             this.processSCCRules(filename, size, offset);
         }
 
@@ -1427,7 +1477,7 @@ class IncrementalTARParser {
                         
                         // For rules that process multiple files (like liveMigration, kernelReboots, oomKiller, xfsErrors, emergencyMode, sshService, automation, clusterEvents, rhuiErrors, blockDevices, sapInstanceErrors, firewallRules, azureExtensions, and kernelTuning)
                         // we need to accumulate results instead of replacing
-                        const isMultiFileRule = ruleName === 'liveMigration' || ruleName === 'kernelReboots' || ruleName === 'oomKiller' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation' || ruleName === 'clusterEvents' || ruleName === 'rhuiErrors' || ruleName === 'blockDevices' || ruleName === 'sapInstanceErrors' || ruleName === 'firewallRules' || ruleName === 'networkInterfaces' || ruleName === 'vmcore' || ruleName === 'azureExtensions' || ruleName === 'lvmConfig' || ruleName === 'kernelTuning';
+                        const isMultiFileRule = ruleName === 'liveMigration' || ruleName === 'kernelReboots' || ruleName === 'oomKiller' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation' || ruleName === 'clusterEvents' || ruleName === 'rhuiErrors' || ruleName === 'blockDevices' || ruleName === 'sapInstanceErrors' || ruleName === 'firewallRules' || ruleName === 'networkInterfaces' || ruleName === 'vmcore' || ruleName === 'azureExtensions' || ruleName === 'lvmConfig' || ruleName === 'kernelTuning' || ruleName === 'nfsMounts' || ruleName === 'hanaSavepoints' || ruleName === 'hanaDeadlocks' || ruleName === 'hanaOom' || ruleName === 'hanaMergeErrors';
                         
                         // NOTE: We don't store file content in extractedFiles anymore to save memory
                         // Content is parsed immediately and discarded
@@ -1443,7 +1493,7 @@ class IncrementalTARParser {
                             if (isMultiFileRule) {
                                 // Accumulate results for multi-file rules
                                 // rhuiErrors, blockDevices, sapInstanceErrors, firewallRules, lvmConfig, and kernelTuning have different structures, so initialize separately
-                                if (!this.analysisResults[ruleName] && ruleName !== 'rhuiErrors' && ruleName !== 'blockDevices' && ruleName !== 'sapInstanceErrors' && ruleName !== 'firewallRules' && ruleName !== 'networkInterfaces' && ruleName !== 'vmcore' && ruleName !== 'lvmConfig' && ruleName !== 'kernelTuning') {
+                                if (!this.analysisResults[ruleName] && ruleName !== 'rhuiErrors' && ruleName !== 'blockDevices' && ruleName !== 'sapInstanceErrors' && ruleName !== 'firewallRules' && ruleName !== 'networkInterfaces' && ruleName !== 'vmcore' && ruleName !== 'lvmConfig' && ruleName !== 'kernelTuning' && ruleName !== 'nfsMounts' && ruleName !== 'hanaSavepoints' && ruleName !== 'hanaDeadlocks' && ruleName !== 'hanaOom' && ruleName !== 'hanaMergeErrors') {
                                     this.analysisResults[ruleName] = {
                                         count: 0,
                                         events: []
@@ -1465,6 +1515,51 @@ class IncrementalTARParser {
                                     }
                                     lvmConfigParser.mergeResults(this.analysisResults[ruleName], result);
                                     debugLog(`[TAR Parser] Rule 'lvmConfig' accumulated from ${filename} (pvs: ${this.analysisResults[ruleName].pvs.length}, vgs: ${this.analysisResults[ruleName].vgs.length}, lvs: ${this.analysisResults[ruleName].lvs.length})`);
+                                }
+                                // Handle nfsMounts accumulation - merges NFS mounts and warnings across fstab + mount sources
+                                else if (ruleName === 'nfsMounts') {
+                                    if (!this.analysisResults[ruleName]) {
+                                        this.analysisResults[ruleName] = result;
+                                    } else {
+                                        this.analysisResults[ruleName] = nfsMountsParser.mergeResults(this.analysisResults[ruleName], result);
+                                    }
+                                    debugLog(`[TAR Parser] Rule 'nfsMounts' accumulated from ${filename} (mounts: ${(this.analysisResults[ruleName].mounts || []).length}, warnings: ${(this.analysisResults[ruleName].warnings || []).length})`);
+                                }
+                                // Handle hanaSavepoints accumulation - merges HANA savepoint events and warnings across trace files
+                                else if (ruleName === 'hanaSavepoints') {
+                                    if (!this.analysisResults[ruleName]) {
+                                        this.analysisResults[ruleName] = result;
+                                    } else {
+                                        this.analysisResults[ruleName] = hanaSavepointsParser.mergeResults(this.analysisResults[ruleName], result);
+                                    }
+                                    debugLog(`[TAR Parser] Rule 'hanaSavepoints' accumulated from ${filename} (savepoints: ${(this.analysisResults[ruleName].savepoints || []).length}, warnings: ${(this.analysisResults[ruleName].warnings || []).length})`);
+                                }
+                                // Handle hanaDeadlocks accumulation - merges HANA deadlock events across trace files
+                                else if (ruleName === 'hanaDeadlocks') {
+                                    if (!this.analysisResults[ruleName]) {
+                                        this.analysisResults[ruleName] = result;
+                                    } else {
+                                        this.analysisResults[ruleName] = hanaDeadlocksParser.mergeResults(this.analysisResults[ruleName], result);
+                                    }
+                                    debugLog(`[TAR Parser] Rule 'hanaDeadlocks' accumulated from ${filename} (deadlocks: ${(this.analysisResults[ruleName].deadlocks || []).length}, warnings: ${(this.analysisResults[ruleName].warnings || []).length})`);
+                                }
+                                // Handle hanaOom accumulation - merges HANA out-of-memory events across trace files
+                                else if (ruleName === 'hanaOom') {
+                                    if (!this.analysisResults[ruleName]) {
+                                        this.analysisResults[ruleName] = result;
+                                    } else {
+                                        this.analysisResults[ruleName] = hanaOomParser.mergeResults(this.analysisResults[ruleName], result);
+                                    }
+                                    debugLog(`[TAR Parser] Rule 'hanaOom' accumulated from ${filename} (events: ${(this.analysisResults[ruleName].events || []).length}, warnings: ${(this.analysisResults[ruleName].warnings || []).length})`);
+                                }
+                                // Handle hanaMergeErrors accumulation - merges HANA delta-merge/compression errors across trace files
+                                else if (ruleName === 'hanaMergeErrors') {
+                                    if (!this.analysisResults[ruleName]) {
+                                        this.analysisResults[ruleName] = result;
+                                    } else {
+                                        this.analysisResults[ruleName] = hanaMergeErrorsParser.mergeResults(this.analysisResults[ruleName], result);
+                                    }
+                                    debugLog(`[TAR Parser] Rule 'hanaMergeErrors' accumulated from ${filename} (errors: ${(this.analysisResults[ruleName].errors || []).length}, warnings: ${(this.analysisResults[ruleName].warnings || []).length})`);
                                 }
                                 // Handle blockDevices accumulation - merges disks, partitions, and UUID maps
                                 else if (ruleName === 'blockDevices') {
@@ -1986,6 +2081,12 @@ class IncrementalTARParser {
             debugLog('[ZIP Parser] Detected SCC report:', this.sccReportName);
         }
 
+        // Detect standalone HANA log archive (no SCC wrapper).
+        if (!this.isHanaLog && SCC_RULES.detection.isHanaLog(filename)) {
+            this.isHanaLog = true;
+            debugLog('[ZIP Parser] Detected HANA trace file:', filename);
+        }
+
         // Track directories
         if (filename.includes('/')) {
             const parts = filename.split('/');
@@ -2006,8 +2107,8 @@ class IncrementalTARParser {
         // Skip directories and empty files
         if (size === 0 || filename.endsWith('/')) return;
 
-        // Only process if this is an SCC/sosreport
-        if (!this.isSCCReport) return;
+        // Only process if this is an SCC/sosreport or a standalone HANA log
+        if (!this.isSCCReport && !this.isHanaLog) return;
 
         // Normalize sos_strings tailed file paths (same logic as processSCCRules)
         let matchFilename = filename;
@@ -2111,7 +2212,7 @@ class IncrementalTARParser {
 
             if (!cachedLines) cachedLines = content.split('\n');
 
-            const isMultiFileRule = ruleName === 'liveMigration' || ruleName === 'kernelReboots' || ruleName === 'oomKiller' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation' || ruleName === 'clusterEvents' || ruleName === 'rhuiErrors' || ruleName === 'blockDevices' || ruleName === 'sapInstanceErrors' || ruleName === 'firewallRules' || ruleName === 'networkInterfaces' || ruleName === 'vmcore' || ruleName === 'azureExtensions' || ruleName === 'lvmConfig' || ruleName === 'kernelTuning';
+            const isMultiFileRule = ruleName === 'liveMigration' || ruleName === 'kernelReboots' || ruleName === 'oomKiller' || ruleName === 'xfsErrors' || ruleName === 'emergencyMode' || ruleName === 'sshService' || ruleName === 'automation' || ruleName === 'clusterEvents' || ruleName === 'rhuiErrors' || ruleName === 'blockDevices' || ruleName === 'sapInstanceErrors' || ruleName === 'firewallRules' || ruleName === 'networkInterfaces' || ruleName === 'vmcore' || ruleName === 'azureExtensions' || ruleName === 'lvmConfig' || ruleName === 'kernelTuning' || ruleName === 'nfsMounts' || ruleName === 'hanaSavepoints' || ruleName === 'hanaDeadlocks' || ruleName === 'hanaOom' || ruleName === 'hanaMergeErrors';
 
             try {
                 const parseStart = pt ? performance.now() : 0;
@@ -2119,7 +2220,7 @@ class IncrementalTARParser {
                 if (pt) pt.recordParser(matchFilename, ruleName, performance.now() - parseStart, result, this.analysisResults[ruleName]);
 
                 if (isMultiFileRule) {
-                    if (!this.analysisResults[ruleName] && ruleName !== 'rhuiErrors' && ruleName !== 'blockDevices' && ruleName !== 'sapInstanceErrors' && ruleName !== 'firewallRules' && ruleName !== 'networkInterfaces' && ruleName !== 'vmcore' && ruleName !== 'lvmConfig' && ruleName !== 'kernelTuning') {
+                    if (!this.analysisResults[ruleName] && ruleName !== 'rhuiErrors' && ruleName !== 'blockDevices' && ruleName !== 'sapInstanceErrors' && ruleName !== 'firewallRules' && ruleName !== 'networkInterfaces' && ruleName !== 'vmcore' && ruleName !== 'lvmConfig' && ruleName !== 'kernelTuning' && ruleName !== 'nfsMounts' && ruleName !== 'hanaSavepoints' && ruleName !== 'hanaDeadlocks' && ruleName !== 'hanaOom' && ruleName !== 'hanaMergeErrors') {
                         this.analysisResults[ruleName] = { count: 0, events: [] };
                     }
 
@@ -2133,6 +2234,41 @@ class IncrementalTARParser {
                             this.analysisResults[ruleName] = { found: false, pvs: [], vgs: [], lvs: [], warnings: [], rawOutput: {} };
                         }
                         lvmConfigParser.mergeResults(this.analysisResults[ruleName], result);
+                    } else if (ruleName === 'nfsMounts') {
+                        if (!this.analysisResults[ruleName]) {
+                            this.analysisResults[ruleName] = result;
+                        } else {
+                            this.analysisResults[ruleName] = nfsMountsParser.mergeResults(this.analysisResults[ruleName], result);
+                        }
+                        debugLog(`[ZIP Parser] Rule 'nfsMounts' accumulated from ${matchFilename} (mounts: ${(this.analysisResults[ruleName].mounts || []).length})`);
+                    } else if (ruleName === 'hanaSavepoints') {
+                        if (!this.analysisResults[ruleName]) {
+                            this.analysisResults[ruleName] = result;
+                        } else {
+                            this.analysisResults[ruleName] = hanaSavepointsParser.mergeResults(this.analysisResults[ruleName], result);
+                        }
+                        debugLog(`[ZIP Parser] Rule 'hanaSavepoints' accumulated from ${matchFilename} (savepoints: ${(this.analysisResults[ruleName].savepoints || []).length})`);
+                    } else if (ruleName === 'hanaDeadlocks') {
+                        if (!this.analysisResults[ruleName]) {
+                            this.analysisResults[ruleName] = result;
+                        } else {
+                            this.analysisResults[ruleName] = hanaDeadlocksParser.mergeResults(this.analysisResults[ruleName], result);
+                        }
+                        debugLog(`[ZIP Parser] Rule 'hanaDeadlocks' accumulated from ${matchFilename} (deadlocks: ${(this.analysisResults[ruleName].deadlocks || []).length})`);
+                    } else if (ruleName === 'hanaOom') {
+                        if (!this.analysisResults[ruleName]) {
+                            this.analysisResults[ruleName] = result;
+                        } else {
+                            this.analysisResults[ruleName] = hanaOomParser.mergeResults(this.analysisResults[ruleName], result);
+                        }
+                        debugLog(`[ZIP Parser] Rule 'hanaOom' accumulated from ${matchFilename} (events: ${(this.analysisResults[ruleName].events || []).length})`);
+                    } else if (ruleName === 'hanaMergeErrors') {
+                        if (!this.analysisResults[ruleName]) {
+                            this.analysisResults[ruleName] = result;
+                        } else {
+                            this.analysisResults[ruleName] = hanaMergeErrorsParser.mergeResults(this.analysisResults[ruleName], result);
+                        }
+                        debugLog(`[ZIP Parser] Rule 'hanaMergeErrors' accumulated from ${matchFilename} (errors: ${(this.analysisResults[ruleName].errors || []).length})`);
                     } else if (ruleName === 'blockDevices') {
                         if (!this.analysisResults[ruleName]) {
                             this.analysisResults[ruleName] = result;
@@ -2899,6 +3035,11 @@ class IncrementalTARParser {
             mtabAnalysis: this.compareMtabWithFstab(),
             storageCorrelation: this.correlateFstabWithBlockDevices(),
             nvmeList: this.analysisResults.nvmeList || null,
+            nfsMounts: this.analysisResults.nfsMounts || null,
+            hanaSavepoints: this.analysisResults.hanaSavepoints || null,
+            hanaDeadlocks: this.analysisResults.hanaDeadlocks || null,
+            hanaOom: this.analysisResults.hanaOom || null,
+            hanaMergeErrors: this.analysisResults.hanaMergeErrors || null,
             involfltVersion: this.analysisResults.involfltVersion || null,
             involfltKernelVersion: this.analysisResults.involfltKernelVersion || null,
             azureExtensions: this.analysisResults.azureExtensions || null,
@@ -2910,6 +3051,10 @@ class IncrementalTARParser {
             rhelRhuiCheck: this.analysisResults.rhelRhuiCheck || null,
             cryptoPolicies: this.analysisResults.cryptoPolicies || null,
             fipsModeSetup: this.analysisResults.fipsModeSetup || null,
+            tunedProfile: this.analysisResults.tunedProfile || null,
+            selinux: this.analysisResults.selinux || null,
+            swapSpace: this.analysisResults.swapSpace || null,
+            fstrim: this.analysisResults.fstrim || null,
             kernelCmdline: this.analysisResults.kernelCmdline || null,
             rhuiErrors: this.analysisResults.rhuiErrors || null,
             leappReport: this.analysisResults.leappReport || null,
