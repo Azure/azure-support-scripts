@@ -34,7 +34,12 @@ fi
 # Avoid global name collisions between supportfile_wasm.js and lzma_stream_wasm.js
 # (both are wasm-pack no-modules bundles that default to `wasm_bindgen`).
 if grep -q '^let wasm_bindgen =' "${LZMA_STREAM_WASM_PKG}/lzma_stream_wasm.js"; then
-    sed -i 's/^let wasm_bindgen =/let lzma_bindgen =/' "${LZMA_STREAM_WASM_PKG}/lzma_stream_wasm.js"
+    # Portable in-place edit: BSD/macOS `sed -i` requires a backup-suffix
+    # argument and would otherwise misparse the file path as the script, so
+    # edit via a temp file instead.
+    _sed_tmp="$(mktemp)"
+    sed 's/^let wasm_bindgen =/let lzma_bindgen =/' "${LZMA_STREAM_WASM_PKG}/lzma_stream_wasm.js" > "${_sed_tmp}"
+    mv "${_sed_tmp}" "${LZMA_STREAM_WASM_PKG}/lzma_stream_wasm.js"
 fi
 
 echo "==> Building bundled worker asset…"
