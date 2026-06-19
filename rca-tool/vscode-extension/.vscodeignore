@@ -1,0 +1,14 @@
+# Files and folders excluded from the packaged .vsix.
+.vscode/**
+.gitignore
+.vscodeignore
+esbuild.js
+tsconfig.json
+src/**
+node_modules/**
+**/*.ts
+**/*.map
+
+# Keep only the dist bundle, the platform binaries, media, and docs.
+# What ships: dist/extension.js, bin/** (platform binaries), README.md,
+# CHANGELOG.md, LICENSE.txt, package.json.

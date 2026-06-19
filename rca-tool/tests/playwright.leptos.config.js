@@ -5,6 +5,10 @@ const localBaseUrl = process.env.BASE_URL || `http://localhost:${localTestPort}`
 
 export default defineConfig({
   testDir: './',
+  // Regenerate the (gitignored) HANA zip fixtures from the `fixtures-gen` Rust
+  // crate before the suite runs, so the round-trip-validated fixtures are
+  // always present in CI without committing binaries.
+  globalSetup: './hana-fixtures.global-setup.js',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,

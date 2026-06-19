@@ -7,8 +7,17 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-latest
+          - os: macos
+            runner: macos-26
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -106,8 +115,16 @@ jobs:
         ./create-fixtures.sh
       working-directory: rca-tool/tests
  
-    - name: Install Playwright Edge
+    - name: Install Playwright Edge (Linux)
+      if: matrix.os == 'linux'
       run: npx playwright install --with-deps msedge
+      working-directory: rca-tool/tests
+
+    # macOS runners can't install browser system dependencies via apt, so
+    # `--with-deps` is omitted; Edge itself is downloaded the same way.
+    - name: Install Playwright Edge (macOS)
+      if: matrix.os == 'macos'
+      run: npx playwright install msedge
       working-directory: rca-tool/tests
 
     - name: Generate Rust library coverage
@@ -160,7 +177,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: test-results
+        name: test-results-${{ matrix.os }}
         path: |
           rca-tool/tests/playwright-report*/
           rca-tool/tests/test-results/
@@ -170,7 +187,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: coverage-report
+        name: coverage-report-${{ matrix.os }}
         path: rca-tool/tests/coverage-report*/
         retention-days: 30
 

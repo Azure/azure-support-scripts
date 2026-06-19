@@ -1,6 +1,6 @@
 [package]
 name = "supportfile_py"
-version = "0.1.1"
+version = "0.0.0"
 edition = "2021"
 description = "PyO3 wrapper for the Supportfile library core"
 license = "MIT"

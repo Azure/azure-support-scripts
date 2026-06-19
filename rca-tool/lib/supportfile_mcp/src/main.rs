@@ -21,7 +21,7 @@ use std::process::Stdio;
 
 use rmcp::{
     handler::server::wrapper::Parameters,
-    model::{ServerCapabilities, ServerInfo},
+    model::{Implementation, ServerCapabilities, ServerInfo},
     schemars, tool, tool_handler, tool_router,
     transport::stdio,
     ErrorData as McpError, ServerHandler, ServiceExt,
@@ -177,6 +177,13 @@ impl RcaServer {
 impl ServerHandler for RcaServer {
     fn get_info(&self) -> ServerInfo {
         let mut info = ServerInfo::default();
+        // Advertise this crate's own name/version (driven by Cargo.toml, which
+        // the release tag script bumps) instead of rmcp's build-env identity
+        // that `ServerInfo::default()` would otherwise report.
+        info.server_info = Implementation::new(
+            env!("CARGO_PKG_NAME"),
+            env!("CARGO_PKG_VERSION"),
+        );
         info.instructions = Some(
             "RCA tool MCP server. Use list_parsers to discover detectors, \
              analyze_archive for the full JSON findings of a support archive, \

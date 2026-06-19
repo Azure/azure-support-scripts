@@ -149,7 +149,7 @@ dependencies = [
 
 [[package]]
 name = "supportfile"
-version = "0.1.1"
+version = "0.0.0"
 dependencies = [
  "regex",
  "serde",
@@ -158,7 +158,7 @@ dependencies = [
 
 [[package]]
 name = "supportfile-wasm"
-version = "0.1.1"
+version = "0.0.0"
 dependencies = [
  "console_error_panic_hook",
  "serde_json",

@@ -1,6 +1,6 @@
 [package]
 name = "supportfile-wasm"
-version = "0.1.1"
+version = "0.0.0"
 edition = "2021"
 description = "WASM bindings for the supportfile parser library, consumed by the Leptos web UI worker."
 license = "MIT"

@@ -1,6 +1,6 @@
 [package]
 name = "supportfile_mcp"
-version = "0.1.0"
+version = "0.0.0"
 edition = "2021"
 description = "MCP server exposing the rca_cli support-file analyzer as Model Context Protocol tools"
 license = "MIT"
