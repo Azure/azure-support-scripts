@@ -3,7 +3,7 @@
   "displayName": "RCA Tool",
   "description": "Analyze Linux support archives (sosreport / supportconfig) directly from VS Code Chat via the RCA Tool MCP server.",
   "version": "0.1.0",
-  "publisher": "azure-support-scripts",
+  "publisher": "fede2cr",
   "license": "MIT",
   "repository": {
     "type": "git",

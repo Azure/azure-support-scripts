@@ -76,7 +76,7 @@ jobs:
       - name: Restore sccache files
         id: restore-sccache
         if: ${{ !startsWith(github.ref, 'refs/tags/') && matrix.os != 'windows' }}
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ${{ github.workspace }}/.sccache
           key: rust-core-${{ runner.os }}-${{ matrix.arch }}-sccache-
@@ -188,7 +188,7 @@ jobs:
 
       - name: Save sccache files
         if: ${{ always() && !startsWith(github.ref, 'refs/tags/') && matrix.os != 'windows' }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           key: ${{ steps.restore-sccache.outputs.cache-primary-key }}${{ steps.prepare-save-sccache.outputs.SCCACHE_TIMESTAMP }}
           path: ${{ github.workspace }}/.sccache
@@ -302,9 +302,9 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Download rca_cli binary
         uses: actions/download-artifact@v5
@@ -506,9 +506,9 @@ jobs:
 
     steps:
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Download VSIX artifacts
         uses: actions/download-artifact@v5
