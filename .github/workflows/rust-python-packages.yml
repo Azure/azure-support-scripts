@@ -374,7 +374,10 @@ jobs:
 
   publish-cargo:
     name: Publish Rust crate to crates.io
-    if: startsWith(github.ref, 'refs/tags/')
+    # Only publish on `v<semver>` tags. The version-rewrite step below is gated
+    # on the same condition, so a broader `refs/tags/` gate would publish the
+    # committed placeholder version (0.0.0) for non-`v` tags (e.g. rust-parser-v*).
+    if: startsWith(github.ref, 'refs/tags/v')
     needs:
       - build-rust-core
       - build-python-wheel
@@ -405,7 +408,7 @@ jobs:
 
   publish-pypi:
     name: Publish Python wheels to PyPI
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/v')
     needs:
       - build-python-wheel
     runs-on: ubuntu-24.04
@@ -428,7 +431,7 @@ jobs:
 
   publish-release:
     name: Attach binaries to GitHub Release
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/v')
     needs:
       - build-rust-core
       - build-python-wheel
@@ -506,7 +509,7 @@ jobs:
 
   publish-vsce:
     name: Publish VS Code extension
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/v')
     needs:
       - build-vscode-extension
     runs-on: ubuntu-latest
