@@ -307,13 +307,13 @@ jobs:
           node-version: '24'
 
       - name: Download rca_cli binary
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: rca_cli-${{ matrix.artifact_suffix }}
           path: dl-rca
 
       - name: Download supportfile_mcp binary
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: supportfile_mcp-${{ matrix.artifact_suffix }}
           path: dl-mcp
@@ -401,7 +401,7 @@ jobs:
 
     steps:
       - name: Download wheel artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           pattern: python-wheels-*
           path: dist
@@ -431,7 +431,7 @@ jobs:
       # Download them into per-artifact subdirectories so the platform-specific
       # names are preserved.
       - name: Download binary artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           pattern: '{rca_cli,supportfile_mcp}-*'
           path: artifacts
@@ -439,14 +439,14 @@ jobs:
       # Wheels and source crates already carry unique, version-bearing file
       # names, so they can be merged into single flat directories.
       - name: Download wheel artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           pattern: python-wheels-*
           path: wheels
           merge-multiple: true
 
       - name: Download crate artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           pattern: '{rust-crate,rust-mcp-crate}-*'
           path: crates
@@ -454,7 +454,7 @@ jobs:
 
       # VSIX packages already carry the platform target in their file name.
       - name: Download VSIX artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           pattern: vscode-extension-*
           path: vsix
@@ -511,7 +511,7 @@ jobs:
           node-version: '24'
 
       - name: Download VSIX artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           pattern: vscode-extension-*
           path: vsix
