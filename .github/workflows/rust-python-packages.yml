@@ -306,6 +306,19 @@ jobs:
         with:
           node-version: '24'
 
+      # When triggered by a `v<semver>` tag, override the manifest version so
+      # the packaged VSIX matches the release tag instead of the committed
+      # placeholder version. vsce reads the version from package.json at
+      # package time, so this must run before `vsce package`.
+      - name: Set extension version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: ${{ env.EXT_DIR }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          echo "Setting extension version to $version (from tag $GITHUB_REF_NAME)"
+          npm version "$version" --no-git-tag-version --allow-same-version
+
       - name: Download rca_cli binary
         uses: actions/download-artifact@v8
         with:
@@ -524,8 +537,13 @@ jobs:
         if: env.VSCE_PAT != ''
         run: |
           set -euo pipefail
+          # Sanity-check the secret without leaking it: report length only.
+          # A mismatch here (e.g. trailing newline/whitespace from a bad paste)
+          # is the most common cause of a 401 when the PAT itself is valid.
+          echo "VSCE_PAT length: ${#VSCE_PAT}"
           # vsce can publish all platform-specific packages in one invocation.
-          npx --yes @vscode/vsce publish --no-dependencies $(printf -- '--packagePath %s ' vsix/*.vsix)
+          # Pass the token explicitly with -p rather than relying on env pickup.
+          npx --yes @vscode/vsce publish --no-dependencies -p "$VSCE_PAT" $(printf -- '--packagePath %s ' vsix/*.vsix)
 
       - name: Skip VS Code Marketplace (no VSCE_PAT)
         if: env.VSCE_PAT == ''
