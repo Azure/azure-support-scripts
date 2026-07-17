@@ -13,6 +13,12 @@ param(
     [switch]$IncludeCredentialHives,
 
     [Parameter(Mandatory = $false)]
+    [switch]$IncludeComponentsHive,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$IncludeSoftwareDistribution,
+
+    [Parameter(Mandatory = $false)]
     [switch]$IncludeMemoryDump,
 
     [Parameter(Mandatory = $false)]
@@ -371,7 +377,6 @@ $pathsToCollect = @(
     @{ Rel = "Windows\Logs\DISM"; Dest = "offline\Windows\Logs\DISM"; Activity = "DISM logs" },
     @{ Rel = "Windows\Logs\WindowsUpdate"; Dest = "offline\Windows\Logs\WindowsUpdate"; Activity = "Windows Update logs" },
     @{ Rel = "Windows\WindowsUpdate.log"; Dest = "offline\Windows\WindowsUpdate.log"; Activity = "WindowsUpdate.log (legacy)" },
-    @{ Rel = "Windows\SoftwareDistribution"; Dest = "offline\Windows\SoftwareDistribution"; Activity = "SoftwareDistribution" },
     @{ Rel = "Windows\WinSxS\pending.xml"; Dest = "offline\Windows\WinSxS\pending.xml"; Activity = "WinSxS pending" },
     @{ Rel = "Windows\WinSxS\poqexec.log"; Dest = "offline\Windows\WinSxS\poqexec.log"; Activity = "WinSxS poqexec" },
     @{ Rel = "Windows\servicing\Sessions"; Dest = "offline\Windows\servicing\Sessions"; Activity = "Servicing sessions" },
@@ -435,6 +440,13 @@ foreach ($item in $pathsToCollect) {
 
 Write-Progress -Id 0 -Activity "Collecting offline diagnostics" -Completed
 
+# SoftwareDistribution — opt-in only (contains large update-download payloads; can be several hundred MB)
+if ($IncludeSoftwareDistribution) {
+    $sdPath = Join-Path $offlineRoot "Windows\SoftwareDistribution"
+    $destPath = Join-Path $outputFolder "offline\Windows\SoftwareDistribution"
+    Copy-IfPresent -Source $sdPath -Destination $destPath -Activity "SoftwareDistribution" -ProgressId 1
+}
+
 # MEMORY.DMP — opt-in only (large + may contain in-memory secrets)
 if ($IncludeMemoryDump) {
     $dumpPath = Join-Path $offlineRoot "Windows\MEMORY.DMP"
@@ -458,12 +470,19 @@ if ($IncludeMemoryDump) {
 $hiveFolder = Join-Path $resolvedWindowsRoot "System32\config"
 
 # Core diagnostic hives (safe for support bundles)
-$safeHives = @("SYSTEM", "SOFTWARE", "COMPONENTS")
+$safeHives = @("SYSTEM", "SOFTWARE")
 
 foreach ($hive in $safeHives) {
     $sourceHive = Join-Path $hiveFolder $hive
     $destHive = Join-Path $outputFolder ("offline\registry\{0}" -f $hive)
     Copy-IfPresent -Source $sourceHive -Destination $destHive -Activity "Registry hive: $hive" -ProgressId 1
+}
+
+# COMPONENTS hive (opt-in - large servicing-store hive, only needed for deep CBS/servicing analysis)
+if ($IncludeComponentsHive) {
+    $sourceHive = Join-Path $hiveFolder "COMPONENTS"
+    $destHive = Join-Path $outputFolder "offline\registry\COMPONENTS"
+    Copy-IfPresent -Source $sourceHive -Destination $destHive -Activity "Registry hive: COMPONENTS" -ProgressId 1
 }
 
 # Credential-bearing hives (requires explicit consent)
@@ -513,7 +532,8 @@ if ($ZipOutput) {
 # Collection summary
 $copiedCount = ($script:manifestEntries | Where-Object { $_.Status -eq "Copied" }).Count
 $skippedCount = ($script:manifestEntries | Where-Object { $_.Status -match "^(Missing|Failed)" }).Count
-$totalSize = ($script:manifestEntries | Where-Object { $_.Status -eq "Copied" } | Measure-Object -Property SizeBytes -Sum).Sum
+$totalSize = ($script:manifestEntries | Where-Object { $_.Status -eq "Copied" } | ForEach-Object { $_.SizeBytes } | Measure-Object -Sum).Sum
+if (-not $totalSize) { $totalSize = 0 }
 $totalSizeGB = [math]::Round($totalSize / 1GB, 2)
 
 Write-Host "`nOffline collection complete." -ForegroundColor Green
