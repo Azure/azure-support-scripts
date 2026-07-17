@@ -29,7 +29,7 @@ PowerShell script for rescue-VM scenarios that collects Windows troubleshooting 
 ## Output
 
 - **Chain-of-custody manifest** (`manifest.json`) — lists all collected/skipped files with size and SHA-256 hash
-- **Self-transcript** (`wrapper-transcript.log`) — complete log of the wrapper's execution
+- **Self-transcript** (`tssofflinelogcollector-transcript.log`) — complete log of the script's execution
 - Optional zip bundle (`-ZipOutput`)
 
 ## Prerequisites
@@ -86,14 +86,14 @@ Set-ExecutionPolicy Bypass -Force
 ## Output
 
 - **Default root**: `C:\MS_DATA\TSS_PERF_OFFLINE` (override with `-OutputPath`)
-- **Run folder**: `offline-tss-wrapper-<timestamp>`
+- **Run folder**: `tssofflinelogcollector-<timestamp>`
 - **Manifest**: `manifest.json` (lists all collected/skipped files with size and SHA-256)
-- **Transcript**: `wrapper-transcript.log` (complete execution log)
-- **Optional zip**: `offline-tss-wrapper-<timestamp>.zip` (with `-ZipOutput`)
+- **Transcript**: `tssofflinelogcollector-transcript.log` (complete execution log)
+- **Optional zip**: `tssofflinelogcollector-<timestamp>.zip` (with `-ZipOutput`)
 
 ## Notes
 
-- This wrapper collects **static files only** from the offline disk. It does not run TSS.ps1 or any live diagnostics.
+- This script collects **static files only** from the offline disk. It does not run TSS.ps1 or any live diagnostics.
 - **Comprehensive collection** — collects all diagnostic files TSS.ps1 DND_SetupReport/SDP Setup would gather (event logs, servicing logs, driver store, WER, etc.)
 - **Collection size** — expect several hundred MB to several GB depending on system state (more if DriverStore/WER contain many files). Use `-WhatIf` to preview before collecting.
 - **Registry hives are always collected** (SYSTEM, SOFTWARE, COMPONENTS) — these are essential for proper troubleshooting.

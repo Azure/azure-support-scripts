@@ -342,7 +342,7 @@ if (-not (Test-Path -LiteralPath $outputRoot)) {
     New-Item -Path $outputRoot -ItemType Directory -Force | Out-Null
 }
 
-$outputFolder = Join-Path $outputRoot "offline-tss-wrapper-$timeStamp"
+$outputFolder = Join-Path $outputRoot "tssofflinelogcollector-$timeStamp"
 
 if ((Test-Path -LiteralPath $outputFolder) -and -not $Force) {
     throw "Output folder already exists: $outputFolder. Use -Force to overwrite."
@@ -351,7 +351,7 @@ if ((Test-Path -LiteralPath $outputFolder) -and -not $Force) {
 New-Item -Path $outputFolder -ItemType Directory -Force | Out-Null
 
 # Start transcript for this run
-$transcriptPath = Join-Path $outputFolder "wrapper-transcript.log"
+$transcriptPath = Join-Path $outputFolder "tssofflinelogcollector-transcript.log"
 Start-Transcript -LiteralPath $transcriptPath -Force | Out-Null
 
 Write-Host "Offline Windows root : $resolvedWindowsRoot" -ForegroundColor Green
