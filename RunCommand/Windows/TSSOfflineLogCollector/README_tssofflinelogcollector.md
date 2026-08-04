@@ -38,9 +38,12 @@ PowerShell script for rescue-VM scenarios that collects Windows troubleshooting 
 
 - PowerShell 5.1 or higher
 - **Run from an elevated (Run as administrator) PowerShell console**
-- The broken VM OS disk must already be attached to the rescue VM
+- **Run from a *working* machine — an Azure rescue VM or a Hyper-V host — not from the broken VM itself**
+- The broken VM's OS disk must already be attached to that working machine as an **offline data disk**
 
 ## Usage
+
+> **Where to run this:** Execute the script on a working host that has the broken disk attached — an Azure **rescue VM** or a **Hyper-V host** with the broken VM's OS disk mounted as an offline data disk. The script reads the broken disk offline; it is **not** run on the broken VM.
 
 From an elevated PowerShell console:
 
