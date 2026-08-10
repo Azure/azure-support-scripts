@@ -1,3 +1,4 @@
+# Run from a WORKING machine (Azure rescue VM or Hyper-V host) that has the broken VM's OS disk attached as an offline data disk. Do NOT run on the broken VM.
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [Parameter(Mandatory = $false)]
