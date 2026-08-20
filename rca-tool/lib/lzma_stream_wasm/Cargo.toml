@@ -1,0 +1,20 @@
+[package]
+name = "lzma-stream-wasm"
+version = "0.0.1"
+edition = "2021"
+description = "Pure-Rust XZ streaming decoder exposed as wasm-bindgen for the RCA Tool worker."
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+lzma-rs = { git = "https://github.com/fede2cr/lzma-rs", branch = "streaming", features = ["stream"] }
+console_error_panic_hook = "0.1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1

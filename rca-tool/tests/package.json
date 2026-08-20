@@ -1,0 +1,24 @@
+{
+  "name": "rca-tool-tests",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Tests for RCA Tool",
+  "scripts": {
+    "test": "playwright test --config=playwright.leptos.config.js",
+    "test:debug": "playwright test --config=playwright.leptos.config.js --debug",
+    "test:ui": "playwright test --config=playwright.leptos.config.js --ui",
+    "test:headed": "playwright test --config=playwright.leptos.config.js --headed",
+    "test:coverage": "bash instrument-coverage.sh && echo '\nOpen coverage-report-rust/html/index.html for Rust coverage report'",
+    "test:leptos": "playwright test --config=playwright.leptos.config.js",
+    "test:leptos:headed": "playwright test --config=playwright.leptos.config.js --headed",
+    "coverage:view": "npx monocart show-report coverage-report-leptos/index.html",
+    "serve": "http-server -p 8080"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.11.0",
+    "@playwright/test": "^1.60.0",
+    "http-server": "^14.1.1",
+    "monocart-reporter": "^2.10.0",
+    "nyc": "^17.1.0"
+  }
+}
