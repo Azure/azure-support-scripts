@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "EventLog service running",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "System channel readable",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "Application channel readable",
+        "status": "OK",
+        "detail": "Below threshold"
+      },
+      {
+        "name": "Security channel readable",
+        "status": "OK",
+        "detail": "Baseline compliant"
+      },
+      {
+        "name": "System errors in last 4h below threshold",
+        "status": "OK",
+        "detail": "Reachable"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "EventLog service running",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "System channel readable",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "Application channel readable",
+        "status": "WARN",
+        "detail": "Elevated but not failing"
+      },
+      {
+        "name": "Security channel readable",
+        "status": "WARN",
+        "detail": "Mostly compliant"
+      },
+      {
+        "name": "System errors in last 4h below threshold",
+        "status": "OK",
+        "detail": "Reachable with latency"
+      }
+    ],
+    "broken": [
+      {
+        "name": "EventLog service running",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "System channel readable",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "Application channel readable",
+        "status": "WARN",
+        "detail": "High error rate"
+      },
+      {
+        "name": "Security channel readable",
+        "status": "WARN",
+        "detail": "Drift detected"
+      },
+      {
+        "name": "System errors in last 4h below threshold",
+        "status": "FAIL",
+        "detail": "Unreachable"
+      }
+    ]
+  }
+}

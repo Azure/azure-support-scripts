@@ -1,0 +1,55 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Overall CPU utilization",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "Physical memory used",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "Commit charge",
+        "status": "OK",
+        "detail": "Below threshold"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Overall CPU utilization",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "Physical memory used",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "Commit charge",
+        "status": "OK",
+        "detail": "Elevated but not failing"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Overall CPU utilization",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "Physical memory used",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "Commit charge",
+        "status": "FAIL",
+        "detail": "High error rate"
+      }
+    ]
+  }
+}

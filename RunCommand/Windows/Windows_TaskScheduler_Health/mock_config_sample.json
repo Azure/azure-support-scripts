@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Task Scheduler service",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Failed scheduled tasks",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Task Scheduler event errors (7d)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Task registration count",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Task queue latency (any running)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Task Scheduler service",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Failed scheduled tasks",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Task Scheduler event errors (7d)",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Task registration count",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "Task queue latency (any running)",
+        "status": "WARN",
+        "detail": "Degraded state"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Task Scheduler service",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Failed scheduled tasks",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Task Scheduler event errors (7d)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Task registration count",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "Task queue latency (any running)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

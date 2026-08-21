@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Storage Spaces subsystem",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Storage pool health",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Virtual disk health",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Physical disk health",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Storage Spaces Direct (S2D) state",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Storage Spaces subsystem",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Storage pool health",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Virtual disk health",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Physical disk health",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "Storage Spaces Direct (S2D) state",
+        "status": "WARN",
+        "detail": "Degraded state"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Storage Spaces subsystem",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Storage pool health",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Virtual disk health",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Physical disk health",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "Storage Spaces Direct (S2D) state",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

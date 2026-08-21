@@ -1,0 +1,130 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Dump file path configured",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "AutoReboot disabled during triage",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "Overwrite existing dump enabled",
+        "status": "OK",
+        "detail": "Below threshold"
+      },
+      {
+        "name": "Minidump directory configured",
+        "status": "OK",
+        "detail": "Baseline compliant"
+      },
+      {
+        "name": "Pagefile configured",
+        "status": "OK",
+        "detail": "Reachable"
+      },
+      {
+        "name": "OS drive pagefile present",
+        "status": "OK",
+        "detail": "Clean"
+      },
+      {
+        "name": "MEMORY.DMP present",
+        "status": "OK",
+        "detail": "Present"
+      },
+      {
+        "name": "Minidump files present",
+        "status": "OK",
+        "detail": "Configured"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Dump file path configured",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "AutoReboot disabled during triage",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "Overwrite existing dump enabled",
+        "status": "WARN",
+        "detail": "Elevated but not failing"
+      },
+      {
+        "name": "Minidump directory configured",
+        "status": "WARN",
+        "detail": "Mostly compliant"
+      },
+      {
+        "name": "Pagefile configured",
+        "status": "WARN",
+        "detail": "Reachable with latency"
+      },
+      {
+        "name": "OS drive pagefile present",
+        "status": "WARN",
+        "detail": "Minor drift"
+      },
+      {
+        "name": "MEMORY.DMP present",
+        "status": "WARN",
+        "detail": "Within tolerance"
+      },
+      {
+        "name": "Minidump files present",
+        "status": "OK",
+        "detail": "Acceptable"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Dump file path configured",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "AutoReboot disabled during triage",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "Overwrite existing dump enabled",
+        "status": "WARN",
+        "detail": "High error rate"
+      },
+      {
+        "name": "Minidump directory configured",
+        "status": "WARN",
+        "detail": "Drift detected"
+      },
+      {
+        "name": "Pagefile configured",
+        "status": "WARN",
+        "detail": "Unreachable"
+      },
+      {
+        "name": "OS drive pagefile present",
+        "status": "WARN",
+        "detail": "Missing"
+      },
+      {
+        "name": "MEMORY.DMP present",
+        "status": "WARN",
+        "detail": "Failed"
+      },
+      {
+        "name": "Minidump files present",
+        "status": "FAIL",
+        "detail": "Corrupted"
+      }
+    ]
+  }
+}

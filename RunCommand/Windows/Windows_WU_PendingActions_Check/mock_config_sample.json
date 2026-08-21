@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Reboot required flag",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Pending file rename operations",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Component Based Servicing pending",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Windows Update service state",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Update session in progress",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Recent update install failures",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Reboot required flag",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Pending file rename operations",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Component Based Servicing pending",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Windows Update service state",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "Update session in progress",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Recent update install failures",
+        "status": "OK",
+        "detail": "Operational"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Reboot required flag",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Pending file rename operations",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Component Based Servicing pending",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Windows Update service state",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "Update session in progress",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Recent update install failures",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

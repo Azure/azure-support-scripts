@@ -1,0 +1,25 @@
+{
+  "profiles": {
+    "healthy": [
+      { "name": "WinRM service running",         "status": "OK",   "detail": "WinRM service is Running" },
+      { "name": "WinRM listener exists",          "status": "OK",   "detail": "HTTP listener on port 5985 configured" },
+      { "name": "WinRM firewall rules enabled",   "status": "OK",   "detail": "Windows Remote Management (HTTP-In) rule enabled" },
+      { "name": "Test-WSMan localhost succeeds",   "status": "OK",   "detail": "WS-Management responding on localhost" },
+      { "name": "Auth providers readable",         "status": "OK",   "detail": "Kerberos=true Negotiate=true" }
+    ],
+    "degraded": [
+      { "name": "WinRM service running",         "status": "OK",   "detail": "WinRM service is Running" },
+      { "name": "WinRM listener exists",          "status": "OK",   "detail": "HTTP listener on port 5985 configured" },
+      { "name": "WinRM firewall rules enabled",   "status": "OK",   "detail": "Windows Remote Management (HTTP-In) rule enabled" },
+      { "name": "Test-WSMan localhost succeeds",   "status": "WARN", "detail": "Test-WSMan returned null — service may be partially responsive" },
+      { "name": "Auth providers readable",         "status": "WARN", "detail": "Could not enumerate auth providers — check WinRM config permissions" }
+    ],
+    "broken": [
+      { "name": "WinRM service running",         "status": "FAIL", "detail": "WinRM service is Stopped" },
+      { "name": "WinRM listener exists",          "status": "FAIL", "detail": "No WinRM listeners configured" },
+      { "name": "WinRM firewall rules enabled",   "status": "FAIL", "detail": "No enabled firewall rules for Windows Remote Management" },
+      { "name": "Test-WSMan localhost succeeds",   "status": "WARN", "detail": "Test-WSMan failed — WS-Management not responding" },
+      { "name": "Auth providers readable",         "status": "WARN", "detail": "Auth config inaccessible — possible WinRM corruption" }
+    ]
+  }
+}

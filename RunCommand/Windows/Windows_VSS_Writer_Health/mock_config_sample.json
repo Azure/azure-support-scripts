@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "vssadmin writers query succeeds",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "Failed VSS writers count",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "VSS service available",
+        "status": "OK",
+        "detail": "Below threshold"
+      },
+      {
+        "name": "VSS service startup mode acceptable",
+        "status": "OK",
+        "detail": "Baseline compliant"
+      },
+      {
+        "name": "At least one VSS provider found",
+        "status": "OK",
+        "detail": "Reachable"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "vssadmin writers query succeeds",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "Failed VSS writers count",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "VSS service available",
+        "status": "WARN",
+        "detail": "Elevated but not failing"
+      },
+      {
+        "name": "VSS service startup mode acceptable",
+        "status": "WARN",
+        "detail": "Mostly compliant"
+      },
+      {
+        "name": "At least one VSS provider found",
+        "status": "OK",
+        "detail": "Reachable with latency"
+      }
+    ],
+    "broken": [
+      {
+        "name": "vssadmin writers query succeeds",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "Failed VSS writers count",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "VSS service available",
+        "status": "WARN",
+        "detail": "High error rate"
+      },
+      {
+        "name": "VSS service startup mode acceptable",
+        "status": "WARN",
+        "detail": "Drift detected"
+      },
+      {
+        "name": "At least one VSS provider found",
+        "status": "FAIL",
+        "detail": "Unreachable"
+      }
+    ]
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "ServicesPipeTimeout value",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Auto-start services failed",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Service Control Manager errors (7d)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Service timeout events (7011)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Critical services running",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "ServicesPipeTimeout value",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Auto-start services failed",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Service Control Manager errors (7d)",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Service timeout events (7011)",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "Critical services running",
+        "status": "WARN",
+        "detail": "Degraded state"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "ServicesPipeTimeout value",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Auto-start services failed",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Service Control Manager errors (7d)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Service timeout events (7011)",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "Critical services running",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

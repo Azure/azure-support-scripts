@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Primary NIC interface metric",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "No duplicate interface metrics",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "DNS client NIC registration order",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Primary adapter binding complete",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "ISATAP/Teredo not preferred",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Primary NIC interface metric",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "No duplicate interface metrics",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "DNS client NIC registration order",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Primary adapter binding complete",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "ISATAP/Teredo not preferred",
+        "status": "WARN",
+        "detail": "Degraded state"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Primary NIC interface metric",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "No duplicate interface metrics",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "DNS client NIC registration order",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Primary adapter binding complete",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "ISATAP/Teredo not preferred",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}
