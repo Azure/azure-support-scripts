@@ -1,8 +1,8 @@
 # Azure VM Kernel Serial Log Verbosity Adjuster (Linux)
 
-This bash script adjusts the kernel `printk` console log level on a running Linux VM, controlling how much kernel logging is written to the serial console (`ttyS0`), which the Azure Serial Console attaches to. Raising the level (up to `7`/debug) captures far more boot and runtime kernel diagnostics for troubleshooting; lowering it reduces noise.
+This bash script adjusts the kernel `printk` console log level on a running Linux VM, controlling how much kernel logging is written to the linux device configured as 'console' at boot. When configured properly, this is `ttyS0` and connects to the Azure Serial Console available in the Azure portal or through the cli command `az serial-console` ([documentation](https://learn.microsoft.com/en-us/cli/azure/serial-console)) Raising the numeric level (up to `7`/debug) captures far more boot and runtime kernel diagnostics for troubleshooting; lowering it reduces noise.
 
-By default the script raises the level to `7` (debug) in a **non-persistent** (runtime-only) manner, so it can be run as a one-shot diagnostic capture via Azure Run Command without altering the persistent state of the VM. An optional flag makes the change permanent (survives reboot).
+By default the script sets the level to `7` (debug) in a **non-persistent** (runtime-only) manner, so it can be run as a one-shot diagnostic capture via Azure Run Command without altering the persistent state of the VM. An optional flag makes the change permanent (survives reboot).
 
 ## How It Works
 
@@ -56,13 +56,12 @@ The script attempts [phases 1-3](#how-it-works) unconditionally on any systemd-b
 Download the script to the local session. This can be done in `bash` or PowerShell, optionally in the [Azure Cloud Shell](https://shell.azure.com):
 
 ```bash
-curl -sL https://raw.githubusercontent.com/Azure/azure-support-scripts/master/RunCommand/Linux/Linux_serialLog/Linux_serialLog.sh -o Linux_serialLog.sh
+curl -sL https://aka.ms/rcl-seriallevel -o Linux_serialLog.sh
 ```
 
 ```PowerShell
 Invoke-WebRequest `
-    -Uri 'https://raw.githubusercontent.com/Azure/azure-support-scripts/master/RunCommand/Linux/Linux_serialLog/Linux_serialLog.sh' `
-    -OutFile 'Linux_serialLog.sh'
+    -Uri 'https://aka.ms/rcl-seriallevel' -OutFile 'Linux_serialLog.sh'
 ```
 
 Run the script via Azure Run Command:

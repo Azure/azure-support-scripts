@@ -10,8 +10,8 @@
 # specify the log level, as well as to make the changes permanent.
 # -----------------------------------------------------------------------------
 # Version: 1.1.0
-# Released: 2026-09-01
-# Latest update: 2026-09-01
+# Released: 2026-09-10
+# Latest update: 2026-09-10
 # Author: Azure Support
 #
 # Copyright (c) Microsoft Corporation. All rights reserved.
