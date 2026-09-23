@@ -137,7 +137,7 @@ if ($isMock) {
         Write-Host "Mock config not found: $MockConfig" -ForegroundColor $CRIT_COLOR
         exit 1
     }
-    Write-Host "** MOCK MODE — using $MockConfig **" -ForegroundColor Yellow
+    Write-Host "** MOCK MODE - using $MockConfig **" -ForegroundColor Yellow
     $mockData  = Get-Content $MockConfig -Raw | ConvertFrom-Json
     $services  = $mockData.Services
 } else {
@@ -400,7 +400,7 @@ foreach ($svc in $services) {
                     }
                 }
             } catch {
-                # Access denied or other registry errors — skip silently
+                # Access denied or other registry errors - skip silently
             }
         }
     }

@@ -39,7 +39,7 @@ Disclaimer:
 
 .PARAMETER MockConfig
     Path to a JSON file with mock test results for local/unit testing.
-    When provided, skips admin check and all live queries — uses mock data instead.
+    When provided, skips admin check and all live queries - uses mock data instead.
     See mock_config_sample.json for the expected schema.
 
 .NOTES
@@ -146,7 +146,7 @@ $criticalPorts = @(
 )
 foreach ($pi in $criticalPorts) {
     if ($isMock) {
-        # Mock: look up port result from config — "Allow", "Block", or "NoRule"
+        # Mock: look up port result from config - "Allow", "Block", or "NoRule"
         $portResult = "NoRule"
         $mockPort = $mock.PortRules | Where-Object { $_.Port -eq $pi.P }
         if ($mockPort) { $portResult = $mockPort.Result }
