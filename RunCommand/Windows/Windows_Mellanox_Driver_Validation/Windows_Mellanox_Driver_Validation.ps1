@@ -6,7 +6,7 @@
 .DESCRIPTION
     This script detects installed Mellanox (NVIDIA) network adapters, retrieves their
     driver versions, and checks the Windows Event Log for recent bugcheck events
-    associated with DRIVER_IRQL_NOT_LESS_OR_EQUAL (0x000000D1) — a common signature
+    associated with DRIVER_IRQL_NOT_LESS_OR_EQUAL (0x000000D1) - a common signature
     of outdated Mellanox mlx5 driver issues on Azure Windows VMs.
 
     Outputs a diagnostic summary suitable for use with the Azure portal RunCommand
@@ -85,7 +85,7 @@ else {
 Write-SectionHeader "2. Driver Version Details"
 
 if ($mellanoxAdapters.Count -eq 0) {
-    Write-Result INFO "Skipped — no Mellanox adapters found."
+    Write-Result INFO "Skipped - no Mellanox adapters found."
 }
 else {
     # Pull signed driver info from WMI for each adapter
@@ -114,7 +114,7 @@ else {
                 $drvDate = $drv.DriverDate
             }
             elseif ($drv.DriverDate -match '^(\d{4})(\d{2})(\d{2})') {
-                # Standard CIM_DATETIME string — extract date component
+                # Standard CIM_DATETIME string - extract date component
                 $drvDate = [datetime]::ParseExact(
                     "$($Matches[1])-$($Matches[2])-$($Matches[3])",
                     'yyyy-MM-dd',
@@ -160,7 +160,7 @@ else {
 
 #region --- [3] Bugcheck Event Log Check ---
 
-Write-SectionHeader "3. Bugcheck Event Log — DRIVER_IRQL (0x000000D1)"
+Write-SectionHeader "3. Bugcheck Event Log - DRIVER_IRQL (0x000000D1)"
 
 $lookbackDays = 30
 $since = (Get-Date).AddDays(-$lookbackDays)
@@ -170,7 +170,7 @@ $since = (Get-Date).AddDays(-$lookbackDays)
 
 $bugcheckEvents = @()
 
-# System log — Event 41 (unexpected shutdown / kernel power loss after bugcheck)
+# System log - Event 41 (unexpected shutdown / kernel power loss after bugcheck)
 $sysEvents = Get-WinEvent -FilterHashtable @{
     LogName   = 'System'
     Id        = 41
@@ -182,7 +182,7 @@ if ($sysEvents) {
     $bugcheckEvents += $sysEvents
 }
 
-# Application log — Event 1001 (Windows Error Reporting, captures bugcheck code)
+# Application log - Event 1001 (Windows Error Reporting, captures bugcheck code)
 $appEvents = Get-WinEvent -FilterHashtable @{
     LogName   = 'Application'
     Id        = 1001
@@ -227,7 +227,7 @@ else {
 Write-SectionHeader "4. Mellanox Adapter Link Status"
 
 if ($mellanoxAdapters.Count -eq 0) {
-    Write-Result INFO "Skipped — no Mellanox adapters found."
+    Write-Result INFO "Skipped - no Mellanox adapters found."
 }
 else {
     $netAdapters = Get-NetAdapter -ErrorAction SilentlyContinue |
