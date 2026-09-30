@@ -1,0 +1,33 @@
+{
+  "name": "rca-cli",
+  "version": "1.0.0",
+  "description": "CLI tool for RCA analysis of sosreports and support bundles",
+  "type": "module",
+  "main": "cli.js",
+  "bin": {
+    "rca-cli": "./cli.js",
+    "rca-cli-bundled": "./dist/rca-cli.cjs"
+  },
+  "scripts": {
+    "start": "node cli.js",
+    "build": "node build.js",
+    "test": "./test-cli.sh",
+    "test:quick": "./test-cli.sh --quick"
+  },
+  "dependencies": {
+    "lzma-native": "^8.0.6",
+    "tar-stream": "^3.1.7"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.2"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "files": [
+    "cli.js",
+    "archive-processor.js",
+    "parser-loader.js",
+    "dist/rca-cli.cjs"
+  ]
+}

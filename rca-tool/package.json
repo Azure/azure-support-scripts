@@ -1,0 +1,28 @@
+{
+  "name": "rca-tool",
+  "version": "1.0.0",
+  "description": "RCA Tool - SAP HANA Cluster Analyzer for supportconfig/sosreport analysis",
+  "type": "module",
+  "scripts": {
+    "dev": "cd web-leptos && trunk serve --open",
+    "build": "cd web-leptos && bash build.sh",
+    "build:web": "cd web-leptos && bash build.sh",
+    "build:cli": "cd lib/supportfile_core && cargo build --locked --release --features cli --bin rca_cli",
+    "build:all": "npm run build:web && npm run build:cli",
+    "preview": "cd web-leptos && trunk serve",
+    "docs": "rm -rf docs && npx jsdoc -c jsdoc.json"
+  },
+  "keywords": [
+    "sap",
+    "hana",
+    "cluster",
+    "analyzer",
+    "supportconfig",
+    "sosreport"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "jsdoc": "^4.0.5"
+  }
+}

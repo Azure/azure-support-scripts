@@ -1,0 +1,21 @@
+[package]
+name = "supportfile_mcp"
+version = "0.0.0"
+edition = "2021"
+description = "MCP server exposing the rca_cli support-file analyzer as Model Context Protocol tools"
+license = "MIT"
+
+[[bin]]
+name = "supportfile_mcp"
+path = "src/main.rs"
+
+[dependencies]
+# Official Rust MCP SDK. `transport-io` provides the server-side stdio
+# transport; `macros` provides the #[tool]/#[tool_router]/#[tool_handler]
+# attribute macros; `schemars` enables JSON Schema generation for tool params.
+rmcp = { version = "1", features = ["server", "macros", "transport-io", "schemars"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "io-std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = "1"
+anyhow = "1"
