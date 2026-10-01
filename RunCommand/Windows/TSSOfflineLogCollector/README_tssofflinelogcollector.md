@@ -15,11 +15,11 @@ PowerShell script for rescue-VM scenarios that collects Windows troubleshooting 
   - *Note: On Windows 10+, use `Get-WindowsUpdateLog` on a running system to generate human-readable log from collected ETL files*
   - *SoftwareDistribution is opt-in (`-IncludeSoftwareDistribution`) because its `Download` folder can hold hundreds of MB of update payloads*
 - **Setup & Upgrade** — Panther logs (Windows, $Windows.~BT, Sysprep), Modern Setup (MoSetup)
-- **Drivers** — Complete INF folder (setupapi logs), DriverStore repository, DPX device setup logs
+- **Drivers** — Complete INF folder (setupapi logs) and DPX device setup logs; DriverStore repository is opt-in (`-IncludeDriverStore`)
 - **Certificates** — catroot2 certificate catalog
 - **Error Reporting** — Windows Error Reporting (WER) logs and reports
 - **Crash Analysis** — Minidumps, LiveKernelReports, optionally MEMORY.DMP with `-IncludeMemoryDump`
-- **System Diagnostics** — System32\LogFiles, WinSAT performance, Windows Temp
+- **System Diagnostics** — System32\LogFiles and WinSAT performance; Windows Temp is opt-in (`-IncludeWindowsTemp`)
 - **Activation & Licensing** — Software Protection Platform (SPP) store
 - **Security** — Windows Defender logs (if present), Firewall logs
 - **Task Scheduler** — Scheduled tasks configuration and logs
@@ -66,6 +66,11 @@ Set-ExecutionPolicy Bypass -Force
 .\tssofflinelogcollector.ps1 -Disk 2 -IncludeSoftwareDistribution -ZipOutput
 ```
 
+### With payload-heavy diagnostic sources (Windows Temp / DriverStore — large)
+```powershell
+.\tssofflinelogcollector.ps1 -Disk 2 -IncludeWindowsTemp -IncludeDriverStore -ZipOutput
+```
+
 ### ⚠️ With credential-bearing registry hives (use with caution)
 ```powershell
 # Only use when explicitly required for troubleshooting
@@ -90,6 +95,8 @@ Set-ExecutionPolicy Bypass -Force
 - `-IncludeCredentialHives`: **⚠️ SECURITY SENSITIVE** — Include credential-bearing hives (SAM, SECURITY, DEFAULT) in addition to the always-collected safe hives (SYSTEM, SOFTWARE). These hives contain password hashes, LSA secrets, and DPAPI material. Only use when explicitly required for troubleshooting.
 - `-IncludeComponentsHive`: Include the COMPONENTS registry hive (large servicing-store hive; only needed for deep CBS/servicing analysis). Not collected by default.
 - `-IncludeSoftwareDistribution`: Include the `SoftwareDistribution` folder (update history/DataStore **and** the `Download` payload cache, which can be several hundred MB). Not collected by default.
+- `-IncludeWindowsTemp`: Include the complete `Windows\Temp` tree. Not collected by default because installer caches and extracted packages can consume several GB.
+- `-IncludeDriverStore`: Include the complete DriverStore `FileRepository`. Not collected by default because it contains driver binaries and can consume hundreds of MB.
 - `-IncludeMemoryDump`: **⚠️ LARGE + SENSITIVE** — Include MEMORY.DMP (may be several GB and contain in-memory secrets). Only use when explicitly required for crash analysis.
 - `-ZipOutput`: Create zip after collection.
 - `-Force`: Allow overwrite when output folder already exists.
@@ -98,17 +105,18 @@ Set-ExecutionPolicy Bypass -Force
 ## Output
 
 - **Default root**: `C:\MS_DATA\TSS_PERF_OFFLINE` (override with `-OutputPath`)
-- **Run folder**: `tssofflinelogcollector-<timestamp>`
-- **Manifest**: `manifest.json` (lists all collected/skipped files with size and SHA-256)
+- **Run folder**: `tssofflinelogcollector-<offline-machine-name>-<timestamp>` — the machine name is read from the offline SYSTEM hive (`ComputerName`), falling back to `UnknownMachine` if it cannot be read
+- **Manifest**: `manifest.json` (lists all collected/skipped files with size and SHA-256, plus the detected `OfflineComputerName`)
 - **Transcript**: `tssofflinelogcollector-transcript.log` (complete execution log)
-- **Optional zip**: `tssofflinelogcollector-<timestamp>.zip` (with `-ZipOutput`)
+- **Optional zip**: `tssofflinelogcollector-<offline-machine-name>-<timestamp>.zip` (with `-ZipOutput`)
 
 ## Notes
 
 - This script collects **static files only** from the offline disk. It does not run TSS.ps1 or any live diagnostics.
-- **Comprehensive collection** — collects all diagnostic files TSS.ps1 DND_SetupReport/SDP Setup would gather (event logs, servicing logs, driver store, WER, etc.)
-- **Collection size** — expect several hundred MB to several GB depending on system state (more if DriverStore/WER contain many files). Use `-WhatIf` to preview before collecting.
+- **Core collection** — collects event logs, servicing logs, setup logs, WER, registry hives, and related diagnostic artifacts. Payload-heavy sources (Windows Temp, DriverStore, SoftwareDistribution, COMPONENTS) require explicit opt-in switches.
+- **Collection size** — expect several hundred MB for the default bundle. Opt-in payload sources can increase it to several GB. Use `-WhatIf` to preview before collecting.
 - **Registry hives are always collected** (SYSTEM, SOFTWARE) — these are essential for proper troubleshooting. COMPONENTS is opt-in (`-IncludeComponentsHive`).
+- **Output naming** — the run folder and zip are named using the offline machine's real computer name (read via a short-lived `reg.exe load`/`unload` of the offline SYSTEM hive), not the rescue VM's own name, so bundles collected from multiple broken disks on the same rescue VM stay distinguishable.
 - MEMORY.DMP is opt-in (`-IncludeMemoryDump`) because it can be several GB and may contain in-memory secrets.
 - Credential-bearing registry hives (SAM/SECURITY/DEFAULT) require explicit consent (`-IncludeCredentialHives`) to prevent accidental exposure of password hashes and LSA secrets.
 - Use `-WhatIf` to preview what would be collected without actually copying files.

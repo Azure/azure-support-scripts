@@ -20,6 +20,12 @@ param(
     [switch]$IncludeSoftwareDistribution,
 
     [Parameter(Mandatory = $false)]
+    [switch]$IncludeWindowsTemp,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$IncludeDriverStore,
+
+    [Parameter(Mandatory = $false)]
     [switch]$IncludeMemoryDump,
 
     [Parameter(Mandatory = $false)]
@@ -330,12 +336,102 @@ function Get-FileHashSafe {
     }
 }
 
+function Get-SafeFileNameComponent {
+    # Sanitizes a string for use in a file/folder name, falling back when empty or unusable.
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Name,
+
+        [string]$Fallback = "UnknownMachine"
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Name)) {
+        return $Fallback
+    }
+
+    $invalidChars = [regex]::Escape(([System.IO.Path]::GetInvalidFileNameChars() -join ''))
+    $sanitized = [regex]::Replace($Name.Trim(), "[$invalidChars\s]", '-').Trim('-')
+
+    if ([string]::IsNullOrWhiteSpace($sanitized)) {
+        return $Fallback
+    }
+
+    return $sanitized
+}
+
+function Get-OfflineComputerName {
+    # Reads ComputerName from the offline SYSTEM hive via a short-lived reg.exe load/unload.
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$HiveFolder
+    )
+
+    $systemHivePath = Join-Path $HiveFolder "SYSTEM"
+    if (-not (Test-Path -LiteralPath $systemHivePath)) {
+        Write-Warning "[machine-name] SYSTEM hive not found at $systemHivePath."
+        return $null
+    }
+
+    $tempHiveKey = "TSSOfflineHive_{0}" -f ([guid]::NewGuid().ToString("N"))
+    $loaded = $false
+
+    try {
+        $loadOutput = & reg.exe load "HKLM\$tempHiveKey" "$systemHivePath" 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "[machine-name] Failed to load offline SYSTEM hive: $loadOutput"
+            return $null
+        }
+        $loaded = $true
+
+        $selectKey = "Registry::HKEY_LOCAL_MACHINE\$tempHiveKey\Select"
+        $currentId = (Get-ItemProperty -LiteralPath $selectKey -Name "Current" -ErrorAction Stop).Current
+        $controlSet = "ControlSet{0:D3}" -f $currentId
+
+        $computerNameKey = "Registry::HKEY_LOCAL_MACHINE\$tempHiveKey\$controlSet\Control\ComputerName\ComputerName"
+        $name = (Get-ItemProperty -LiteralPath $computerNameKey -Name "ComputerName" -ErrorAction Stop).ComputerName
+
+        if ([string]::IsNullOrWhiteSpace($name)) {
+            return $null
+        }
+
+        return $name.Trim()
+    }
+    catch {
+        Write-Warning "[machine-name] Could not read computer name from offline SYSTEM hive: $($_.Exception.Message)"
+        return $null
+    }
+    finally {
+        if ($loaded) {
+            # Release any lingering handles before unload to avoid "hive in use" failures.
+            [gc]::Collect()
+            [gc]::WaitForPendingFinalizers()
+            Start-Sleep -Milliseconds 300
+            $unloadOutput = & reg.exe unload "HKLM\$tempHiveKey" 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "[machine-name] Failed to unload temporary hive HKLM\$tempHiveKey : $unloadOutput"
+            }
+        }
+    }
+}
+
 $script:manifestEntries = @()
 
 $resolvedWindowsRoot = Resolve-OfflineWindowsRoot -RequestedPath $OfflineWindowsRoot -DiskSpecifier $Disk
 $offlineRoot = Split-Path -Parent $resolvedWindowsRoot
 $offlineRoot = if ([string]::IsNullOrWhiteSpace($offlineRoot)) { Split-Path -Qualifier $resolvedWindowsRoot } else { $offlineRoot }
 $timeStamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
+
+# Identify the offline machine from its SYSTEM hive so output is named per-VM
+$hiveFolder = Join-Path $resolvedWindowsRoot "System32\config"
+$offlineComputerName = Get-OfflineComputerName -HiveFolder $hiveFolder
+$safeMachineName = Get-SafeFileNameComponent -Name $offlineComputerName
+if ($offlineComputerName) {
+    Write-Host "[machine-name] Offline computer name: $offlineComputerName" -ForegroundColor Green
+}
+else {
+    Write-Host "[machine-name] Offline computer name not available; using '$safeMachineName' in output naming." -ForegroundColor DarkYellow
+}
 
 # Create MS_DATA root folder (if using default path)
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
@@ -349,7 +445,7 @@ if (-not (Test-Path -LiteralPath $outputRoot)) {
     New-Item -Path $outputRoot -ItemType Directory -Force | Out-Null
 }
 
-$outputFolder = Join-Path $outputRoot "tssofflinelogcollector-$timeStamp"
+$outputFolder = Join-Path $outputRoot "tssofflinelogcollector-$safeMachineName-$timeStamp"
 
 if ((Test-Path -LiteralPath $outputFolder) -and -not $Force) {
     throw "Output folder already exists: $outputFolder. Use -Force to overwrite."
@@ -363,6 +459,7 @@ Start-Transcript -LiteralPath $transcriptPath -Force | Out-Null
 
 Write-Host "Offline Windows root : $resolvedWindowsRoot" -ForegroundColor Green
 Write-Host "Offline disk root    : $offlineRoot" -ForegroundColor Green
+Write-Host "Offline machine name : $offlineComputerName" -ForegroundColor Green
 Write-Host "Output root          : $outputRoot" -ForegroundColor Green
 Write-Host "Output folder        : $outputFolder" -ForegroundColor Green
 Write-Host "Transcript           : $transcriptPath" -ForegroundColor Green
@@ -391,7 +488,6 @@ $pathsToCollect = @(
 
     # INF and driver installation logs
     @{ Rel = "Windows\INF"; Dest = "offline\Windows\INF"; Activity = "INF and setupapi logs" },
-    @{ Rel = "Windows\System32\DriverStore\FileRepository"; Dest = "offline\Windows\System32\DriverStore\FileRepository"; Activity = "Driver store repository" },
 
     # Certificate and crypto
     @{ Rel = "Windows\System32\catroot2"; Dest = "offline\Windows\System32\catroot2"; Activity = "Catroot2 catalog" },
@@ -406,7 +502,6 @@ $pathsToCollect = @(
     # System logs and diagnostics
     @{ Rel = "Windows\System32\LogFiles"; Dest = "offline\Windows\System32\LogFiles"; Activity = "System32 LogFiles" },
     @{ Rel = "Windows\Performance\WinSAT"; Dest = "offline\Windows\Performance\WinSAT"; Activity = "WinSAT performance" },
-    @{ Rel = "Windows\Temp"; Dest = "offline\Windows\Temp"; Activity = "Windows Temp" },
 
     # Activation and licensing
     @{ Rel = "Windows\System32\spp\store"; Dest = "offline\Windows\System32\spp\store"; Activity = "Software Protection Platform" },
@@ -448,6 +543,18 @@ if ($IncludeSoftwareDistribution) {
     Copy-IfPresent -Source $sdPath -Destination $destPath -Activity "SoftwareDistribution" -ProgressId 1
 }
 
+if ($IncludeWindowsTemp) {
+    $tempPath = Join-Path $offlineRoot "Windows\Temp"
+    $destPath = Join-Path $outputFolder "offline\Windows\Temp"
+    Copy-IfPresent -Source $tempPath -Destination $destPath -Activity "Windows Temp" -ProgressId 1
+}
+
+if ($IncludeDriverStore) {
+    $driverStorePath = Join-Path $offlineRoot "Windows\System32\DriverStore\FileRepository"
+    $destPath = Join-Path $outputFolder "offline\Windows\System32\DriverStore\FileRepository"
+    Copy-IfPresent -Source $driverStorePath -Destination $destPath -Activity "Driver store repository" -ProgressId 1
+}
+
 # MEMORY.DMP — opt-in only (large + may contain in-memory secrets)
 if ($IncludeMemoryDump) {
     $dumpPath = Join-Path $offlineRoot "Windows\MEMORY.DMP"
@@ -468,7 +575,7 @@ if ($IncludeMemoryDump) {
 }
 
 # Registry hive collection (always included - required for proper troubleshooting)
-$hiveFolder = Join-Path $resolvedWindowsRoot "System32\config"
+# $hiveFolder was already resolved above for offline machine-name detection
 
 # Core diagnostic hives (safe for support bundles)
 $safeHives = @("SYSTEM", "SOFTWARE")
@@ -507,9 +614,14 @@ $manifest = @{
     CollectionTime = (Get-Date).ToUniversalTime().ToString("o")
     OfflineWindowsRoot = $resolvedWindowsRoot
     OfflineDiskRoot = $offlineRoot
+    OfflineComputerName = $offlineComputerName
     OutputFolder = $outputFolder
     Parameters = @{
         IncludeCredentialHives = $IncludeCredentialHives.IsPresent
+        IncludeComponentsHive = $IncludeComponentsHive.IsPresent
+        IncludeSoftwareDistribution = $IncludeSoftwareDistribution.IsPresent
+        IncludeWindowsTemp = $IncludeWindowsTemp.IsPresent
+        IncludeDriverStore = $IncludeDriverStore.IsPresent
         IncludeMemoryDump = $IncludeMemoryDump.IsPresent
     }
     Files = $script:manifestEntries
