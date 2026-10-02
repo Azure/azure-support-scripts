@@ -1,11 +1,13 @@
 #!/usr/bin/bash
 # -----------------------------------------------------------------------------
-# File: Linux_sudo_validation.sh
+# File: Linux_sudoFix.sh
 # This script is a combination of two files from ALAR, helpers.sh and 
 # sudo-impl.sh, with minimal modifications to make it function as a one-shot
-# script to be run from the Azure portal
+# script to be run from the az cli 'run command' function.  The files are left
+# as their individual script 'blocks' for ease of tracking changes to the ALAR
+# implementation
 # -----------------------------------------------------------------------------
-# helpers.sh
+#  from: helpers.sh
 # -----------------------------------------------------------------------------
 # Version: 1.2.0
 # Released: 2025-10-31
@@ -349,7 +351,7 @@ fixOwner() {
   esac
 }
 # -----------------------------------------------------------------------------
-#  sudo-impl.sh
+#  from: sudo-impl.sh
 # -----------------------------------------------------------------------------
 # Version: 1.1.0
 # Initial release: 2025-10-31
