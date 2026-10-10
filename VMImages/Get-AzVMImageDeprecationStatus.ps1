@@ -47,13 +47,20 @@ Write-Output "Total Instances $totalInstanceCount VMSS $vmssCount VMSS Instances
 
 foreach ($instance in $instances)
 {
-    if ($instance.Type -eq 'VM')
+    $imageRef = $null
+    
+    if ($instance.Type -eq 'VM' -or $instance.Type -eq 'VMSS Instance')
     {
-        $instance | Add-Member -MemberType NoteProperty -Name ImageReference -Value $instance.StorageProfile.ImageReference -Force
+        $imageRef = $instance.StorageProfile.ImageReference
     }
     elseif ($instance.Type -eq 'VMSS')
     {
-        $instance | Add-Member -MemberType NoteProperty -Name ImageReference -Value $instance.VirtualMachineProfile.StorageProfile.ImageReference -Force
+        $imageRef = $instance.VirtualMachineProfile.StorageProfile.ImageReference
+    }
+    
+    if ($imageRef)
+    {
+        $instance | Add-Member -MemberType NoteProperty -Name ImageReference -Value $imageRef -Force
     }
 
     $location = $instance.Location
@@ -104,7 +111,6 @@ $scheduledDeprecationTime = @{Name = 'ScheduledDeprecationTime'; Expression = {$
 $alternativeOption = @{Name = 'AlternativeOption'; Expression = {$_.ImageDeprecationStatus.AlternativeOption}}
 $imageUrn = @{Name = 'ImageUrn'; Expression = {$_.ImageReference.ImageUrn}}
 $instancesWithCalculatedProperties = $instances | Select-Object Type,Name,$rgName,$imageState,$scheduledDeprecationTime,$imageUrn,$alternativeOption | Sort-Object ScheduledDeprecationTime
-$instancesWithCalculatedProperties = $instancesWithCalculatedProperties | Where-Object {$_.Type -ne 'VMSS Instance'}
 $instancesWithCalculatedPropertiesCount = $instancesWithCalculatedProperties | Measure-Object | Select-Object -ExpandProperty Count
 $global:dbgInstancesWithCalculatedProperties = $instancesWithCalculatedProperties
 
