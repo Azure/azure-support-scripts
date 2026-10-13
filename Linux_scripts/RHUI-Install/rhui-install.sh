@@ -14,6 +14,10 @@ ok() { echo "✔  $1"; }
 warn() { echo "⚠  $1"; }
 fail() { echo "✖  $1"; exit 1; }
 
+# Private, unpredictable dir so other users can't pre-create or symlink our repo/log files
+WORK_DIR=$(mktemp -d /tmp/rhui-install.XXXXXX) || fail "Unable to create private working directory"
+trap 'rm -rf -- "$WORK_DIR"' EXIT
+
 #--------------------------------------------------
 # Helper: Package Manager
 #--------------------------------------------------
@@ -236,9 +240,9 @@ EUS_AVAILABLE=0
 if [[ "$IMAGE_SUFFIX" == "standard" ]]; then
 
     EUS_REPO="microsoft-azure-rhel${OS_VERSION}-eus"
-    PREVIEW_CONFIG="/tmp/rhui-preview.repo"
+    PREVIEW_CONFIG="$WORK_DIR/rhui-preview.repo"
 
-    cat <<EOF > "$PREVIEW_CONFIG"
+    cat <<EOF > "$PREVIEW_CONFIG" || fail "Unable to write $PREVIEW_CONFIG"
 [$EUS_REPO]
 name=EUS Repo
 baseurl=https://${RHUI_HOST}/pulp/repos/unprotected/${EUS_REPO}
@@ -385,11 +389,11 @@ ok "Repo Name        : $REPO_NAME"
 #--------------------------------------------------
 # 8. Create Repo
 #--------------------------------------------------
-CONFIG_FILE="/tmp/rhui.repo"
+CONFIG_FILE="$WORK_DIR/rhui.repo"
 
 section "Creating Repository Configuration"
 
-cat <<EOF > "$CONFIG_FILE"
+cat <<EOF > "$CONFIG_FILE" || fail "Unable to write $CONFIG_FILE"
 [$REPO_NAME]
 name=Microsoft Azure RPMs for RHEL $OS_VERSION ($REPO_NAME)
 baseurl=https://${RHUI_HOST}/pulp/repos/unprotected/${REPO_NAME}
@@ -407,7 +411,7 @@ ok "Repository file created"
 section "Installing RHUI Package"
 
 PM=$(pkg_mgr)
-TMP_LOG="/tmp/rhui_install.log"
+TMP_LOG="$WORK_DIR/rhui_install.log"
 
 info "Installing package: $PKG"
 

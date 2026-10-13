@@ -49,19 +49,32 @@ fi
 if [ "$CONTINUE" = 'y' -o "$CONTINUE" = 'Y' ] ; then
   touch /tmp/vmassisteula
 
-  if [ ! -e $DLPATH ]; then
-    echo "Creating $DLPATH"
-    mkdir $DLPATH
-  else
-    # since the download dir exists, lets clear out any potentially existent old copies of the scripts
-    rm -v $DLPATH/vmassist.sh 2> /dev/null
-    rm -v $DLPATH/vmassist.py 2> /dev/null
+  # Never reuse an existing $DLPATH: anything in it (files, symlinks) could have been planted by another user
+  if [ -e "$DLPATH" ] || [ -L "$DLPATH" ]; then
+    echo "Removing existing $DLPATH"
+    if ! rm -rf -- "$DLPATH" || [ -e "$DLPATH" ] || [ -L "$DLPATH" ]; then
+      echo "ERROR: unable to remove $DLPATH - it may be owned by another user. Remove it manually and re-run." >&2
+      exit 1
+    fi
+  fi
+
+  # mkdir without -p fails if the path was re-created between the rm and here
+  echo "Creating $DLPATH"
+  if ! mkdir -m 700 -- "$DLPATH"; then
+    echo "ERROR: unable to create a fresh $DLPATH" >&2
+    exit 1
   fi
 
   echo "downloading script(s)"
-  wget --no-verbose https://aka.ms/vmassist-linux-sh -O $DLPATH/vmassist.sh
-  chmod +x $DLPATH/vmassist.sh
-  wget --no-verbose https://aka.ms/vmassist-linux-py -O $DLPATH/vmassist.py
+  for DL in "https://aka.ms/vmassist-linux-sh vmassist.sh" "https://aka.ms/vmassist-linux-py vmassist.py"; do
+    set -- $DL
+    if ! wget --no-verbose "$1" -O "$DLPATH/$2" || [ ! -s "$DLPATH/$2" ]; then
+      echo "ERROR: failed to download $1 to $DLPATH/$2" >&2
+      rm -rf -- "$DLPATH"
+      exit 1
+    fi
+  done
+  chmod 700 "$DLPATH/vmassist.sh"
 
   SCRIPTTORUN="$DLPATH/vmassist.sh"
   if [ $EUID -gt 0 ] ; then
