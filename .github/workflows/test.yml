@@ -1,0 +1,208 @@
+name: Run Tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-latest
+          - os: macos
+            runner: macos-26
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v5
+      with:
+        node-version: '22'
+
+    - name: Setup Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: wasm32-unknown-unknown
+
+    - name: Cache Rust build artifacts
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: |
+          rca-tool/web-leptos -> target
+          rca-tool/lib/lzma_stream_wasm -> target
+          rca-tool/lib/supportfile_core -> target
+          rca-tool/lib/supportfile_mcp -> target
+
+    # sccache speeds up compilation on regular pushes/PRs. It is skipped on
+    # release tag builds.
+    - name: Restore sccache files
+      id: restore-sccache
+      if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ github.workspace }}/.sccache
+        key: tests-${{ runner.os }}-${{ runner.arch }}-sccache-
+        restore-keys: tests-${{ runner.os }}-${{ runner.arch }}-sccache-
+
+    - name: Install sccache
+      if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      uses: taiki-e/install-action@v2
+      with:
+        tool: sccache
+
+    - name: Configure sccache
+      if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      run: |
+        set -euo pipefail
+        SCCACHE_PATH="$(command -v sccache)"
+        SCCACHE_DIR="${GITHUB_WORKSPACE}/.sccache"
+        mkdir -p "$SCCACHE_DIR"
+
+        echo "Cache restore matched key: ${{ steps.restore-sccache.outputs.cache-matched-key }}"
+        du -sh "$SCCACHE_DIR" 2>/dev/null || true
+
+        echo "SCCACHE_DIR=$SCCACHE_DIR" | tee -a "$GITHUB_ENV"
+        echo "SCCACHE_CACHE_SIZE=2G" | tee -a "$GITHUB_ENV"
+        echo "CARGO_INCREMENTAL=0" | tee -a "$GITHUB_ENV"
+        echo "RUSTC_WRAPPER=$SCCACHE_PATH" | tee -a "$GITHUB_ENV"
+
+        SCCACHE_DIR="$SCCACHE_DIR" SCCACHE_CACHE_SIZE=2G "$SCCACHE_PATH" --start-server
+        "$SCCACHE_PATH" --zero-stats || true
+        "$SCCACHE_PATH" --show-stats || true
+
+    - name: Install Trunk
+      uses: taiki-e/install-action@v2
+      with:
+        tool: trunk
+
+    - name: Install wasm-pack
+      uses: taiki-e/install-action@v2
+      with:
+        tool: wasm-pack
+
+    - name: Install cargo-llvm-cov
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-llvm-cov
+
+    - name: Build Rust CLI
+      run: cargo build --locked --release --features cli --bin rca_cli
+      working-directory: rca-tool/lib/supportfile_core
+
+    - name: Build MCP server
+      run: cargo build --locked --release
+      working-directory: rca-tool/lib/supportfile_mcp
+        
+    - name: Build Leptos UI
+      run: ./build.sh
+      working-directory: rca-tool/web-leptos
+
+    - name: Install test dependencies
+      run: npm ci
+      working-directory: rca-tool/tests
+
+    - name: Building fixtures
+      run: |
+        chmod +x create-fixtures.sh
+        ./create-fixtures.sh
+      working-directory: rca-tool/tests
+ 
+    - name: Install Playwright Edge (Linux)
+      if: matrix.os == 'linux'
+      run: npx playwright install --with-deps msedge
+      working-directory: rca-tool/tests
+
+    # macOS runners can't install browser system dependencies via apt, so
+    # `--with-deps` is omitted; Edge itself is downloaded the same way.
+    - name: Install Playwright Edge (macOS)
+      if: matrix.os == 'macos'
+      run: npx playwright install msedge
+      working-directory: rca-tool/tests
+
+    - name: Generate Rust library coverage
+      run: bash instrument-coverage.sh
+      working-directory: rca-tool/tests
+      
+    - name: Run Leptos web tests
+      run: npx playwright test --config=playwright.leptos.config.js --project=local-leptos
+      working-directory: rca-tool/tests
+      
+    - name: Run accessibility checks against Leptos
+      run: |
+        npx http-server ../web-leptos/dist -p 8080 -c-1 > /tmp/rca-tool-http-server.log 2>&1 &
+        ACCESSIBILITY_URL=http://localhost:8080/ node accessibility-check.js
+      working-directory: rca-tool/tests
+    
+    - name: Test Rust CLI with all fixtures
+      run: |
+        # Test Rust CLI with all fixture files (excluding intentionally corrupted ones)
+        failed=0
+        total=0
+        rust_cli="../lib/supportfile_core/target/release/rca_cli"
+        if [[ ! -x "${rust_cli}" ]]; then
+          echo "Rust CLI binary not found: ${rust_cli}"
+          exit 1
+        fi
+        for fixture in fixtures/*.tar.xz; do
+          # Skip intentionally corrupted test files
+          if [[ "$fixture" == *"corrupted"* ]]; then
+            echo "Skipping: $fixture (intentionally corrupted)"
+            continue
+          fi
+          total=$((total + 1))
+          echo "Testing: $fixture"
+          if "${rust_cli}" "$fixture" > /dev/null 2>&1; then
+            echo "  [OK] $fixture"
+          else
+            echo "  [FAIL] $fixture"
+            failed=$((failed + 1))
+          fi
+        done
+        echo ""
+        echo "Rust CLI tests completed: $((total - failed))/$total passed"
+        if [ $failed -gt 0 ]; then
+          exit 1
+        fi
+      working-directory: rca-tool/tests
+      
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: test-results-${{ matrix.os }}
+        path: |
+          rca-tool/tests/playwright-report*/
+          rca-tool/tests/test-results/
+        retention-days: 30
+
+    - name: Upload coverage report
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: coverage-report-${{ matrix.os }}
+        path: rca-tool/tests/coverage-report*/
+        retention-days: 30
+
+    - name: Show sccache stats
+      if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
+      run: sccache --show-stats || true
+
+    - name: Prepare sccache files for saving
+      id: prepare-save-sccache
+      if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
+      run: echo "SCCACHE_TIMESTAMP=$(date -u +%F-%T)" | tee -a "$GITHUB_OUTPUT"
+
+    - name: Save sccache files
+      if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
+      uses: actions/cache/save@v5
+      with:
+        key: ${{ steps.restore-sccache.outputs.cache-primary-key }}${{ steps.prepare-save-sccache.outputs.SCCACHE_TIMESTAMP }}
+        path: ${{ github.workspace }}/.sccache
