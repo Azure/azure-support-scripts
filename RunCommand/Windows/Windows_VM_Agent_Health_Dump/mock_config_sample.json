@@ -1,0 +1,70 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Agent log file exists",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "Agent log freshness (< 5 min)",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "Extension handlers registered",
+        "status": "OK",
+        "detail": "Below threshold"
+      },
+      {
+        "name": "WaAppAgent.log recent errors",
+        "status": "OK",
+        "detail": "Baseline compliant"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Agent log file exists",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "Agent log freshness (< 5 min)",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "Extension handlers registered",
+        "status": "WARN",
+        "detail": "Elevated but not failing"
+      },
+      {
+        "name": "WaAppAgent.log recent errors",
+        "status": "OK",
+        "detail": "Mostly compliant"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Agent log file exists",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "Agent log freshness (< 5 min)",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "Extension handlers registered",
+        "status": "WARN",
+        "detail": "High error rate"
+      },
+      {
+        "name": "WaAppAgent.log recent errors",
+        "status": "FAIL",
+        "detail": "Drift detected"
+      }
+    ]
+  }
+}

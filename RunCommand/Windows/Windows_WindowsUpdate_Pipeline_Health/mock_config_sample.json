@@ -1,0 +1,97 @@
+{
+  "legacy": {
+    "services": {
+      "wuauserv": "Stopped",
+      "bits": "Running",
+      "usosvc": "Running"
+    },
+    "servicing": {
+      "pendingReboot": true,
+      "cbsCorruptionSignal": true,
+      "recentUpdateErrors": 8
+    }
+  },
+  "profiles": {
+    "healthy": [
+      {
+        "detail": "All checks passing",
+        "status": "OK",
+        "name": "Primary signal"
+      },
+      {
+        "detail": "Required services running",
+        "status": "OK",
+        "name": "Service dependencies"
+      },
+      {
+        "detail": "No drift detected",
+        "status": "OK",
+        "name": "Configuration baseline"
+      },
+      {
+        "detail": "No errors in observation window",
+        "status": "OK",
+        "name": "Error signal check"
+      },
+      {
+        "detail": "All endpoints reachable",
+        "status": "OK",
+        "name": "Connectivity probe"
+      }
+    ],
+    "degraded": [
+      {
+        "detail": "Operational with warnings",
+        "status": "OK",
+        "name": "Primary signal"
+      },
+      {
+        "detail": "One non-critical dependency issue",
+        "status": "WARN",
+        "name": "Service dependencies"
+      },
+      {
+        "detail": "Mostly compliant",
+        "status": "OK",
+        "name": "Configuration baseline"
+      },
+      {
+        "detail": "Elevated error rate but not failing",
+        "status": "WARN",
+        "name": "Error signal check"
+      },
+      {
+        "detail": "Primary path reachable",
+        "status": "OK",
+        "name": "Connectivity probe"
+      }
+    ],
+    "broken": [
+      {
+        "detail": "Service or component not responding",
+        "status": "FAIL",
+        "name": "Primary signal"
+      },
+      {
+        "detail": "Critical dependency down",
+        "status": "FAIL",
+        "name": "Service dependencies"
+      },
+      {
+        "detail": "Significant drift from expected state",
+        "status": "WARN",
+        "name": "Configuration baseline"
+      },
+      {
+        "detail": "High error rate",
+        "status": "WARN",
+        "name": "Error signal check"
+      },
+      {
+        "detail": "Required endpoint unreachable",
+        "status": "FAIL",
+        "name": "Connectivity probe"
+      }
+    ]
+  }
+}

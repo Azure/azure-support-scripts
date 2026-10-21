@@ -1,0 +1,70 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "BitLocker volumes detected",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "ADE extension installed",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "ADE settings registry present",
+        "status": "OK",
+        "detail": "Below threshold"
+      },
+      {
+        "name": "OS drive (C:) encrypted by ADE",
+        "status": "OK",
+        "detail": "Baseline compliant"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "BitLocker volumes detected",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "ADE extension installed",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "ADE settings registry present",
+        "status": "WARN",
+        "detail": "Elevated but not failing"
+      },
+      {
+        "name": "OS drive (C:) encrypted by ADE",
+        "status": "OK",
+        "detail": "Mostly compliant"
+      }
+    ],
+    "broken": [
+      {
+        "name": "BitLocker volumes detected",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "ADE extension installed",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "ADE settings registry present",
+        "status": "WARN",
+        "detail": "High error rate"
+      },
+      {
+        "name": "OS drive (C:) encrypted by ADE",
+        "status": "FAIL",
+        "detail": "Drift detected"
+      }
+    ]
+  }
+}

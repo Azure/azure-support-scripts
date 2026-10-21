@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "CBS log integrity marker",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "SFC last run result in CBS log",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Component store health (WinSxS)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Pending component changes",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "TrustedInstaller service",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "DISM image health (registry hint)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "CBS log integrity marker",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "SFC last run result in CBS log",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Component store health (WinSxS)",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Pending component changes",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "TrustedInstaller service",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "DISM image health (registry hint)",
+        "status": "OK",
+        "detail": "Operational"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "CBS log integrity marker",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "SFC last run result in CBS log",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Component store health (WinSxS)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Pending component changes",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "TrustedInstaller service",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "DISM image health (registry hint)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

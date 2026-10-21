@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Code integrity policy loaded",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Unsigned kernel drivers loaded",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Driver store integrity (pnputil)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Code integrity event errors (7d)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "WHQL enforcement active",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Secure Boot with UEFI",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Code integrity policy loaded",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Unsigned kernel drivers loaded",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Driver store integrity (pnputil)",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Code integrity event errors (7d)",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "WHQL enforcement active",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Secure Boot with UEFI",
+        "status": "OK",
+        "detail": "Operational"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Code integrity policy loaded",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Unsigned kernel drivers loaded",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Driver store integrity (pnputil)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Code integrity event errors (7d)",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "WHQL enforcement active",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Secure Boot with UEFI",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

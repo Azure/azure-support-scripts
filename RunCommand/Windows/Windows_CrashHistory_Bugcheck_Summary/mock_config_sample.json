@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "System dump file exists",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Minidump directory populated",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "BugCheck events in System log (30d)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Unexpected shutdown events (30d)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Page file configuration adequate",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "CrashControl registry settings",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "System dump file exists",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Minidump directory populated",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "BugCheck events in System log (30d)",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Unexpected shutdown events (30d)",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "Page file configuration adequate",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "CrashControl registry settings",
+        "status": "OK",
+        "detail": "Operational"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "System dump file exists",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Minidump directory populated",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "BugCheck events in System log (30d)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Unexpected shutdown events (30d)",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "Page file configuration adequate",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "CrashControl registry settings",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

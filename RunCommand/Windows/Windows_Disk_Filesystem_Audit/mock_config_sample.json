@@ -1,0 +1,55 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Pagefile present",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "Temp drive D: present",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "No volumes flagged dirty",
+        "status": "OK",
+        "detail": "Below threshold"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Pagefile present",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "Temp drive D: present",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "No volumes flagged dirty",
+        "status": "OK",
+        "detail": "Elevated but not failing"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Pagefile present",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "Temp drive D: present",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "No volumes flagged dirty",
+        "status": "FAIL",
+        "detail": "High error rate"
+      }
+    ]
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "WinHTTP proxy parsed",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "WinINET proxy key readable",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "Proxy bypass list defined",
+        "status": "OK",
+        "detail": "Below threshold"
+      },
+      {
+        "name": "IMDS reachable without proxy",
+        "status": "OK",
+        "detail": "Baseline compliant"
+      },
+      {
+        "name": "WireServer reachable without proxy",
+        "status": "OK",
+        "detail": "Reachable"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "WinHTTP proxy parsed",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "WinINET proxy key readable",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "Proxy bypass list defined",
+        "status": "WARN",
+        "detail": "Elevated but not failing"
+      },
+      {
+        "name": "IMDS reachable without proxy",
+        "status": "WARN",
+        "detail": "Mostly compliant"
+      },
+      {
+        "name": "WireServer reachable without proxy",
+        "status": "OK",
+        "detail": "Reachable with latency"
+      }
+    ],
+    "broken": [
+      {
+        "name": "WinHTTP proxy parsed",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "WinINET proxy key readable",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "Proxy bypass list defined",
+        "status": "WARN",
+        "detail": "High error rate"
+      },
+      {
+        "name": "IMDS reachable without proxy",
+        "status": "WARN",
+        "detail": "Drift detected"
+      },
+      {
+        "name": "WireServer reachable without proxy",
+        "status": "FAIL",
+        "detail": "Unreachable"
+      }
+    ]
+  }
+}

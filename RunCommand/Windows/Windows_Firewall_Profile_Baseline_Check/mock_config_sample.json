@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Firewall profiles query succeeds",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "At least one profile enabled",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "Remote Desktop rule enabled",
+        "status": "OK",
+        "detail": "Below threshold"
+      },
+      {
+        "name": "Inbound default block active",
+        "status": "OK",
+        "detail": "Baseline compliant"
+      },
+      {
+        "name": "BFE service running",
+        "status": "OK",
+        "detail": "Reachable"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Firewall profiles query succeeds",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "At least one profile enabled",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "Remote Desktop rule enabled",
+        "status": "WARN",
+        "detail": "Elevated but not failing"
+      },
+      {
+        "name": "Inbound default block active",
+        "status": "WARN",
+        "detail": "Mostly compliant"
+      },
+      {
+        "name": "BFE service running",
+        "status": "OK",
+        "detail": "Reachable with latency"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Firewall profiles query succeeds",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "At least one profile enabled",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "Remote Desktop rule enabled",
+        "status": "WARN",
+        "detail": "High error rate"
+      },
+      {
+        "name": "Inbound default block active",
+        "status": "WARN",
+        "detail": "Drift detected"
+      },
+      {
+        "name": "BFE service running",
+        "status": "FAIL",
+        "detail": "Unreachable"
+      }
+    ]
+  }
+}

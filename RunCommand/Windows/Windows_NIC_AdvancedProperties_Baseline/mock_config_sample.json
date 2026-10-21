@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "RSS (Receive Side Scaling) enabled",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Checksum offload enabled",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Large Send Offload v2 (LSOv2)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "VMQ (Virtual Machine Queue)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Jumbo Frame not set (Azure default)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Speed and duplex auto-negotiation",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "RSS (Receive Side Scaling) enabled",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Checksum offload enabled",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Large Send Offload v2 (LSOv2)",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "VMQ (Virtual Machine Queue)",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "Jumbo Frame not set (Azure default)",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Speed and duplex auto-negotiation",
+        "status": "OK",
+        "detail": "Operational"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "RSS (Receive Side Scaling) enabled",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Checksum offload enabled",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Large Send Offload v2 (LSOv2)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "VMQ (Virtual Machine Queue)",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "Jumbo Frame not set (Azure default)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Speed and duplex auto-negotiation",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

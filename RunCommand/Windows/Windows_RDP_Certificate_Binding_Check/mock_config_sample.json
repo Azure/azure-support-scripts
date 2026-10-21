@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "RDP certificate thumbprint configured",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "Bound certificate present in LM\\My",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "Bound certificate not near expiry",
+        "status": "OK",
+        "detail": "Below threshold"
+      },
+      {
+        "name": "NLA setting readable",
+        "status": "OK",
+        "detail": "Baseline compliant"
+      },
+      {
+        "name": "RDP port 3389 listening",
+        "status": "OK",
+        "detail": "Reachable"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "RDP certificate thumbprint configured",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "Bound certificate present in LM\\My",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "Bound certificate not near expiry",
+        "status": "WARN",
+        "detail": "Elevated but not failing"
+      },
+      {
+        "name": "NLA setting readable",
+        "status": "WARN",
+        "detail": "Mostly compliant"
+      },
+      {
+        "name": "RDP port 3389 listening",
+        "status": "OK",
+        "detail": "Reachable with latency"
+      }
+    ],
+    "broken": [
+      {
+        "name": "RDP certificate thumbprint configured",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "Bound certificate present in LM\\My",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "Bound certificate not near expiry",
+        "status": "WARN",
+        "detail": "High error rate"
+      },
+      {
+        "name": "NLA setting readable",
+        "status": "WARN",
+        "detail": "Drift detected"
+      },
+      {
+        "name": "RDP port 3389 listening",
+        "status": "FAIL",
+        "detail": "Unreachable"
+      }
+    ]
+  }
+}

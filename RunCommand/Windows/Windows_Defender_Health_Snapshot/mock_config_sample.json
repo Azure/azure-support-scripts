@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Defender service running",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Real-time protection enabled",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Antivirus definitions age",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Full scan completed recently",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Tamper protection enabled",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "No active threats detected",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Defender service running",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Real-time protection enabled",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Antivirus definitions age",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Full scan completed recently",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "Tamper protection enabled",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "No active threats detected",
+        "status": "OK",
+        "detail": "Operational"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Defender service running",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Real-time protection enabled",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Antivirus definitions age",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Full scan completed recently",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "Tamper protection enabled",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "No active threats detected",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

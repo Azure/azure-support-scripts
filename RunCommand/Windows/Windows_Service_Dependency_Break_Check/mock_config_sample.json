@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Service inventory query succeeds",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "Auto services stopped count",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "RpcSs running",
+        "status": "OK",
+        "detail": "Below threshold"
+      },
+      {
+        "name": "DcomLaunch running",
+        "status": "OK",
+        "detail": "Baseline compliant"
+      },
+      {
+        "name": "SCM error volume below threshold",
+        "status": "OK",
+        "detail": "Reachable"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Service inventory query succeeds",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "Auto services stopped count",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "RpcSs running",
+        "status": "WARN",
+        "detail": "Elevated but not failing"
+      },
+      {
+        "name": "DcomLaunch running",
+        "status": "WARN",
+        "detail": "Mostly compliant"
+      },
+      {
+        "name": "SCM error volume below threshold",
+        "status": "OK",
+        "detail": "Reachable with latency"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Service inventory query succeeds",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "Auto services stopped count",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "RpcSs running",
+        "status": "WARN",
+        "detail": "High error rate"
+      },
+      {
+        "name": "DcomLaunch running",
+        "status": "WARN",
+        "detail": "Drift detected"
+      },
+      {
+        "name": "SCM error volume below threshold",
+        "status": "FAIL",
+        "detail": "Unreachable"
+      }
+    ]
+  }
+}
