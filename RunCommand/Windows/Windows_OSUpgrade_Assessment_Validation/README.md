@@ -13,6 +13,10 @@ This PowerShell script is designed to assess the readiness of a Windows machine 
   - Identifies whether the system is Windows 10, 11, or a Windows Server edition.
 - **Server Upgrade Path Check**
   - Matches current server version to supported upgrade targets.
+- **Failover-Cluster Guardrail**
+  - Detects configured cluster nodes, including nodes with a stopped Cluster service.
+  - Suppresses generic upgrade targets for cluster nodes or when membership cannot be determined.
+  - Warns that cluster OS rolling upgrades cannot skip Windows Server releases.
 - **Hardware Validation**
   - Disk space (≥ 64 GB)
   - Physical memory (≥ 4 GB)
@@ -35,6 +39,23 @@ This PowerShell script is designed to assess the readiness of a Windows machine 
 
 ---
 ## Upgrade Matrix
+
+### Failover-cluster nodes
+
+> **Warning:** The Windows Server matrix below is not approval for a cluster OS rolling upgrade. Passing VM disk and memory checks does not establish cluster upgrade readiness.
+
+The script checks local cluster configuration, not merely whether Failover Clustering is installed. It suppresses generic VM upgrade targets for configured cluster nodes, including when the Cluster service is stopped. If detection fails, it reports the error and **"Cluster readiness not assessed - manual validation required"** instead of displaying generic upgrade targets.
+
+**Cluster OS rolling upgrades do not support skipping Windows Server releases.** Upgrade to the next release and complete the cluster upgrade process before beginning another cycle. For example:
+
+**Windows Server 2016 -> 2019 -> 2022 -> 2025**
+
+Alternatively, migrate to a new cluster using a supported migration procedure.
+
+Before upgrading a cluster node, follow [Upgrade the OS of a Windows Server failover cluster by performing a cluster OS rolling upgrade](https://learn.microsoft.com/en-us/windows-server/failover-clustering/cluster-operating-system-rolling-upgrade) and your workload-specific requirements. That article covers Hyper-V and Scale-out File Server workloads; it is not blanket approval for SQL Server availability groups, failover cluster instances, or other clustered workloads.
+
+The assessment does **not** validate cluster functional level, other nodes' OS versions, cluster health, or workload compatibility.
+
 **Windows Server**
 | Current Version                              | Supported Upgrade Targets                                        |
 | -------------------------------------------- | ---------------------------------------------------------------- |
@@ -71,27 +92,44 @@ This PowerShell script is designed to assess the readiness of a Windows machine 
 
 3. Review the output for upgrade recommendations and any potential blockers.
 
+## Validation
+
+Run the standalone mocked regression tests in a fresh PowerShell process. They require no administrator privileges, cluster, Azure VM, or additional test framework:
+
+```powershell
+powershell.exe -NoProfile -File .\Windows_OSUpgrade_Assessment_Validation.Tests.ps1
+```
+
+The tests cover unconfigured and configured cluster states, a stopped Cluster service, detection failures, hardware failures, and unchanged Windows client behavior. They do not replace validation on a live failover cluster.
+
 ---
 
 ## Output Examples
 
-Example output on a Windows Server 2016 VM:
+Example output on a nonclustered Windows Server 2019 VM:
 
 ```
 Windows Version: Windows Server 2019 Datacenter
 
 [Passed] Disk Space (Free: 128 GB)
 [Passed] Physical Memory (Total: 8 GB)
-[Passed] VM Generation: Gen2
-[Passed] Trusted Launch
-[Passed] Secure Boot
-[Passed] TPM Enabled
 
 The VM is running Windows Server 2019 Datacenter. 
 The supported upgrade options are: Windows Server 2022 or Windows Server 2025.
 Please refer to the official documentation for more details: 
 https://learn.microsoft.com/azure/virtual-machines/windows-in-place-upgrade
 ```
+
+Example additional output on a configured failover-cluster node:
+
+```text
+[Warning] Failover-cluster membership detected.
+[Not assessed] Cluster rolling-upgrade readiness.
+Generic VM upgrade targets are suppressed. Passing disk and memory checks does not establish cluster upgrade readiness.
+Cluster OS rolling upgrades cannot skip Windows Server releases.
+```
+
+See the linked cluster upgrade guidance and workload-specific requirements before proceeding. The script prints that link with the warning.
 
 Example output on an Azure Gen1 Windows 10 VM:
 
@@ -111,6 +149,8 @@ FAILED: The VM is running Windows 10 Gen1. Upgrade to Windows 11 is only support
 
 ## References
 
+- [Cluster OS rolling upgrade: requirements and limitations](https://learn.microsoft.com/en-us/windows-server/failover-clustering/cluster-operating-system-rolling-upgrade#requirements-and-limitations)
+- [GetNodeClusterState function](https://learn.microsoft.com/en-us/windows/win32/api/clusapi/nf-clusapi-getnodeclusterstate)
 - [PC Health Check App](https://support.microsoft.com/en-us/windows/how-to-use-the-pc-health-check-app-9c8abd9b-03ba-4e67-81ef-36f37caa7844)  
 - [Windows 11 Installation Assistant](https://www.microsoft.com/software-download/windows11)
 
