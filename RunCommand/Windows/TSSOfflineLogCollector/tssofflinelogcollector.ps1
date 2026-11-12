@@ -11,9 +11,6 @@ param(
     [string]$OutputPath,
 
     [Parameter(Mandatory = $false)]
-    [switch]$IncludeCredentialHives,
-
-    [Parameter(Mandatory = $false)]
     [switch]$IncludeComponentsHive,
 
     [Parameter(Mandatory = $false)]
@@ -440,23 +437,22 @@ function Get-OfflineComputerName {
     }
 }
 
-function Get-DiskNumberForPath {
+function Get-PartitionForPath {
+    # Resolves the partition that actually holds $Path by volume identity, so a disk mounted at a
+    # folder (for example C:\OfflineMount) is not confused with the host disk that owns the C: letter.
     param(
         [Parameter(Mandatory = $true)]
         [string]$Path
     )
 
-    $qualifier = Split-Path -Qualifier $Path -ErrorAction SilentlyContinue
-    if ($qualifier -notmatch '^[A-Za-z]:$') {
+    $volume = Get-Volume -FilePath $Path -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $volume -or [string]::IsNullOrWhiteSpace($volume.UniqueId)) {
         return $null
     }
 
-    $partition = Get-Partition -DriveLetter $qualifier.Substring(0, 1) -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($partition) {
-        return [int]$partition.DiskNumber
-    }
-
-    return $null
+    return Get-Partition -ErrorAction SilentlyContinue |
+        Where-Object { @($_.AccessPaths) -contains $volume.UniqueId } |
+        Select-Object -First 1
 }
 
 function Get-PartitionReadRoot {
@@ -534,11 +530,12 @@ function Copy-BootConfiguration {
         return $result
     }
 
-    $diskNumber = Get-DiskNumberForPath -Path $OsRoot
-    if ($null -eq $diskNumber) {
-        Write-Warning "[boot] Could not map $OsRoot to a disk number; skipping BCD/disk layout collection."
+    $osPartition = Get-PartitionForPath -Path $OsRoot
+    if ($null -eq $osPartition) {
+        Write-Warning "[boot] Could not map $OsRoot to a partition; skipping BCD/disk layout collection."
         return $result
     }
+    $diskNumber = [int]$osPartition.DiskNumber
     $result.DiskNumber = $diskNumber
 
     $bootDest = Join-Path $OutputFolder "offline\boot"
@@ -568,10 +565,9 @@ function Copy-BootConfiguration {
         return $result
     }
 
-    $osLetter = (Split-Path -Qualifier $OsRoot).Substring(0, 1)
     $espGptType = '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
     $candidates = @($partitions | Where-Object {
-            $_.IsSystem -or $_.IsActive -or $_.GptType -eq $espGptType -or "$($_.DriveLetter)" -eq $osLetter
+            $_.IsSystem -or $_.IsActive -or $_.GptType -eq $espGptType -or $_.PartitionNumber -eq $osPartition.PartitionNumber
         })
 
     if ($candidates.Count -eq 0) {
@@ -814,7 +810,8 @@ $pathsToCollect = @(
     # Boot diagnostics (SrtTrail.txt and boot-time ETL autologger traces are under System32\LogFiles below)
     @{ Rel = "Windows\bootstat.dat"; Dest = "offline\Windows\bootstat.dat"; Activity = "Boot status data" },
     @{ Rel = "Windows\ntbtlog.txt"; Dest = "offline\Windows\ntbtlog.txt"; Activity = "Boot log (ntbtlog)" },
-    @{ Rel = "Windows\System32\config\RegBack"; Dest = "offline\Windows\System32\config\RegBack"; Activity = "Registry backups (RegBack)" },
+    @{ Rel = "Windows\System32\config\RegBack\SYSTEM"; Dest = "offline\Windows\System32\config\RegBack\SYSTEM"; Activity = "SYSTEM registry backup (RegBack)" },
+    @{ Rel = "Windows\System32\config\RegBack\SOFTWARE"; Dest = "offline\Windows\System32\config\RegBack\SOFTWARE"; Activity = "SOFTWARE registry backup (RegBack)" },
     @{ Rel = "Windows\System32\config\SYSTEM.LOG"; Dest = "offline\registry\SYSTEM.LOG"; Activity = "SYSTEM hive log" },
     @{ Rel = "Windows\System32\config\SYSTEM.LOG1"; Dest = "offline\registry\SYSTEM.LOG1"; Activity = "SYSTEM hive log 1" },
     @{ Rel = "Windows\System32\config\SYSTEM.LOG2"; Dest = "offline\registry\SYSTEM.LOG2"; Activity = "SYSTEM hive log 2" },
@@ -920,20 +917,6 @@ if ($IncludeComponentsHive) {
     Copy-IfPresent -Source $sourceHive -Destination $destHive -Activity "Registry hive: COMPONENTS" -ProgressId 1
 }
 
-# Credential-bearing hives (requires explicit consent)
-if ($IncludeCredentialHives) {
-    Write-Warning "⚠️  CREDENTIAL HIVES: Collecting SAM, SECURITY, and DEFAULT registry hives."
-    Write-Warning "    These hives contain sensitive credential material (password hashes, LSA secrets, DPAPI data)."
-    Write-Warning "    Only collect these if explicitly required for your troubleshooting scenario."
-
-    $credentialHives = @("SAM", "SECURITY", "DEFAULT")
-    foreach ($hive in $credentialHives) {
-        $sourceHive = Join-Path $hiveFolder $hive
-        $destHive = Join-Path $outputFolder ("offline\registry\{0}" -f $hive)
-        Copy-IfPresent -Source $sourceHive -Destination $destHive -Activity "Credential hive: $hive" -ProgressId 1
-    }
-}
-
 # Generate manifest
 Write-Host "[manifest] Generating collection manifest..." -ForegroundColor Cyan
 $manifestPath = Join-Path $outputFolder "manifest.json"
@@ -944,7 +927,6 @@ $manifest = @{
     OfflineComputerName = $offlineComputerName
     OutputFolder = $outputFolder
     Parameters = @{
-        IncludeCredentialHives = $IncludeCredentialHives.IsPresent
         IncludeComponentsHive = $IncludeComponentsHive.IsPresent
         IncludeSoftwareDistribution = $IncludeSoftwareDistribution.IsPresent
         IncludeWindowsTemp = $IncludeWindowsTemp.IsPresent
