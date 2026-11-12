@@ -11,9 +11,6 @@ param(
     [string]$OutputPath,
 
     [Parameter(Mandatory = $false)]
-    [switch]$IncludeCredentialHives,
-
-    [Parameter(Mandatory = $false)]
     [switch]$IncludeComponentsHive,
 
     [Parameter(Mandatory = $false)]
@@ -27,6 +24,9 @@ param(
 
     [Parameter(Mandatory = $false)]
     [switch]$IncludeMemoryDump,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$SkipBootPartition,
 
     [Parameter(Mandatory = $false)]
     [switch]$ZipOutput,
@@ -376,7 +376,25 @@ function Get-OfflineComputerName {
     $tempHiveKey = "TSSOfflineHive_{0}" -f ([guid]::NewGuid().ToString("N"))
     $loaded = $false
 
+    # Load a scratch copy (hive + transaction logs) so reg load / log replay never modifies the
+    # offline evidence hive. This also keeps a dirty or corrupt hive intact for the real collection.
+    $scratchDir = Join-Path ([System.IO.Path]::GetTempPath()) $tempHiveKey
+
     try {
+        New-Item -Path $scratchDir -ItemType Directory -Force -WhatIf:$false | Out-Null
+        foreach ($suffix in @("", ".LOG", ".LOG1", ".LOG2")) {
+            $sourceFile = Join-Path $HiveFolder "SYSTEM$suffix"
+            if (Test-Path -LiteralPath $sourceFile) {
+                Copy-Item -LiteralPath $sourceFile -Destination (Join-Path $scratchDir "SYSTEM$suffix") -Force -ErrorAction SilentlyContinue -WhatIf:$false
+            }
+        }
+
+        $systemHivePath = Join-Path $scratchDir "SYSTEM"
+        if (-not (Test-Path -LiteralPath $systemHivePath)) {
+            Write-Warning "[machine-name] Could not stage a scratch copy of the SYSTEM hive."
+            return $null
+        }
+
         $loadOutput = & reg.exe load "HKLM\$tempHiveKey" "$systemHivePath" 2>&1
         if ($LASTEXITCODE -ne 0) {
             Write-Warning "[machine-name] Failed to load offline SYSTEM hive: $loadOutput"
@@ -412,7 +430,296 @@ function Get-OfflineComputerName {
                 Write-Warning "[machine-name] Failed to unload temporary hive HKLM\$tempHiveKey : $unloadOutput"
             }
         }
+
+        if (Test-Path -LiteralPath $scratchDir) {
+            Remove-Item -LiteralPath $scratchDir -Recurse -Force -ErrorAction SilentlyContinue -WhatIf:$false
+        }
     }
+}
+
+function Get-PartitionForPath {
+    # Resolves the partition that actually holds $Path by volume identity, so a disk mounted at a
+    # folder (for example C:\OfflineMount) is not confused with the host disk that owns the C: letter.
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $volume = Get-Volume -FilePath $Path -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $volume -or [string]::IsNullOrWhiteSpace($volume.UniqueId)) {
+        return $null
+    }
+
+    return Get-Partition -ErrorAction SilentlyContinue |
+        Where-Object { @($_.AccessPaths) -contains $volume.UniqueId } |
+        Select-Object -First 1
+}
+
+function Get-PartitionReadRoot {
+    # Returns a readable root for a partition: drive letter, then volume GUID path, then (last resort)
+    # a temporary drive letter that the caller must remove via the TempMounts list.
+    param(
+        [Parameter(Mandatory = $true)]
+        $Partition,
+
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [System.Collections.ArrayList]$TempMounts
+    )
+
+    if ($Partition.DriveLetter) {
+        return "$($Partition.DriveLetter):\"
+    }
+
+    foreach ($accessPath in @($Partition.AccessPaths)) {
+        if ($accessPath -match '^\\\\\?\\Volume\{[0-9a-fA-F-]+\}\\$' -and (Test-Path -LiteralPath $accessPath -ErrorAction SilentlyContinue)) {
+            return $accessPath
+        }
+    }
+
+    try {
+        Add-PartitionAccessPath -DiskNumber $Partition.DiskNumber -PartitionNumber $Partition.PartitionNumber -AssignDriveLetter -ErrorAction Stop
+        $refreshed = Get-Partition -DiskNumber $Partition.DiskNumber -PartitionNumber $Partition.PartitionNumber -ErrorAction Stop
+        if ($refreshed.DriveLetter) {
+            [void]$TempMounts.Add($refreshed)
+            Write-Host "[boot] Temporarily mounted partition $($Partition.PartitionNumber) as $($refreshed.DriveLetter):" -ForegroundColor DarkCyan
+            return "$($refreshed.DriveLetter):\"
+        }
+    }
+    catch {
+        Write-Warning "[boot] Could not mount partition $($Partition.PartitionNumber) on disk $($Partition.DiskNumber): $($_.Exception.Message)"
+    }
+
+    return $null
+}
+
+function Add-GeneratedManifestEntry {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Source,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Destination
+    )
+
+    $item = Get-Item -LiteralPath $Destination -ErrorAction SilentlyContinue
+    $script:manifestEntries += @{
+        Source = $Source
+        Destination = $Destination
+        Status = "Generated"
+        SizeBytes = if ($item) { $item.Length } else { 0 }
+        SHA256 = Get-FileHashSafe -Path $Destination
+    }
+}
+
+function Copy-BootConfiguration {
+    # Collects boot-chain evidence that lives outside the Windows folder: BCD stores on the
+    # EFI/System/active partition, a decoded BCD enumeration, and the disk/partition layout.
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$OsRoot,
+
+        [Parameter(Mandatory = $true)]
+        [string]$OutputFolder
+    )
+
+    $result = @{ BcdStoresFound = 0; DiskNumber = $null }
+
+    if ($WhatIfPreference) {
+        Write-Host "[whatif] Would collect BCD stores and disk layout from the offline disk's boot partitions" -ForegroundColor Yellow
+        return $result
+    }
+
+    $osPartition = Get-PartitionForPath -Path $OsRoot
+    if ($null -eq $osPartition) {
+        Write-Warning "[boot] Could not map $OsRoot to a partition; skipping BCD/disk layout collection."
+        return $result
+    }
+    $diskNumber = [int]$osPartition.DiskNumber
+    $result.DiskNumber = $diskNumber
+
+    $bootDest = Join-Path $OutputFolder "offline\boot"
+    New-Item -Path $bootDest -ItemType Directory -Force | Out-Null
+
+    $partitions = @(Get-Partition -DiskNumber $diskNumber -ErrorAction SilentlyContinue)
+
+    $layoutPath = Join-Path $bootDest "disk-layout.txt"
+    try {
+        $layout = @()
+        $layout += "=== Get-Disk ==="
+        $layout += (Get-Disk -Number $diskNumber -ErrorAction Stop | Format-List Number, FriendlyName, PartitionStyle, Size, LogicalSectorSize, PhysicalSectorSize, OperationalStatus, IsOffline, IsReadOnly | Out-String)
+        $layout += "=== Get-Partition ==="
+        $layout += ($partitions | Format-Table PartitionNumber, DriveLetter, Type, GptType, MbrType, IsActive, IsSystem, IsBoot, IsHidden, Offset, Size -AutoSize | Out-String -Width 250)
+        $layout += "=== Get-Volume (partitions with a volume) ==="
+        $layout += ($partitions | Get-Volume -ErrorAction SilentlyContinue | Format-Table DriveLetter, FileSystem, FileSystemLabel, HealthStatus, Size, SizeRemaining -AutoSize | Out-String -Width 250)
+        $layout | Out-File -LiteralPath $layoutPath -Encoding UTF8 -Force
+        Add-GeneratedManifestEntry -Source "Get-Disk/Get-Partition/Get-Volume (disk $diskNumber)" -Destination $layoutPath
+        Write-Host "[boot] Disk layout saved: $layoutPath" -ForegroundColor DarkCyan
+    }
+    catch {
+        Write-Warning "[boot] Could not capture disk layout: $($_.Exception.Message)"
+    }
+
+    if ($SkipBootPartition) {
+        Write-Host "[boot] -SkipBootPartition specified; BCD stores will not be collected." -ForegroundColor DarkYellow
+        return $result
+    }
+
+    $espGptType = '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'
+    $candidates = @($partitions | Where-Object {
+            $_.IsSystem -or $_.IsActive -or $_.GptType -eq $espGptType -or $_.PartitionNumber -eq $osPartition.PartitionNumber
+        })
+
+    if ($candidates.Count -eq 0) {
+        Write-Warning "[boot] No boot-candidate partitions found on disk $diskNumber."
+        return $result
+    }
+
+    $tempMounts = New-Object System.Collections.ArrayList
+    $bcdLocations = @("EFI\Microsoft\Boot", "Boot")
+    $bcdedit = Join-Path $env:SystemRoot "System32\bcdedit.exe"
+
+    try {
+        foreach ($partition in $candidates) {
+            $root = Get-PartitionReadRoot -Partition $partition -TempMounts $tempMounts
+            if (-not $root) {
+                Write-Host "[boot] Partition $($partition.PartitionNumber) is not readable; skipping." -ForegroundColor DarkYellow
+                continue
+            }
+
+            foreach ($location in $bcdLocations) {
+                $bcdDir = Join-Path $root $location
+                if (-not (Test-Path -LiteralPath $bcdDir -ErrorAction SilentlyContinue)) {
+                    continue
+                }
+
+                $bcdFiles = @(Get-ChildItem -LiteralPath $bcdDir -Filter "BCD*" -File -Force -ErrorAction SilentlyContinue)
+                if ($bcdFiles.Count -eq 0) {
+                    continue
+                }
+
+                $partitionDest = Join-Path $bootDest ("partition{0}\{1}" -f $partition.PartitionNumber, $location)
+                foreach ($bcdFile in $bcdFiles) {
+                    Copy-IfPresent -Source $bcdFile.FullName -Destination (Join-Path $partitionDest $bcdFile.Name) -Activity "BCD: $($bcdFile.Name)" -ProgressId 1
+                }
+
+                $mainBcd = $bcdFiles | Where-Object { $_.Name -eq "BCD" } | Select-Object -First 1
+                if (-not $mainBcd) {
+                    continue
+                }
+                $result.BcdStoresFound++
+
+                # Decode a scratch copy so bcdedit can never touch the evidence copy or the offline original.
+                if (-not (Test-Path -LiteralPath $bcdedit)) {
+                    Write-Warning "[boot] bcdedit.exe not found; BCD enumeration skipped."
+                    continue
+                }
+
+                $scratch = Join-Path ([System.IO.Path]::GetTempPath()) ("TSSOfflineBcd_{0}" -f ([guid]::NewGuid().ToString("N")))
+                $previousPreference = $ErrorActionPreference
+                try {
+                    New-Item -Path $scratch -ItemType Directory -Force | Out-Null
+                    foreach ($bcdFile in $bcdFiles) {
+                        Copy-Item -LiteralPath $bcdFile.FullName -Destination (Join-Path $scratch $bcdFile.Name) -Force -ErrorAction SilentlyContinue
+                    }
+
+                    $ErrorActionPreference = "Continue"
+                    $enumOutput = & $bcdedit /store (Join-Path $scratch "BCD") /enum all /v 2>&1 | Out-String
+                    $enumExit = $LASTEXITCODE
+                    $ErrorActionPreference = $previousPreference
+
+                    $enumPath = Join-Path $partitionDest "BCD-enum.txt"
+                    if (-not (Test-Path -LiteralPath $partitionDest)) {
+                        New-Item -Path $partitionDest -ItemType Directory -Force | Out-Null
+                    }
+                    $header = "# bcdedit /store <copy of $($mainBcd.FullName)> /enum all /v (exit code $enumExit)`r`n"
+                    ($header + $enumOutput) | Out-File -LiteralPath $enumPath -Encoding UTF8 -Force
+                    Add-GeneratedManifestEntry -Source $mainBcd.FullName -Destination $enumPath
+                    Write-Host "[boot] BCD enumeration saved: $enumPath" -ForegroundColor DarkCyan
+                }
+                catch {
+                    Write-Warning "[boot] BCD enumeration failed for $($mainBcd.FullName): $($_.Exception.Message)"
+                }
+                finally {
+                    $ErrorActionPreference = $previousPreference
+                    if (Test-Path -LiteralPath $scratch) {
+                        Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue
+                    }
+                }
+            }
+        }
+    }
+    finally {
+        foreach ($mount in $tempMounts) {
+            try {
+                Remove-PartitionAccessPath -DiskNumber $mount.DiskNumber -PartitionNumber $mount.PartitionNumber -AccessPath "$($mount.DriveLetter):\" -ErrorAction Stop
+                Write-Host "[boot] Removed temporary drive letter $($mount.DriveLetter):" -ForegroundColor DarkCyan
+            }
+            catch {
+                Write-Warning "[boot] Could not remove temporary drive letter $($mount.DriveLetter): $($_.Exception.Message)"
+            }
+        }
+    }
+
+    if ($result.BcdStoresFound -eq 0) {
+        Write-Warning "[boot] No BCD store found on disk $diskNumber. A missing BCD is itself a likely no-boot cause."
+    }
+
+    return $result
+}
+
+function Write-BootBinaryInventory {
+    # Inventories boot-critical binaries (version/size/timestamp) to expose missing, zero-byte, or
+    # mismatched files after an interrupted update without copying the binaries themselves.
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$WindowsRoot,
+
+        [Parameter(Mandatory = $true)]
+        [string]$OutputFolder
+    )
+
+    if ($WhatIfPreference) {
+        Write-Host "[whatif] Would write boot binary inventory" -ForegroundColor Yellow
+        return
+    }
+
+    $relativePaths = @(
+        "System32\winload.exe", "System32\winload.efi", "System32\winresume.exe", "System32\winresume.efi",
+        "System32\ntoskrnl.exe", "System32\hal.dll", "System32\ci.dll", "System32\kdcom.dll", "System32\config\SYSTEM",
+        "System32\drivers\ntfs.sys", "System32\drivers\partmgr.sys", "System32\drivers\disk.sys",
+        "System32\drivers\storvsc.sys", "System32\drivers\vmbus.sys", "System32\drivers\stornvme.sys",
+        "System32\drivers\acpi.sys", "System32\drivers\msisadrv.sys", "System32\drivers\pci.sys"
+    )
+
+    $rows = foreach ($relative in $relativePaths) {
+        $fullPath = Join-Path $WindowsRoot $relative
+        $item = Get-Item -LiteralPath $fullPath -ErrorAction SilentlyContinue
+        if ($item) {
+            $version = $null
+            try { $version = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($item.FullName).FileVersion } catch { }
+            [pscustomobject]@{
+                File = "Windows\$relative"
+                Present = $true
+                SizeBytes = $item.Length
+                LastWriteUtc = $item.LastWriteTimeUtc.ToString("yyyy-MM-dd HH:mm:ss")
+                FileVersion = $version
+                Note = if ($item.Length -eq 0) { "ZERO-BYTE FILE" } else { "" }
+            }
+        }
+        else {
+            [pscustomobject]@{
+                File = "Windows\$relative"; Present = $false; SizeBytes = 0; LastWriteUtc = ""; FileVersion = ""; Note = "MISSING"
+            }
+        }
+    }
+
+    $bootDest = Join-Path $OutputFolder "offline\boot"
+    New-Item -Path $bootDest -ItemType Directory -Force | Out-Null
+    $inventoryPath = Join-Path $bootDest "boot-binaries.txt"
+    $rows | Format-Table -AutoSize | Out-String -Width 250 | Out-File -LiteralPath $inventoryPath -Encoding UTF8 -Force
+    Add-GeneratedManifestEntry -Source "Boot binary inventory ($WindowsRoot)" -Destination $inventoryPath
+    Write-Host "[boot] Boot binary inventory saved: $inventoryPath" -ForegroundColor DarkCyan
 }
 
 $script:manifestEntries = @()
@@ -483,7 +790,8 @@ $pathsToCollect = @(
 
     # Setup and upgrade logs
     @{ Rel = "Windows\Panther"; Dest = "offline\Windows\Panther"; Activity = "Panther setup logs" },
-    @{ Rel = "$Windows.~BT\Sources\Panther"; Dest = "offline\Windows.~BT\Sources\Panther"; Activity = "Setup source Panther" },
+    @{ Rel = '$Windows.~BT\Sources\Panther'; Dest = "offline\Windows.~BT\Sources\Panther"; Activity = "Setup source Panther" },
+    @{ Rel = '$Windows.~BT\Sources\Rollback'; Dest = "offline\Windows.~BT\Sources\Rollback"; Activity = "Setup rollback logs" },
     @{ Rel = "Windows\System32\Sysprep\Panther"; Dest = "offline\Windows\System32\Sysprep\Panther"; Activity = "Sysprep Panther" },
 
     # INF and driver installation logs
@@ -498,6 +806,18 @@ $pathsToCollect = @(
     # Crash dumps
     @{ Rel = "Windows\Minidump"; Dest = "offline\Windows\Minidump"; Activity = "Minidumps" },
     @{ Rel = "Windows\LiveKernelReports"; Dest = "offline\Windows\LiveKernelReports"; Activity = "Live kernel reports" },
+
+    # Boot diagnostics (SrtTrail.txt and boot-time ETL autologger traces are under System32\LogFiles below)
+    @{ Rel = "Windows\bootstat.dat"; Dest = "offline\Windows\bootstat.dat"; Activity = "Boot status data" },
+    @{ Rel = "Windows\ntbtlog.txt"; Dest = "offline\Windows\ntbtlog.txt"; Activity = "Boot log (ntbtlog)" },
+    @{ Rel = "Windows\System32\config\RegBack\SYSTEM"; Dest = "offline\Windows\System32\config\RegBack\SYSTEM"; Activity = "SYSTEM registry backup (RegBack)" },
+    @{ Rel = "Windows\System32\config\RegBack\SOFTWARE"; Dest = "offline\Windows\System32\config\RegBack\SOFTWARE"; Activity = "SOFTWARE registry backup (RegBack)" },
+    @{ Rel = "Windows\System32\config\SYSTEM.LOG"; Dest = "offline\registry\SYSTEM.LOG"; Activity = "SYSTEM hive log" },
+    @{ Rel = "Windows\System32\config\SYSTEM.LOG1"; Dest = "offline\registry\SYSTEM.LOG1"; Activity = "SYSTEM hive log 1" },
+    @{ Rel = "Windows\System32\config\SYSTEM.LOG2"; Dest = "offline\registry\SYSTEM.LOG2"; Activity = "SYSTEM hive log 2" },
+    @{ Rel = "Windows\System32\config\SOFTWARE.LOG"; Dest = "offline\registry\SOFTWARE.LOG"; Activity = "SOFTWARE hive log" },
+    @{ Rel = "Windows\System32\config\SOFTWARE.LOG1"; Dest = "offline\registry\SOFTWARE.LOG1"; Activity = "SOFTWARE hive log 1" },
+    @{ Rel = "Windows\System32\config\SOFTWARE.LOG2"; Dest = "offline\registry\SOFTWARE.LOG2"; Activity = "SOFTWARE hive log 2" },
 
     # System logs and diagnostics
     @{ Rel = "Windows\System32\LogFiles"; Dest = "offline\Windows\System32\LogFiles"; Activity = "System32 LogFiles" },
@@ -535,6 +855,10 @@ foreach ($item in $pathsToCollect) {
 }
 
 Write-Progress -Id 0 -Activity "Collecting offline diagnostics" -Completed
+
+# No-boot evidence: BCD stores, disk layout, and boot-critical binary inventory
+$bootResult = Copy-BootConfiguration -OsRoot $offlineRoot -OutputFolder $outputFolder
+Write-BootBinaryInventory -WindowsRoot $resolvedWindowsRoot -OutputFolder $outputFolder
 
 # SoftwareDistribution — opt-in only (contains large update-download payloads; can be several hundred MB)
 if ($IncludeSoftwareDistribution) {
@@ -593,20 +917,6 @@ if ($IncludeComponentsHive) {
     Copy-IfPresent -Source $sourceHive -Destination $destHive -Activity "Registry hive: COMPONENTS" -ProgressId 1
 }
 
-# Credential-bearing hives (requires explicit consent)
-if ($IncludeCredentialHives) {
-    Write-Warning "⚠️  CREDENTIAL HIVES: Collecting SAM, SECURITY, and DEFAULT registry hives."
-    Write-Warning "    These hives contain sensitive credential material (password hashes, LSA secrets, DPAPI data)."
-    Write-Warning "    Only collect these if explicitly required for your troubleshooting scenario."
-
-    $credentialHives = @("SAM", "SECURITY", "DEFAULT")
-    foreach ($hive in $credentialHives) {
-        $sourceHive = Join-Path $hiveFolder $hive
-        $destHive = Join-Path $outputFolder ("offline\registry\{0}" -f $hive)
-        Copy-IfPresent -Source $sourceHive -Destination $destHive -Activity "Credential hive: $hive" -ProgressId 1
-    }
-}
-
 # Generate manifest
 Write-Host "[manifest] Generating collection manifest..." -ForegroundColor Cyan
 $manifestPath = Join-Path $outputFolder "manifest.json"
@@ -617,12 +927,16 @@ $manifest = @{
     OfflineComputerName = $offlineComputerName
     OutputFolder = $outputFolder
     Parameters = @{
-        IncludeCredentialHives = $IncludeCredentialHives.IsPresent
         IncludeComponentsHive = $IncludeComponentsHive.IsPresent
         IncludeSoftwareDistribution = $IncludeSoftwareDistribution.IsPresent
         IncludeWindowsTemp = $IncludeWindowsTemp.IsPresent
         IncludeDriverStore = $IncludeDriverStore.IsPresent
         IncludeMemoryDump = $IncludeMemoryDump.IsPresent
+        SkipBootPartition = $SkipBootPartition.IsPresent
+    }
+    BootConfiguration = @{
+        DiskNumber = $bootResult.DiskNumber
+        BcdStoresFound = $bootResult.BcdStoresFound
     }
     Files = $script:manifestEntries
 }
