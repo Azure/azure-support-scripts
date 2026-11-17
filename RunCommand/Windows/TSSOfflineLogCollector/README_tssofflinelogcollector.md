@@ -14,7 +14,11 @@ PowerShell script for rescue-VM scenarios that collects Windows troubleshooting 
 - **Windows Update & Servicing** — CBS, DISM, WindowsUpdate ETL trace files (Windows 10+) and WindowsUpdate.log (legacy OS), WinSxS pending/servicing, USO logs
   - *Note: On Windows 10+, use `Get-WindowsUpdateLog` on a running system to generate human-readable log from collected ETL files*
   - *SoftwareDistribution is opt-in (`-IncludeSoftwareDistribution`) because its `Download` folder can hold hundreds of MB of update payloads*
-- **Setup & Upgrade** — Panther logs (Windows, $Windows.~BT, Sysprep), Modern Setup (MoSetup)
+- **Setup & Upgrade** — Panther logs (Windows, `$Windows.~BT\Sources\Panther`, Sysprep), setup rollback logs (`$Windows.~BT\Sources\Rollback`), Modern Setup (MoSetup)
+- **No-boot evidence** — `bootstat.dat`, `ntbtlog.txt`, SYSTEM and SOFTWARE registry backups from `System32\config\RegBack`, SYSTEM/SOFTWARE hive transaction logs (`.LOG`, `.LOG1`, `.LOG2`), Startup Repair `SrtTrail.txt` and boot ETL traces (under `System32\LogFiles`), plus under `offline\boot\`:
+  - BCD stores (and `BCD.LOG*`) from the EFI System / active / OS partition, with a decoded `BCD-enum.txt` (`bcdedit /enum all /v`, run on a scratch copy)
+  - `disk-layout.txt` — partition style, partition types, active/system flags
+  - `boot-binaries.txt` — presence, size, timestamp and version of boot-critical binaries (winload, ntoskrnl, hal, ci, storage/VMBus drivers), flagging missing or zero-byte files
 - **Drivers** — Complete INF folder (setupapi logs) and DPX device setup logs; DriverStore repository is opt-in (`-IncludeDriverStore`)
 - **Certificates** — catroot2 certificate catalog
 - **Error Reporting** — Windows Error Reporting (WER) logs and reports
@@ -26,7 +30,7 @@ PowerShell script for rescue-VM scenarios that collects Windows troubleshooting 
 - **Registry hives**:
   - Always collected: SYSTEM, SOFTWARE
   - COMPONENTS with explicit consent (`-IncludeComponentsHive`): large servicing-store hive, only needed for deep CBS/servicing analysis
-  - Credential-bearing hives with explicit consent (`-IncludeCredentialHives`): SAM, SECURITY, DEFAULT
+  - Credential-bearing hives (SAM, SECURITY, DEFAULT) are **never** collected, including their `RegBack` copies
 
 ## Output
 
@@ -45,10 +49,11 @@ PowerShell script for rescue-VM scenarios that collects Windows troubleshooting 
 
 > **Where to run this:** Execute the script on a working host that has the broken disk attached — an Azure **rescue VM** or a **Hyper-V host** with the broken VM's OS disk mounted as an offline data disk. The script reads the broken disk offline; it is **not** run on the broken VM.
 
-From an elevated PowerShell console:
+From an elevated PowerShell console, allow the script to run for the current session only and unblock the downloaded file. Scripts downloaded from the internet are blocked (Mark of the Web), and `RemoteSigned` rejects blocked scripts that are not digitally signed, failing with `File ...\tssofflinelogcollector.ps1 is not digitally signed` (`UnauthorizedAccess`), as seen on Windows Server 2019:
 
 ```powershell
-Set-ExecutionPolicy Bypass -Force
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+Unblock-File -Path .\tssofflinelogcollector.ps1
 ```
 
 ### Basic collection (disk 2 has the offline OS)
@@ -71,12 +76,6 @@ Set-ExecutionPolicy Bypass -Force
 .\tssofflinelogcollector.ps1 -Disk 2 -IncludeWindowsTemp -IncludeDriverStore -ZipOutput
 ```
 
-### ⚠️ With credential-bearing registry hives (use with caution)
-```powershell
-# Only use when explicitly required for troubleshooting
-.\tssofflinelogcollector.ps1 -Disk 2 -IncludeCredentialHives -ZipOutput
-```
-
 ### Custom output path
 ```powershell
 .\tssofflinelogcollector.ps1 -Disk 2 -OutputPath "D:\DiagnosticCollections" -ZipOutput
@@ -92,12 +91,12 @@ Set-ExecutionPolicy Bypass -Force
 - `-OfflineWindowsRoot <path>`: Offline Windows directory (example `F:\Windows`).
 - `-Disk <number|drive>`: Disk selector, supports disk number (`2`) or drive (`E`, `E:`, `E:\`).
 - `-OutputPath <path>`: Override default output root (`C:\MS_DATA\TSS_PERF_OFFLINE`).
-- `-IncludeCredentialHives`: **⚠️ SECURITY SENSITIVE** — Include credential-bearing hives (SAM, SECURITY, DEFAULT) in addition to the always-collected safe hives (SYSTEM, SOFTWARE). These hives contain password hashes, LSA secrets, and DPAPI material. Only use when explicitly required for troubleshooting.
 - `-IncludeComponentsHive`: Include the COMPONENTS registry hive (large servicing-store hive; only needed for deep CBS/servicing analysis). Not collected by default.
 - `-IncludeSoftwareDistribution`: Include the `SoftwareDistribution` folder (update history/DataStore **and** the `Download` payload cache, which can be several hundred MB). Not collected by default.
 - `-IncludeWindowsTemp`: Include the complete `Windows\Temp` tree. Not collected by default because installer caches and extracted packages can consume several GB.
 - `-IncludeDriverStore`: Include the complete DriverStore `FileRepository`. Not collected by default because it contains driver binaries and can consume hundreds of MB.
 - `-IncludeMemoryDump`: **⚠️ LARGE + SENSITIVE** — Include MEMORY.DMP (may be several GB and contain in-memory secrets). Only use when explicitly required for crash analysis.
+- `-SkipBootPartition`: Do not read the EFI System / active boot partition for BCD stores. By default the script reads that partition (via its volume path, or a temporary drive letter that is removed afterwards) to collect BCD. `disk-layout.txt` and `boot-binaries.txt` are still produced.
 - `-ZipOutput`: Create zip after collection.
 - `-Force`: Allow overwrite when output folder already exists.
 - `-WhatIf`: Preview what would be collected without actually copying files.
@@ -115,10 +114,10 @@ Set-ExecutionPolicy Bypass -Force
 - This script collects **static files only** from the offline disk. It does not run TSS.ps1 or any live diagnostics.
 - **Core collection** — collects event logs, servicing logs, setup logs, WER, registry hives, and related diagnostic artifacts. Payload-heavy sources (Windows Temp, DriverStore, SoftwareDistribution, COMPONENTS) require explicit opt-in switches.
 - **Collection size** — expect several hundred MB for the default bundle. Opt-in payload sources can increase it to several GB. Use `-WhatIf` to preview before collecting.
-- **Registry hives are always collected** (SYSTEM, SOFTWARE) — these are essential for proper troubleshooting. COMPONENTS is opt-in (`-IncludeComponentsHive`).
-- **Output naming** — the run folder and zip are named using the offline machine's real computer name (read via a short-lived `reg.exe load`/`unload` of the offline SYSTEM hive), not the rescue VM's own name, so bundles collected from multiple broken disks on the same rescue VM stay distinguishable.
+- **Registry hives are always collected** (SYSTEM, SOFTWARE) — these are essential for proper troubleshooting. COMPONENTS is opt-in (`-IncludeComponentsHive`). The offline computer name is read from a scratch copy of the SYSTEM hive, so the evidence hive is never modified by registry load or transaction-log replay.
+- **Output naming** — the run folder and zip are named using the offline machine's real computer name (read via a short-lived `reg.exe load`/`unload` of a scratch copy of the offline SYSTEM hive), not the rescue VM's own name, so bundles collected from multiple broken disks on the same rescue VM stay distinguishable.
 - MEMORY.DMP is opt-in (`-IncludeMemoryDump`) because it can be several GB and may contain in-memory secrets.
-- Credential-bearing registry hives (SAM/SECURITY/DEFAULT) require explicit consent (`-IncludeCredentialHives`) to prevent accidental exposure of password hashes and LSA secrets.
+- Credential-bearing registry hives (SAM/SECURITY/DEFAULT), including their `RegBack` backups, are intentionally not collected by this script.
 - Use `-WhatIf` to preview what would be collected without actually copying files.
 - The manifest (`manifest.json`) provides chain-of-custody documentation for all collected artifacts with SHA-256 hashes.
 
