@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "BCD store accessible",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Default boot entry points to Windows",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Secure Boot state",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Boot status policy (ignore failures)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Recovery sequence configured",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Integrity checks enabled",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "BCD store accessible",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Default boot entry points to Windows",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Secure Boot state",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Boot status policy (ignore failures)",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "Recovery sequence configured",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Integrity checks enabled",
+        "status": "OK",
+        "detail": "Operational"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "BCD store accessible",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Default boot entry points to Windows",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Secure Boot state",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Boot status policy (ignore failures)",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "Recovery sequence configured",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Integrity checks enabled",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

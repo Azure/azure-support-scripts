@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Machine is domain joined",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "Netlogon service running",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "Secure channel healthy",
+        "status": "OK",
+        "detail": "Below threshold"
+      },
+      {
+        "name": "DC discovery succeeds",
+        "status": "OK",
+        "detail": "Baseline compliant"
+      },
+      {
+        "name": "DNS SRV lookup signal",
+        "status": "OK",
+        "detail": "Reachable"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Machine is domain joined",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "Netlogon service running",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "Secure channel healthy",
+        "status": "WARN",
+        "detail": "Elevated but not failing"
+      },
+      {
+        "name": "DC discovery succeeds",
+        "status": "WARN",
+        "detail": "Mostly compliant"
+      },
+      {
+        "name": "DNS SRV lookup signal",
+        "status": "OK",
+        "detail": "Reachable with latency"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Machine is domain joined",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "Netlogon service running",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "Secure channel healthy",
+        "status": "WARN",
+        "detail": "High error rate"
+      },
+      {
+        "name": "DC discovery succeeds",
+        "status": "WARN",
+        "detail": "Drift detected"
+      },
+      {
+        "name": "DNS SRV lookup signal",
+        "status": "FAIL",
+        "detail": "Unreachable"
+      }
+    ]
+  }
+}

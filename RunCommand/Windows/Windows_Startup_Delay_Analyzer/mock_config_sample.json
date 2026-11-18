@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Last boot time",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Boot duration (Kernel+User init)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Logon delay events",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Auto-start program delays",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "GroupPolicy processing time",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Pending reboot state",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Last boot time",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Boot duration (Kernel+User init)",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Logon delay events",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Auto-start program delays",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "GroupPolicy processing time",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Pending reboot state",
+        "status": "OK",
+        "detail": "Operational"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Last boot time",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Boot duration (Kernel+User init)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Logon delay events",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Auto-start program delays",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "GroupPolicy processing time",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Pending reboot state",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

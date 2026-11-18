@@ -1,0 +1,55 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "RDP inbound rule enabled (port 3389)",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "BFE running (firewall enforcement)",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "Port 3389 in LISTENING state",
+        "status": "OK",
+        "detail": "Below threshold"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "RDP inbound rule enabled (port 3389)",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "BFE running (firewall enforcement)",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "Port 3389 in LISTENING state",
+        "status": "OK",
+        "detail": "Elevated but not failing"
+      }
+    ],
+    "broken": [
+      {
+        "name": "RDP inbound rule enabled (port 3389)",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "BFE running (firewall enforcement)",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "Port 3389 in LISTENING state",
+        "status": "FAIL",
+        "detail": "High error rate"
+      }
+    ]
+  }
+}

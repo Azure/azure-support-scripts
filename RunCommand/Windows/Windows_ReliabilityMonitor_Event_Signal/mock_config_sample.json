@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Application failures (7d)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Application hangs (7d)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Windows failures/BSODs (30d)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Service termination events (7d)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Disk errors (7d)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Unexpected shutdown events (14d)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Application failures (7d)",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Application hangs (7d)",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Windows failures/BSODs (30d)",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Service termination events (7d)",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "Disk errors (7d)",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Unexpected shutdown events (14d)",
+        "status": "OK",
+        "detail": "Operational"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Application failures (7d)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Application hangs (7d)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Windows failures/BSODs (30d)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Service termination events (7d)",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "Disk errors (7d)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Unexpected shutdown events (14d)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

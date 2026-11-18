@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "VM Agent service running",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "RdAgent service running",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Extension handler registry entries",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Extension config folder accessible",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "WireServer connectivity (168.63.129.16)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Agent log recent errors",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "VM Agent service running",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "RdAgent service running",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Extension handler registry entries",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Extension config folder accessible",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "WireServer connectivity (168.63.129.16)",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Agent log recent errors",
+        "status": "OK",
+        "detail": "Operational"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "VM Agent service running",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "RdAgent service running",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Extension handler registry entries",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Extension config folder accessible",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "WireServer connectivity (168.63.129.16)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Agent log recent errors",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

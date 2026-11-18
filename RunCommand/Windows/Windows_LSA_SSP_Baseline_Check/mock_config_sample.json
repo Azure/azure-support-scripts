@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "LSA RunAsPPL protection",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Credential Guard status",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Security packages registered",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "No unauthorized SSPs loaded",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "LSASS audit mode",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "LSA RunAsPPL protection",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Credential Guard status",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Security packages registered",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "No unauthorized SSPs loaded",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "LSASS audit mode",
+        "status": "WARN",
+        "detail": "Degraded state"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "LSA RunAsPPL protection",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Credential Guard status",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Security packages registered",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "No unauthorized SSPs loaded",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "LSASS audit mode",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

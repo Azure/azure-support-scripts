@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "RPC Endpoint Mapper service",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "DCOM Launch service",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "RPC port range (135 listening)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "RPC dynamic port range",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "RPC errors in System log (7d)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "WMI repository healthy",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "RPC Endpoint Mapper service",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "DCOM Launch service",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "RPC port range (135 listening)",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "RPC dynamic port range",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "RPC errors in System log (7d)",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "WMI repository healthy",
+        "status": "OK",
+        "detail": "Operational"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "RPC Endpoint Mapper service",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "DCOM Launch service",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "RPC port range (135 listening)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "RPC dynamic port range",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "RPC errors in System log (7d)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "WMI repository healthy",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

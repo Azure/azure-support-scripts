@@ -1,0 +1,70 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "SafeBoot NOT active (normal boot)",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "Boot recovery sequence (recoveryenabled)",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "System event log accessible",
+        "status": "OK",
+        "detail": "Below threshold"
+      },
+      {
+        "name": "Application event log accessible",
+        "status": "OK",
+        "detail": "Baseline compliant"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "SafeBoot NOT active (normal boot)",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "Boot recovery sequence (recoveryenabled)",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "System event log accessible",
+        "status": "WARN",
+        "detail": "Elevated but not failing"
+      },
+      {
+        "name": "Application event log accessible",
+        "status": "OK",
+        "detail": "Mostly compliant"
+      }
+    ],
+    "broken": [
+      {
+        "name": "SafeBoot NOT active (normal boot)",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "Boot recovery sequence (recoveryenabled)",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "System event log accessible",
+        "status": "WARN",
+        "detail": "High error rate"
+      },
+      {
+        "name": "Application event log accessible",
+        "status": "FAIL",
+        "detail": "Drift detected"
+      }
+    ]
+  }
+}

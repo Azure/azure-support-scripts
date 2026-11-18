@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Profile Service running",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Profile list registry entries",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Temporary profiles present",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Profile size on C: (Users folder)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Profile load errors (7d)",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Default profile intact",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Profile Service running",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Profile list registry entries",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Temporary profiles present",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Profile size on C: (Users folder)",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "Profile load errors (7d)",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Default profile intact",
+        "status": "OK",
+        "detail": "Operational"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Profile Service running",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Profile list registry entries",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Temporary profiles present",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Profile size on C: (Users folder)",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "Profile load errors (7d)",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Default profile intact",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}

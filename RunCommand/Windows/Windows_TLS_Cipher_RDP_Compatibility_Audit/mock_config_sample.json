@@ -1,0 +1,85 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "RDP 3389 listening",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "NLA setting present",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "SecurityLayer valid (0/1/2)",
+        "status": "OK",
+        "detail": "Below threshold"
+      },
+      {
+        "name": "TLS 1.2 server enabled",
+        "status": "OK",
+        "detail": "Baseline compliant"
+      },
+      {
+        "name": "TLS 1.0 server enabled",
+        "status": "OK",
+        "detail": "Reachable"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "RDP 3389 listening",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "NLA setting present",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "SecurityLayer valid (0/1/2)",
+        "status": "WARN",
+        "detail": "Elevated but not failing"
+      },
+      {
+        "name": "TLS 1.2 server enabled",
+        "status": "WARN",
+        "detail": "Mostly compliant"
+      },
+      {
+        "name": "TLS 1.0 server enabled",
+        "status": "OK",
+        "detail": "Reachable with latency"
+      }
+    ],
+    "broken": [
+      {
+        "name": "RDP 3389 listening",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "NLA setting present",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "SecurityLayer valid (0/1/2)",
+        "status": "WARN",
+        "detail": "High error rate"
+      },
+      {
+        "name": "TLS 1.2 server enabled",
+        "status": "WARN",
+        "detail": "Drift detected"
+      },
+      {
+        "name": "TLS 1.0 server enabled",
+        "status": "FAIL",
+        "detail": "Unreachable"
+      }
+    ]
+  }
+}

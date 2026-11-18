@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Time source detected",
+        "status": "OK",
+        "detail": "Healthy"
+      },
+      {
+        "name": "Clock offset within tolerance",
+        "status": "OK",
+        "detail": "All dependencies available"
+      },
+      {
+        "name": "Timezone configured",
+        "status": "OK",
+        "detail": "Below threshold"
+      },
+      {
+        "name": "KDC reachability signal",
+        "status": "OK",
+        "detail": "Baseline compliant"
+      },
+      {
+        "name": "Netlogon running",
+        "status": "OK",
+        "detail": "Reachable"
+      },
+      {
+        "name": "Recent Kerberos errors low",
+        "status": "OK",
+        "detail": "Clean"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Time source detected",
+        "status": "OK",
+        "detail": "Operational with warnings"
+      },
+      {
+        "name": "Clock offset within tolerance",
+        "status": "WARN",
+        "detail": "One non-blocking issue"
+      },
+      {
+        "name": "Timezone configured",
+        "status": "WARN",
+        "detail": "Elevated but not failing"
+      },
+      {
+        "name": "KDC reachability signal",
+        "status": "WARN",
+        "detail": "Mostly compliant"
+      },
+      {
+        "name": "Netlogon running",
+        "status": "WARN",
+        "detail": "Reachable with latency"
+      },
+      {
+        "name": "Recent Kerberos errors low",
+        "status": "OK",
+        "detail": "Minor drift"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Time source detected",
+        "status": "FAIL",
+        "detail": "Blocking issue detected"
+      },
+      {
+        "name": "Clock offset within tolerance",
+        "status": "FAIL",
+        "detail": "Critical dependency unavailable"
+      },
+      {
+        "name": "Timezone configured",
+        "status": "WARN",
+        "detail": "High error rate"
+      },
+      {
+        "name": "KDC reachability signal",
+        "status": "WARN",
+        "detail": "Drift detected"
+      },
+      {
+        "name": "Netlogon running",
+        "status": "WARN",
+        "detail": "Unreachable"
+      },
+      {
+        "name": "Recent Kerberos errors low",
+        "status": "FAIL",
+        "detail": "Missing"
+      }
+    ]
+  }
+}

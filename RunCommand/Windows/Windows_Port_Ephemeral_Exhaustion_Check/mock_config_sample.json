@@ -1,0 +1,100 @@
+{
+  "profiles": {
+    "healthy": [
+      {
+        "name": "Dynamic port range size",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Current TCP connections count",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "TIME_WAIT connection count",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "Ephemeral port usage ratio",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "MaxUserPort registry override",
+        "status": "OK",
+        "detail": "Healthy profile"
+      },
+      {
+        "name": "TcpTimedWaitDelay tuned",
+        "status": "OK",
+        "detail": "Healthy profile"
+      }
+    ],
+    "broken": [
+      {
+        "name": "Dynamic port range size",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "Current TCP connections count",
+        "status": "FAIL",
+        "detail": "Critical failure detected"
+      },
+      {
+        "name": "TIME_WAIT connection count",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "Ephemeral port usage ratio",
+        "status": "OK",
+        "detail": "Operational"
+      },
+      {
+        "name": "MaxUserPort registry override",
+        "status": "WARN",
+        "detail": "Degraded state"
+      },
+      {
+        "name": "TcpTimedWaitDelay tuned",
+        "status": "OK",
+        "detail": "Operational"
+      }
+    ],
+    "degraded": [
+      {
+        "name": "Dynamic port range size",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Current TCP connections count",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "TIME_WAIT connection count",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "Ephemeral port usage ratio",
+        "status": "WARN",
+        "detail": "Configuration drift detected"
+      },
+      {
+        "name": "MaxUserPort registry override",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      },
+      {
+        "name": "TcpTimedWaitDelay tuned",
+        "status": "OK",
+        "detail": "Operational with minor gaps"
+      }
+    ]
+  }
+}
