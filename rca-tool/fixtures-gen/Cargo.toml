@@ -1,0 +1,19 @@
+[package]
+name = "fixtures-gen"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Deterministic generator for the RCA Tool Playwright test fixtures"
+license = "MIT"
+
+[[bin]]
+name = "fixtures-gen"
+path = "src/main.rs"
+
+[dependencies]
+# Reuse the real parsers so generated fixtures are validated against the exact
+# detection logic the app ships (see the round-trip tests in `src/hana.rs`).
+supportfile = { path = "../lib/supportfile_core" }
+# Archive writer for the `.zip` fixtures (HANA log bundles). `tar`/`liblzma`
+# can be added the same way when the `.tar.xz` scc fixtures are ported.
+zip = { version = "2", default-features = false, features = ["deflate"] }
