@@ -21,6 +21,7 @@ Disclaimer:
     - Detects current Windows version and edition
     - Checks disk space and memory requirements
     - For Windows Server, displays supported upgrade paths
+    - Detects configured failover-cluster nodes and suppresses generic upgrade paths
     - For Windows 10/11, validates VM generation, Trusted Launch, Secure Boot, and TPM status
     - Provides guidance for Azure Virtual Desktop environments
 
@@ -47,6 +48,36 @@ function Assert-Admin {
 Assert-Admin
 
 # --- Helper Functions ---
+function Get-LocalClusterState {
+    $clusterService = Get-CimInstance -ClassName Win32_Service -Filter "Name = 'ClusSvc'" -ErrorAction Stop
+    if ($null -eq $clusterService) {
+        return 0
+    }
+
+    if (-not ('OSUpgradeAssessment.ClusterApi' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System.Runtime.InteropServices;
+namespace OSUpgradeAssessment {
+    public static class ClusterApi {
+        [DllImport("clusapi.dll", CharSet = CharSet.Unicode)]
+        public static extern uint GetNodeClusterState(string nodeName, out uint clusterState);
+    }
+}
+'@ -ErrorAction Stop
+    }
+
+    # Query configuration even when the Cluster service is stopped.
+    [uint32]$clusterState = 0
+    $result = [OSUpgradeAssessment.ClusterApi]::GetNodeClusterState($null, [ref]$clusterState)
+    if ($result -ne 0) {
+        throw "GetNodeClusterState failed with Windows error code $result."
+    }
+    if ($clusterState -notin 0, 1, 3, 19) {
+        throw "GetNodeClusterState returned an unrecognized state: $clusterState."
+    }
+    return $clusterState
+}
+
 function Get-AzureSecurityProfile {
     try {
         $computeMetadata = Invoke-RestMethod -Uri "http://169.254.169.254/metadata/instance/compute?api-version=2023-07-01" -Headers @{Metadata='true'} -Method Get -UseBasicParsing
@@ -130,7 +161,29 @@ if ($totalMemoryGB -lt 4) {
 
 # --- Main Logic ---
 if ($isServer) {
-    if (-not $diskCheckFailed -and -not $memoryCheckFailed) {
+    $clusterState = $null
+    try {
+        $clusterState = Get-LocalClusterState
+    } catch {
+        $messages += "[Warning] Unable to determine failover-cluster membership: $($_.Exception.Message)"
+    }
+
+    if ($null -eq $clusterState -or $clusterState -in 3, 19) {
+        $messages += ""
+        if ($null -eq $clusterState) {
+            $messages += "[Not assessed] Cluster readiness not assessed - manual validation required."
+        } else {
+            $messages += "[Warning] Failover-cluster membership detected."
+            $messages += "[Not assessed] Cluster rolling-upgrade readiness."
+        }
+        $messages += "Generic VM upgrade targets are suppressed. Passing disk and memory checks does not establish cluster upgrade readiness."
+        $messages += "Cluster OS rolling upgrades cannot skip Windows Server releases. Upgrade to the next release and complete each cluster upgrade cycle before starting another, or migrate to a new cluster using a supported procedure."
+        $messages += "Example: Windows Server 2016 -> 2019 -> 2022 -> 2025."
+        $messages += "Follow the cluster OS rolling-upgrade guidance and workload-specific requirements before upgrading this node:"
+        $messages += "https://learn.microsoft.com/en-us/windows-server/failover-clustering/cluster-operating-system-rolling-upgrade"
+        $messages += "That procedure covers Hyper-V and Scale-out File Server workloads; it is not blanket approval for other clustered workloads."
+        $messages += "This tool does not validate cluster functional level, other nodes' OS versions, cluster health, or workload compatibility."
+    } elseif (-not $diskCheckFailed -and -not $memoryCheckFailed) {
         foreach ($serverVersion in $serverUpgradeMatrix.Keys) {
             if ($windowsProductName -like "$serverVersion*") {
                 $messages += ""
